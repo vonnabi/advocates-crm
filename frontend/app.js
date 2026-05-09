@@ -321,6 +321,7 @@ const titles = {
 const $ = (selector) => document.querySelector(selector);
 const viewNodes = [...document.querySelectorAll(".view")];
 const navNodes = [...document.querySelectorAll(".nav-item")];
+const DEMO_URL = "https://vonnabi.github.io/advocates-crm/";
 
 function showToast(message, type = "success") {
   const stack = $("#toast-stack");
@@ -376,6 +377,15 @@ function toggleSidebar() {
   const collapsed = document.body.classList.toggle("sidebar-collapsed");
   saveNavigationState();
   showToast(collapsed ? "Бокове меню згорнуто." : "Бокове меню розгорнуто.");
+}
+
+async function copyDemoLink() {
+  try {
+    await navigator.clipboard.writeText(DEMO_URL);
+    showToast("Ссылка для заказчика скопирована.");
+  } catch (error) {
+    window.prompt("Скопируйте ссылку для заказчика:", DEMO_URL);
+  }
 }
 
 function clientById(id) {
@@ -3947,6 +3957,10 @@ document.querySelectorAll("[data-profile-action]").forEach((button) => {
     if (action === "team") {
       switchView("settings");
       showToast("Розділ користувачів відкривається в налаштуваннях.");
+      return;
+    }
+    if (action === "demo-link") {
+      copyDemoLink();
       return;
     }
     if (action === "compact") {
