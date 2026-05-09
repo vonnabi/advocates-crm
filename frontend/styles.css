@@ -576,6 +576,42 @@ h3 {
   font-size: 12px;
 }
 
+.demo-share-box {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #cfe0fa;
+  border-radius: 8px;
+  background: #f3f8ff;
+  margin: 0 0 8px;
+  padding: 10px;
+}
+
+.demo-share-box span {
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.demo-share-box strong {
+  color: #172033;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.demo-share-box div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.demo-share-box button {
+  background: white;
+  color: var(--blue);
+  border: 1px solid #cfe0fa;
+  text-align: center;
+}
+
 .profile-panel button {
   width: 100%;
   border-radius: 8px;

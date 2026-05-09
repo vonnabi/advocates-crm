@@ -3963,6 +3963,10 @@ document.querySelectorAll("[data-profile-action]").forEach((button) => {
       copyDemoLink();
       return;
     }
+    if (action === "open-demo") {
+      window.open(DEMO_URL, "_blank", "noopener");
+      return;
+    }
     if (action === "compact") {
       toggleSidebar();
       return;
