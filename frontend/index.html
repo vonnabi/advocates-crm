@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Advocates Bureau CRM</title>
+    <link rel="stylesheet" href="styles.css?v=sidebar-full-collapse" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">AB</div>
+        <div>
+          <strong>Advocates</strong>
+          <span>Bureau CRM</span>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="Основна навігація">
+        <button class="nav-item active" data-view="dashboard"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="m3 11 9-8 9 8"></path><path d="M5 10v10h5v-6h4v6h5V10"></path></svg></span>Дашборд</button>
+        <button class="nav-item" data-view="cases"><span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"></circle><path d="M3 21a6 6 0 0 1 12 0"></path><path d="M17 11h4"></path><path d="M19 9v4"></path></svg></span>Справи</button>
+        <button class="nav-item" data-view="clients"><span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="8" cy="8" r="3.5"></circle><path d="M2.5 21a5.5 5.5 0 0 1 11 0"></path><circle cx="17" cy="9" r="3"></circle><path d="M14.5 20a4.8 4.8 0 0 1 7 0"></path></svg></span>Клієнти</button>
+        <button class="nav-item" data-view="calendar"><span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 11h18"></path></svg></span>Календар</button>
+        <button class="nav-item has-badge" data-view="tasks"><span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="m8 12 2.5 2.5L16 9"></path></svg></span>Задачі<span class="nav-badge">8</span></button>
+        <button class="nav-item" data-view="documents"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z"></path><path d="M14 3v6h6"></path></svg></span>Документи</button>
+        <button class="nav-item" data-view="mailings"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M21 4 3 11l7 3 3 7 8-17Z"></path><path d="m10 14 4-4"></path></svg></span>Розсилка</button>
+        <button class="nav-item" data-view="ai"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M6 19H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"></path><path d="M18 5h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-2"></path><path d="M8 16V8l4 8 4-8v8"></path></svg></span>AI помічники<span class="nav-new">NEW</span></button>
+        <button class="nav-item" data-view="planner"><span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="16" rx="2"></rect><path d="M9 3v4M15 3v4M9 13h6M9 17h3"></path><path d="m17 12 2 2 3-4"></path></svg></span>Планер</button>
+        <button class="nav-item" data-view="analytics"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M4 20V10"></path><path d="M9 20V4"></path><path d="M14 20v-7"></path><path d="M19 20V8"></path></svg></span>Аналітика</button>
+        <button class="nav-item" data-view="finance"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 3v18"></path><path d="M17 7.5A4 4 0 0 0 12 6c-2.2 0-4 1-4 2.8s1.8 2.5 4 3 4 1.2 4 3-1.8 3.2-4 3.2a5 5 0 0 1-5-2"></path></svg></span>Фінанси</button>
+        <button class="nav-item" data-view="osint"><span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path><path d="M11 8v6M8 11h6"></path></svg></span>OSINT</button>
+        <button class="nav-item" data-view="settings"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"></path><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 0 1 4.2 17l.1-.1A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.6-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.3 7A2 2 0 0 1 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 0 1 19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1a2 2 0 0 1 0 4H21a1.7 1.7 0 0 0-1.6 1Z"></path></svg></span>Налаштування</button>
+      </nav>
+
+      <div class="collapse-menu">← Згорнути меню</div>
+    </aside>
+
+    <button class="sidebar-restore" type="button" aria-label="Розгорнути меню" title="Розгорнути меню">›</button>
+
+    <main class="app">
+      <header class="topbar">
+        <div class="topbar-title-wrap">
+          <button class="topbar-back" id="topbar-back" type="button" aria-label="Повернутися назад" title="Назад">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"></path></svg>
+          </button>
+          <div>
+            <h1 id="page-title">Дашборд</h1>
+            <p class="eyebrow" id="page-eyebrow">Юридичне бюро</p>
+          </div>
+        </div>
+        <div class="top-actions admin-actions">
+          <div class="topbar-menu-wrap">
+            <button class="notification-button" id="notifications-toggle" type="button" title="Вхідні повідомлення" aria-expanded="false" aria-controls="notifications-menu">
+              <span class="bell-shape" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+                  <path d="M10 21h4"></path>
+                </svg>
+              </span>
+              <span class="notification-badge" id="notifications-count">5</span>
+            </button>
+            <div class="topbar-panel notifications-panel" id="notifications-menu" hidden>
+              <div class="topbar-panel-head">
+                <strong>Сповіщення</strong>
+                <button type="button" data-clear-notifications>Прочитано</button>
+              </div>
+              <button type="button" class="notification-row" data-notification-view="tasks">
+                <span class="event-dot danger"></span>
+                <span><strong>3 задачі прострочено</strong><em>Перевірте дедлайни на сьогодні</em><small>Відкрити задачі</small></span>
+              </button>
+              <button type="button" class="notification-row" data-notification-view="calendar">
+                <span class="event-dot court"></span>
+                <span><strong>Судове засідання о 10:00</strong><em>Справа №2024/1111</em><small>Відкрити календар</small></span>
+              </button>
+              <button type="button" class="notification-row" data-notification-view="mailings">
+                <span class="event-dot meeting"></span>
+                <span><strong>Розсилка готова</strong><em>386 одержувачів у сегменті</em><small>Відкрити розсилку</small></span>
+              </button>
+            </div>
+          </div>
+          <div class="topbar-menu-wrap">
+            <button class="admin-profile" id="admin-profile-toggle" type="button" aria-expanded="false" aria-controls="admin-profile-menu">
+              <div class="admin-avatar advocate-photo has-photo admin-photo" style="--profile-photo: url('https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=160&h=160&fit=crop')"><span>І</span></div>
+              <div>
+                <strong>Іваненко А.Ю.</strong>
+                <span>Адміністратор</span>
+              </div>
+              <span class="admin-chevron">⌄</span>
+            </button>
+            <div class="topbar-panel profile-panel" id="admin-profile-menu" hidden>
+              <div class="profile-panel-head">
+                <div class="admin-avatar advocate-photo has-photo admin-photo" style="--profile-photo: url('https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=160&h=160&fit=crop')"><span>І</span></div>
+                <div><strong>Іваненко А.Ю.</strong><span>Адміністратор бюро</span></div>
+              </div>
+              <button type="button" data-profile-action="settings">Налаштування профілю</button>
+              <button type="button" data-profile-action="team">Користувачі бюро</button>
+              <button type="button" data-profile-action="compact">Згорнути меню</button>
+              <button type="button" data-profile-action="logout">Вийти</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <section id="dashboard" class="view active"></section>
+      <section id="cases" class="view"></section>
+      <section id="clients" class="view"></section>
+      <section id="tasks" class="view"></section>
+      <section id="calendar" class="view"></section>
+      <section id="planner" class="view"></section>
+      <section id="documents" class="view"></section>
+      <section id="mailings" class="view"></section>
+      <section id="ai" class="view"></section>
+      <section id="finance" class="view"></section>
+      <section id="analytics" class="view"></section>
+      <section id="osint" class="view"></section>
+      <section id="settings" class="view"></section>
+    </main>
+
+    <div class="toast-stack" id="toast-stack" aria-live="polite" aria-atomic="true"></div>
+
+    <dialog id="client-dialog">
+      <form method="dialog" class="modal-form" id="client-form">
+        <div class="modal-head">
+          <h2 id="client-dialog-title">Новий клієнт</h2>
+          <button id="client-dialog-close" class="ghost" type="button">Закрити</button>
+        </div>
+        <input name="clientId" type="hidden" />
+        <label>ПІБ клієнта<input name="name" required /></label>
+        <label>Телефон<input name="phone" required /></label>
+        <label>Email<input name="email" type="email" /></label>
+        <label>Місце проживання<input name="address" placeholder="Наприклад: м. Київ, вул. Хрещатик, 10" /></label>
+        <label>Telegram username<input name="telegramUsername" placeholder="@username" /></label>
+        <label>Суть звернення<textarea name="request" rows="3"></textarea></label>
+        <label>Статус
+          <select name="status">
+            <option>Активний</option>
+            <option>Постійний клієнт</option>
+            <option>Новий</option>
+            <option>Не турбувати</option>
+          </select>
+        </label>
+        <label>Джерело
+          <select name="source">
+            <option>Вручну</option>
+            <option>Рекомендація</option>
+            <option>Сайт</option>
+            <option>Instagram</option>
+            <option>Telegram</option>
+            <option>Повторне звернення</option>
+          </select>
+        </label>
+        <label>Відповідальний
+          <select name="manager">
+            <option>Іваненко А.Ю.</option>
+            <option>Мельник Н.П.</option>
+            <option>Кравчук А.В.</option>
+          </select>
+        </label>
+        <button class="primary" value="default" type="submit">Зберегти клієнта</button>
+      </form>
+    </dialog>
+
+    <dialog id="case-dialog">
+      <form method="dialog" class="modal-form" id="case-form">
+        <div class="modal-head">
+          <h2 id="case-dialog-title">Нова справа</h2>
+          <button id="case-dialog-close" class="ghost" type="button">Закрити</button>
+        </div>
+        <input name="caseId" type="hidden" />
+        <label>Клієнт<select name="clientId" id="case-client" required></select></label>
+        <label>Назва справи<input name="title" required placeholder="Наприклад: Оскарження рішення ТЦК" /></label>
+        <label>Тип
+          <select name="type">
+            <option>Адміністративна</option>
+            <option>Сімейна</option>
+            <option>Військова</option>
+            <option>Господарська</option>
+            <option>Цивільна</option>
+            <option>Кримінальна</option>
+          </select>
+        </label>
+        <label>Етап<input name="stage" value="Первинна консультація" /></label>
+        <label>Статус
+          <select name="status">
+            <option>В роботі</option>
+            <option>Очікує відповідь</option>
+            <option>Терміново</option>
+            <option>Завершено</option>
+            <option>Архів</option>
+          </select>
+        </label>
+        <label>Дедлайн<input name="deadline" type="date" /></label>
+        <label>Пріоритет
+          <select name="priority">
+            <option>Середній</option>
+            <option>Високий</option>
+            <option>Низький</option>
+          </select>
+        </label>
+        <label>Відповідальний
+          <select name="responsible">
+            <option>Іваненко А.Ю.</option>
+            <option>Мельник Н.П.</option>
+            <option>Кравчук А.В.</option>
+          </select>
+        </label>
+        <button class="primary" id="case-submit-button" value="default" type="submit">Створити справу</button>
+      </form>
+    </dialog>
+
+    <dialog id="essence-dialog">
+      <form method="dialog" class="modal-form" id="essence-form">
+        <div class="modal-head">
+          <h2>Суть справи</h2>
+          <button id="essence-dialog-close" class="ghost" type="button">Закрити</button>
+        </div>
+        <input name="caseId" type="hidden" />
+        <label>Опис суті справи
+          <textarea name="description" rows="5" placeholder="Коротко опишіть звернення, позицію клієнта та ключову проблему"></textarea>
+        </label>
+        <button class="primary" value="default" type="submit">Зберегти суть справи</button>
+      </form>
+    </dialog>
+
+    <dialog id="authority-dialog">
+      <form method="dialog" class="modal-form" id="authority-form">
+        <div class="modal-head">
+          <h2>Орган звернення</h2>
+          <button id="authority-dialog-close" class="ghost" type="button">Закрити</button>
+        </div>
+        <input name="caseId" type="hidden" />
+        <label>Суд / орган<input name="court" placeholder="Суд, ТЦК, орган, установа" /></label>
+        <label>Тип органу<input name="authorityType" placeholder="Наприклад: ТЦК, суд, держорган" /></label>
+        <label>Адреса органу<input name="authorityAddress" placeholder="Наприклад: м. Київ, вул. Дегтярівська, 15" /></label>
+        <label>Контакт органу<input name="authorityContact" placeholder="Наприклад: (044) 456-78-90" /></label>
+        <button class="primary" value="default" type="submit">Зберегти орган</button>
+      </form>
+    </dialog>
+
+    <dialog id="finance-dialog">
+      <form method="dialog" class="modal-form" id="finance-form">
+        <div class="modal-head">
+          <h2>Фінанси справи</h2>
+          <button id="finance-dialog-close" class="ghost" type="button">Закрити</button>
+        </div>
+        <input name="caseId" type="hidden" />
+        <label>Сума договору
+          <input name="totalFee" type="number" min="0" step="100" placeholder="Наприклад: 20000" />
+        </label>
+        <label>Оплачено / передоплата
+          <input name="paid" type="number" min="0" step="100" placeholder="Наприклад: 10000" />
+        </label>
+        <label>Дата першої оплати
+          <input name="firstPaymentDate" type="date" />
+        </label>
+        <label>Наступна оплата
+          <input name="nextPaymentDue" type="date" />
+        </label>
+        <label>Коментар по оплаті
+          <textarea name="financeComment" rows="3" placeholder="Наприклад: друга частина після подання позову"></textarea>
+        </label>
+        <button class="primary" id="finance-submit-button" value="default" type="submit">Зберегти фінанси</button>
+      </form>
+    </dialog>
+
+    <dialog id="document-dialog">
+      <form method="dialog" class="modal-form" id="document-form">
+        <div class="modal-head">
+          <h2 id="document-dialog-title">Новий документ</h2>
+          <button id="document-dialog-close" class="ghost" type="button">Закрити</button>
+        </div>
+        <input name="caseId" type="hidden" />
+        <input name="editSource" type="hidden" />
+        <input name="docIndex" type="hidden" />
+        <input name="folderIndex" type="hidden" />
+        <input name="fileIndex" type="hidden" />
+        <label>Назва документа<input name="name" required placeholder="Наприклад: Адвокатський запит.docx" /></label>
+        <label>Файл з комп'ютера<input name="file" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" /></label>
+        <label>Посилання на Google Doc / Drive<input name="url" type="url" placeholder="https://docs.google.com/..." /></label>
+        <label>Тип документа
+          <select name="type">
+            <option>Позов</option>
+            <option>Адвокатський запит</option>
+            <option>Доказ</option>
+            <option>Договір</option>
+            <option>Рахунок</option>
+            <option>Інше</option>
+          </select>
+        </label>
+        <label>Дата подання
+          <input name="submitted" type="date" />
+        </label>
+        <label>Строк отримання відповіді
+          <input name="responseDue" type="date" />
+        </label>
+        <label>Статус
+          <select name="status">
+            <option>Чернетка</option>
+            <option>Відповідь очікується</option>
+            <option>Отримано</option>
+            <option>В роботі</option>
+            <option>Потрібно перевірити</option>
+            <option>Подано</option>
+            <option>Не подано</option>
+          </select>
+        </label>
+        <label>Папка документа
+          <select name="folder" id="document-folder"></select>
+        </label>
+        <label>Новая папка, если нужно создать
+          <input name="newFolderName" placeholder="Например: Докази" />
+        </label>
+        <label>Коментар<textarea name="comment" rows="3"></textarea></label>
+        <button class="primary" id="document-submit-button" value="default" type="submit">Додати документ</button>
+      </form>
+    </dialog>
+
+    <dialog id="task-dialog">
+      <form method="dialog" class="modal-form" id="task-form">
+        <div class="modal-head">
+          <h2 id="task-dialog-title">Нова задача</h2>
+          <button id="task-dialog-close" class="ghost" type="button">Закрити</button>
+        </div>
+        <label>Справа
+          <select name="caseId" id="task-case-select"></select>
+        </label>
+        <input name="taskIndex" type="hidden" />
+        <label>Назва задачі<input name="title" required placeholder="Наприклад: Підготувати позов" /></label>
+        <label>Статус
+          <select name="status">
+            <option>Очікує</option>
+            <option>В роботі</option>
+            <option>Терміново</option>
+            <option>Срочно</option>
+            <option>Не срочно</option>
+            <option>Виконано</option>
+          </select>
+        </label>
+        <label>Відповідальний
+          <select name="responsible">
+            <option>Іваненко А.Ю.</option>
+            <option>Мельник Н.П.</option>
+            <option>Кравчук А.В.</option>
+            <option>Петренко С.В.</option>
+          </select>
+        </label>
+        <label>Дедлайн<input name="due" type="date" /></label>
+        <label class="checkline">
+          <input name="showInCalendar" type="checkbox" />
+          <span>Показувати в календарі</span>
+        </label>
+        <button class="primary" id="task-submit-button" value="default" type="submit">Додати задачу</button>
+      </form>
+    </dialog>
+
+    <dialog id="event-dialog">
+      <form method="dialog" class="modal-form" id="event-form">
+        <div class="modal-head">
+          <h2>Нова подія</h2>
+          <button id="event-dialog-close" class="ghost" type="button">Закрити</button>
+        </div>
+        <label>Справа
+          <select name="caseId" id="event-case"></select>
+        </label>
+        <input name="actionIndex" type="hidden" />
+        <input name="eventId" type="hidden" />
+        <label>Назва події<input name="title" required /></label>
+        <label>Тип
+          <select name="type">
+            <option>Судове засідання</option>
+            <option>Зустріч з клієнтом</option>
+            <option>Консультація</option>
+            <option>Підготовка документа</option>
+            <option>Крайній строк</option>
+            <option>Ожидання відповіді від органу</option>
+            <option>Внутрішня задача</option>
+            <option>Інше</option>
+          </select>
+        </label>
+        <label>Дата<input name="date" type="date" required /></label>
+        <label>Час початку<input name="time" type="time" required /></label>
+        <label>Час завершення<input name="endTime" type="time" /></label>
+        <label>Строк виконання<input name="due" type="date" /></label>
+        <label>Статус
+          <select name="status">
+            <option>Заплановано</option>
+            <option>Очікує виконання</option>
+            <option>Виконано</option>
+            <option>Перенесено</option>
+            <option>Скасовано</option>
+            <option>Просрочено</option>
+          </select>
+        </label>
+        <label>Клієнт<select name="client" id="event-client"></select></label>
+        <label>Орган<input name="authority" placeholder="Суд, ТЦК, держорган" /></label>
+        <label>Адреса / місце<input name="location" placeholder="Адреса або онлайн-зустріч" /></label>
+        <label>Відповідальний
+          <select name="responsible">
+            <option>Іваненко А.Ю.</option>
+            <option>Мельник Н.П.</option>
+            <option>Кравчук А.В.</option>
+            <option>Петренко С.В.</option>
+          </select>
+        </label>
+        <label>Повторення
+          <select name="recurrence">
+            <option>Не повторювати</option>
+            <option>Щодня</option>
+            <option>Щотижня</option>
+            <option>Щомісяця</option>
+            <option>Індивідуально</option>
+          </select>
+        </label>
+        <label>Нагадування
+          <select name="reminderBefore">
+            <option>За 1 годину</option>
+            <option>За 3 години</option>
+            <option>За 1 день</option>
+            <option>За 3 дні</option>
+            <option>За 7 днів</option>
+            <option>Індивідуально</option>
+          </select>
+        </label>
+        <label>Канали нагадування
+          <select name="reminderChannels">
+            <option>CRM + Telegram + SMS</option>
+            <option>CRM</option>
+            <option>Telegram</option>
+            <option>SMS</option>
+            <option>Telegram + SMS</option>
+          </select>
+        </label>
+        <label>Отримувачі
+          <select name="reminderRecipients">
+            <option>Відповідальний юрист + клієнт</option>
+            <option>Відповідальний юрист</option>
+            <option>Клієнт</option>
+            <option>Юрист + помічник</option>
+            <option>Кілька учасників</option>
+          </select>
+        </label>
+        <label>Опис<textarea name="description" rows="3"></textarea></label>
+        <button class="primary" value="default" type="submit">Додати подію</button>
+      </form>
+    </dialog>
+
+    <dialog id="folder-dialog">
+      <form method="dialog" class="modal-form" id="folder-form">
+        <div class="modal-head">
+          <h2 id="folder-dialog-title">Нова папка</h2>
+          <button id="folder-dialog-close" class="ghost" type="button">Закрити</button>
+        </div>
+        <input name="caseId" type="hidden" />
+        <input name="folderIndex" type="hidden" />
+        <label>Назва папки<input name="name" required placeholder="Наприклад: Запити" /></label>
+        <button class="primary" id="folder-submit-button" value="default" type="submit">Створити папку</button>
+      </form>
+    </dialog>
+
+    <dialog id="delete-document-dialog">
+      <div class="modal-form confirm-dialog">
+        <div class="confirm-icon" aria-hidden="true">!</div>
+        <div class="confirm-title-row">
+          <h2 id="delete-document-title">Удалить документ?</h2>
+        </div>
+        <p id="delete-document-text" class="muted">Вы уверены, что хотите удалить этот документ?</p>
+        <div class="confirm-actions">
+          <button id="delete-document-cancel" class="secondary" type="button">Нет</button>
+          <button id="delete-document-confirm" class="primary danger" type="button">Да, удалить</button>
+        </div>
+        <button id="delete-document-close" class="confirm-x" type="button" aria-label="Закрыть">×</button>
+      </div>
+    </dialog>
+
+    <script src="app.js?v=sidebar-full-collapse"></script>
+  </body>
+</html>

@@ -1,0 +1,14 @@
+.DS_Store
+.venv/
+__pycache__/
+*.pyc
+db.sqlite3
+.env
+media/
+staticfiles/
+node_modules/
+
+# Local project materials that can contain private chat/task context.
+materials/
+data/source_whatsapp_chat.txt
+design/screenshots/

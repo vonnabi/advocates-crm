@@ -1,0 +1,13 @@
+# Future Django backend dependencies.
+# Install later inside a virtual environment:
+# python3 -m venv .venv
+# source .venv/bin/activate
+# pip install -r requirements.txt
+
+Django>=5.0,<6.0
+psycopg[binary]>=3.1,<4.0
+python-dotenv>=1.0,<2.0
+celery>=5.3,<6.0
+redis>=5.0,<6.0
+requests>=2.31,<3.0
+
