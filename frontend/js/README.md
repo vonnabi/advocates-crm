@@ -4,6 +4,7 @@ This folder is for small JavaScript modules that are split out of the main proto
 
 - `chrome.js` wires the topbar menus, notification controls, profile actions, sidebar collapse, and demo link actions.
 - `dialogs.js` wires modal close buttons and the shared delete confirmation flow.
+- `forms/clients.js` wires client create/edit form submission.
 - `state.js` loads static JSON demo data and creates the initial application state.
 - `navigation.js` persists and restores the active view, view history, selected cards, and sidebar state.
 - `ui.js` contains shared formatting helpers, status tones, badges, profile photos, and SVG icons.
