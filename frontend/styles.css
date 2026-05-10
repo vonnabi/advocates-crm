@@ -7723,14 +7723,14 @@ dialog::backdrop {
 
   .tasks-table tbody {
     display: grid;
-    gap: 12px;
+    gap: 14px;
   }
 
   .tasks-table tbody tr {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    align-items: center;
+    gap: 10px;
+    align-items: stretch;
     width: 100%;
     max-width: 100%;
     min-width: 0;
@@ -7738,7 +7738,7 @@ dialog::backdrop {
     border-radius: 8px;
     background: #fbfcfe;
     overflow: hidden;
-    padding: 12px;
+    padding: 14px;
   }
 
   .tasks-table tbody tr:hover,
@@ -7759,10 +7759,14 @@ dialog::backdrop {
 
   .tasks-table td:not(:first-child):not(:last-child) {
     display: grid;
-    grid-template-columns: 104px minmax(0, 1fr);
-    gap: 8px;
-    align-items: center;
-    min-height: 28px;
+    grid-template-columns: 1fr;
+    gap: 5px;
+    align-items: start;
+    min-height: 58px;
+    padding: 8px 10px;
+    border: 1px solid #edf1f7;
+    border-radius: 8px;
+    background: #f8fafc;
   }
 
   .tasks-table td:not(:first-child):not(:last-child)::before {
@@ -7770,6 +7774,7 @@ dialog::backdrop {
     font-size: 10px;
     font-weight: 900;
     line-height: 1.25;
+    letter-spacing: 0.02em;
     text-transform: uppercase;
   }
 
@@ -7796,6 +7801,7 @@ dialog::backdrop {
   .task-title-cell {
     grid-template-columns: 12px 18px minmax(0, 1fr);
     align-items: center;
+    gap: 12px;
     width: 100%;
     max-width: 100%;
     min-width: 0;
@@ -7824,8 +7830,8 @@ dialog::backdrop {
 
   .tasks-table td:nth-child(3) > span,
   .tasks-table td:nth-child(5) > span {
-    grid-column: 2;
-    margin-top: -4px;
+    grid-column: auto;
+    margin-top: 0;
   }
 
   .tasks-table .badge {
@@ -7836,16 +7842,19 @@ dialog::backdrop {
   .task-assignee {
     display: inline-flex !important;
     align-items: center;
-    gap: 8px;
+    gap: 12px;
     min-width: 0;
     max-width: 100%;
-    white-space: nowrap;
+    margin-top: 0 !important;
+    white-space: normal;
+    line-height: 1.25;
   }
 
   .task-assignee .advocate-photo {
-    width: 24px;
-    height: 24px;
-    flex-basis: 24px;
+    width: 26px;
+    height: 26px;
+    flex-basis: 26px;
+    margin-top: 0;
   }
 
   .tasks-table .task-list-actions {
@@ -8203,7 +8212,9 @@ dialog::backdrop {
   }
 
   .tasks-table td:not(:first-child):not(:last-child) {
-    grid-template-columns: 96px minmax(0, 1fr);
+    grid-template-columns: 1fr;
+    min-height: 0;
+    padding: 8px 10px;
   }
 
   .tasks-table tbody tr {
