@@ -2300,7 +2300,7 @@ function taskCard(task) {
       <div class="task-detail-priority">${badge(`${task.priority} пріоритет`, riskTone(task.priority))}</div>
       <div class="task-detail-tabs">
         <button class="${detailTab === "info" ? "active" : ""}" data-task-detail-tab="info">Інформація</button>
-        <button class="${detailTab === "subtasks" ? "active" : ""}" data-task-detail-tab="subtasks">Підзадачі (${taskSubtasks.length})</button>
+        <button class="${detailTab === "subtasks" ? "active" : ""}" data-task-detail-tab="subtasks">Підзадачі <span>${taskSubtasks.length}</span></button>
         <button class="${detailTab === "files" ? "active" : ""}" data-task-detail-tab="files">Файли</button>
         <button class="${detailTab === "history" ? "active" : ""}" data-task-detail-tab="history">Історія</button>
       </div>

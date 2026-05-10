@@ -2830,7 +2830,7 @@ td a,
 
 .task-detail-tabs {
   display: flex;
-  gap: 18px;
+  gap: 16px;
   border-bottom: 1px solid var(--line);
   margin-bottom: 18px;
 }
@@ -2841,10 +2841,18 @@ td a,
   border-bottom: 0;
   background: transparent;
   color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
   padding: 8px 0 10px;
   font-size: 12px;
   font-weight: 900;
   cursor: pointer;
+}
+
+.task-detail-tabs button span {
+  color: inherit;
 }
 
 .task-detail-tabs button.active {
