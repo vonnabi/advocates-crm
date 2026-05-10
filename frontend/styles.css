@@ -7677,6 +7677,161 @@ dialog::backdrop {
     justify-content: flex-start;
     flex-wrap: wrap;
   }
+
+  .tasks-tabs {
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 16px;
+    scrollbar-width: none;
+  }
+
+  .tasks-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tasks-tabs button {
+    flex: 0 0 auto;
+  }
+
+  .tasks-list-card,
+  .tasks-workspace .tasks-list-card {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .tasks-table,
+  .tasks-table thead,
+  .tasks-table tbody,
+  .tasks-table tr,
+  .tasks-table td {
+    display: block;
+    width: 100% !important;
+    min-width: 0;
+  }
+
+  .tasks-table {
+    min-width: 0;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .tasks-table thead {
+    display: none;
+  }
+
+  .tasks-table tbody {
+    display: grid;
+    gap: 12px;
+  }
+
+  .tasks-table tbody tr {
+    display: grid;
+    gap: 8px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fbfcfe;
+    overflow: hidden;
+    padding: 12px;
+  }
+
+  .tasks-table tbody tr:hover,
+  .tasks-table tbody tr.selected {
+    background: #f7faff;
+  }
+
+  .tasks-table td {
+    border: 0;
+    padding: 0;
+  }
+
+  .tasks-table td:not(:first-child):not(:last-child) {
+    display: grid;
+    grid-template-columns: 116px minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+  }
+
+  .tasks-table td:not(:first-child):not(:last-child)::before {
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 1.25;
+    text-transform: uppercase;
+  }
+
+  .tasks-table td:nth-child(2)::before {
+    content: "Пріоритет";
+  }
+
+  .tasks-table td:nth-child(3)::before {
+    content: "Справа";
+  }
+
+  .tasks-table td:nth-child(4)::before {
+    content: "Відповідальний";
+  }
+
+  .tasks-table td:nth-child(5)::before {
+    content: "Дедлайн";
+  }
+
+  .tasks-table td:nth-child(6)::before {
+    content: "Статус";
+  }
+
+  .task-title-cell {
+    grid-template-columns: 12px 18px minmax(0, 1fr);
+    align-items: start;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .task-title-cell > div {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .task-title-cell strong {
+    max-width: 100%;
+    font-size: 14px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .tasks-table td span:not(.badge),
+  .task-title-cell > div > span {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .tasks-table td:nth-child(3) > span,
+  .tasks-table td:nth-child(5) > span {
+    grid-column: 2;
+    margin-top: -4px;
+  }
+
+  .tasks-table .badge {
+    justify-self: start;
+    white-space: nowrap;
+  }
+
+  .task-assignee {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .tasks-table .task-list-actions {
+    justify-content: flex-start;
+    padding-top: 6px;
+  }
 }
 
 @media (max-width: 720px) {
@@ -7990,7 +8145,7 @@ dialog::backdrop {
   .tasks-list-card,
   .tasks-workspace .tasks-list-card {
     max-width: 100%;
-    overflow-x: auto;
+    overflow-x: visible;
     min-height: 460px;
   }
 
@@ -7999,7 +8154,45 @@ dialog::backdrop {
   }
 
   .tasks-table {
-    min-width: 980px;
+    min-width: 0;
+  }
+
+  #tasks.view .tasks-table td:first-child {
+    max-width: calc(100vw - 50px);
+    overflow: hidden;
+  }
+
+  #tasks.view .task-title-cell {
+    grid-template-columns: 12px 18px minmax(0, calc(100vw - 150px));
+  }
+
+  .task-title-cell > div {
+    width: min(100%, calc(100vw - 150px));
+    max-width: calc(100vw - 150px);
+  }
+
+  .task-title-cell strong,
+  .task-title-cell > div > span {
+    max-width: calc(100vw - 150px);
+  }
+
+  .tasks-table td:not(:first-child):not(:last-child) {
+    grid-template-columns: 108px minmax(0, 1fr);
+  }
+
+  .tasks-pagination {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    justify-items: stretch;
+  }
+
+  .tasks-pagination > div {
+    justify-content: stretch;
+  }
+
+  .tasks-pagination > div button {
+    flex: 1 1 0;
   }
 
   .calendar-weekdays {
