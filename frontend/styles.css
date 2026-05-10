@@ -2636,6 +2636,27 @@ td a,
   box-shadow: inset 0 2px 0 var(--blue);
 }
 
+.tasks-table tbody tr.task-done-row {
+  background: #f9fbfe;
+  opacity: 0.58;
+}
+
+.tasks-table tbody tr.task-done-row:hover,
+.tasks-table tbody tr.task-done-row.selected {
+  background: #f3f7fc;
+  opacity: 0.72;
+}
+
+.tasks-table tr.task-done-row .task-title-cell strong,
+.tasks-table tr.task-done-row .task-title-cell > div > span,
+.tasks-table tr.task-done-row td a,
+.tasks-table tr.task-done-row td > span:not(.badge),
+.tasks-table tr.task-done-row .task-assignee {
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: rgba(83, 97, 118, 0.65);
+}
+
 .task-title-head {
   display: grid;
   grid-template-columns: 12px 18px minmax(0, 1fr);
@@ -4015,8 +4036,27 @@ td a,
   color: #7a8798;
 }
 
+.case-inner-table tr.task-done-row {
+  background: #f9fbfe;
+  opacity: 0.6;
+}
+
+.case-inner-table tr.task-done-row:hover {
+  opacity: 0.76;
+}
+
 .task-done-row .row-title-text {
   text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: rgba(83, 97, 118, 0.65);
+}
+
+.task-done-row td span:not(.badge):not(.task-reminder-note),
+.task-done-row td strong,
+.task-done-row td a {
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: rgba(83, 97, 118, 0.65);
 }
 
 .task-reminder-note {
