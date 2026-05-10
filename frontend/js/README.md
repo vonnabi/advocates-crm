@@ -5,6 +5,7 @@ This folder is for small JavaScript modules that are split out of the main proto
 - `chrome.js` wires the topbar menus, notification controls, profile actions, sidebar collapse, and demo link actions.
 - `dialogs.js` wires modal close buttons and the shared delete confirmation flow.
 - `forms/case-details.js` wires case essence, authority, and finance form submissions.
+- `forms/case-items.js` wires case task and document folder form submissions.
 - `forms/cases.js` wires case create/edit form submission.
 - `forms/clients.js` wires client create/edit form submission.
 - `forms/documents.js` wires document create/edit submission, folder placement, file metadata, and history updates.
