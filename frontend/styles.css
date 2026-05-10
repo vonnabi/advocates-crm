@@ -38,11 +38,11 @@
   --text-xs: 10px;
   --text-sm: 11px;
   --text-base: 12px;
-  --text-md: 13px;
-  --text-lg: 15px;
-  --text-xl: 16px;
-  --text-2xl: 18px;
-  --text-3xl: 22px;
+  --text-md: 12px;
+  --text-lg: 14px;
+  --text-xl: 15px;
+  --text-2xl: 16px;
+  --text-3xl: 18px;
   --leading-tight: 1.2;
   --leading-normal: 1.4;
   --weight-medium: 600;
@@ -149,6 +149,43 @@ body {
     padding: 14px;
   }
 
+  h1 {
+    font-size: var(--text-3xl);
+  }
+
+  h2,
+  .case-title-line h2,
+  .tasks-page-head h2 {
+    font-size: var(--text-2xl);
+  }
+
+  h3,
+  .case-card h3,
+  .case-card-title,
+  .task-side-card h3,
+  .task-sync-card h2,
+  .task-priority-card h2,
+  .task-plan-card h2 {
+    font-size: var(--text-lg);
+  }
+
+  .case-card p,
+  .case-card strong,
+  .case-inner-table,
+  .tasks-table,
+  .task-side-card p,
+  .task-detail-info strong {
+    font-size: var(--text-base);
+  }
+
+  .case-inner-table th,
+  .tasks-table th,
+  .task-detail-info span,
+  .case-card span,
+  .tasks-table td span:not(.badge) {
+    font-size: var(--text-sm);
+  }
+
   .tasks-tabs button {
     padding: 8px 0 10px;
   }
@@ -202,6 +239,10 @@ body {
   .tasks-table th,
   .tasks-table td {
     padding: 12px 9px;
+  }
+
+  .task-title-cell strong {
+    font-size: var(--text-base);
   }
 
   .task-side-card {
