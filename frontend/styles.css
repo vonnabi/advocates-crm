@@ -1406,7 +1406,9 @@ td a,
 }
 
 .case-reference-screen {
+  width: 100%;
   max-width: 100%;
+  min-width: 0;
   margin-top: -4px;
 }
 
@@ -3507,6 +3509,8 @@ td a,
 .case-side-column {
   display: grid;
   gap: 10px;
+  min-width: 0;
+  max-width: 100%;
   min-height: 0;
 }
 
@@ -3539,6 +3543,8 @@ td a,
 }
 
 .case-card {
+  min-width: 0;
+  max-width: 100%;
   background: white;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -3560,10 +3566,21 @@ td a,
 }
 
 .case-card p {
+  max-width: 100%;
+  min-width: 0;
   color: #253047;
   font-size: 12px;
   line-height: 1.45;
   margin-bottom: 6px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.case-card strong,
+.case-contact-list span,
+.authority-box strong {
+  overflow-wrap: anywhere;
 }
 
 .case-client-box {
@@ -3631,6 +3648,7 @@ td a,
 .case-table-wrap {
   overflow-x: auto;
   min-height: 0;
+  max-width: 100%;
 }
 
 .scroll-card {
@@ -3648,6 +3666,7 @@ td a,
 }
 
 .case-inner-table {
+  width: 100%;
   min-width: 0;
   table-layout: fixed;
   font-size: 11px;
@@ -3657,6 +3676,8 @@ td a,
 .case-inner-table td {
   padding: 7px 6px;
   line-height: 1.28;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .case-inner-table th {
@@ -3678,25 +3699,25 @@ td a,
 }
 
 .case-actions-table td:nth-child(2) {
-  width: 44%;
+  width: 40%;
 }
 
 .case-actions-table td:nth-child(3) {
-  width: 13%;
+  width: 15%;
   text-align: center;
 }
 
 .case-actions-table td:nth-child(4) {
-  width: 14%;
+  width: 16%;
   text-align: center;
 }
 
 .case-actions-table td:nth-child(5) {
-  width: 14%;
+  width: 15%;
 }
 
 .case-actions-table td:nth-child(6) {
-  width: 8%;
+  width: 7%;
   text-align: center;
 }
 
@@ -3725,6 +3746,14 @@ td a,
 .procedural-actions-table th:nth-child(5),
 .procedural-actions-table td:nth-child(5) {
   width: 15%;
+}
+
+.case-actions-table {
+  min-width: 620px;
+}
+
+.procedural-actions-table {
+  min-width: 560px;
 }
 
 .case-actions-table input[type="checkbox"] {
@@ -3777,7 +3806,7 @@ td a,
 
 .row-title-text {
   min-width: 0;
-  overflow-wrap: normal;
+  overflow-wrap: anywhere;
   word-break: normal;
 }
 
@@ -3856,7 +3885,7 @@ td a,
 
 .case-documents-table th:first-child,
 .case-documents-table td:first-child {
-  width: 38%;
+  width: 42%;
   padding-left: 0;
 }
 
@@ -3868,14 +3897,18 @@ td a,
 
 .case-documents-table th:nth-child(3),
 .case-documents-table td:nth-child(3) {
-  width: 26%;
+  width: 24%;
   text-align: center;
 }
 
 .case-documents-table th:nth-child(4),
 .case-documents-table td:nth-child(4) {
-  width: 16%;
+  width: 14%;
   text-align: center;
+}
+
+.case-documents-table {
+  min-width: 520px;
 }
 
 .case-documents-table tbody tr,
@@ -4211,6 +4244,7 @@ td a,
 .folders-table {
   table-layout: fixed;
   width: 100%;
+  min-width: 460px;
   margin: 0;
 }
 
@@ -4436,6 +4470,283 @@ td a,
   .case-card h3,
   .case-card-title {
     font-size: 12px;
+  }
+}
+
+@media (max-width: 900px) {
+  .case-detail-head {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .case-detail-head > div:first-child {
+    min-width: 0;
+  }
+
+  .case-title-line {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .case-title-line h2 {
+    min-width: 0;
+  }
+
+  .case-detail-actions {
+    width: 100%;
+  }
+
+  .case-detail-actions .primary,
+  .case-detail-actions .secondary {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .case-detail-grid {
+    gap: 12px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .case-stack,
+  .case-main-column,
+  .case-side-column {
+    grid-template-rows: auto;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .case-stack .case-card,
+  .case-main-column .case-card,
+  .case-side-column .case-card {
+    min-height: auto;
+  }
+
+  .case-table-wrap,
+  .scroll-area {
+    overflow: visible;
+    padding: 0;
+  }
+
+  .case-actions-table,
+  .procedural-actions-table,
+  .case-documents-table,
+  .folders-table {
+    min-width: 0;
+  }
+
+  .case-inner-table,
+  .case-inner-table thead,
+  .case-inner-table tbody,
+  .case-inner-table tr,
+  .case-inner-table td {
+    display: block;
+    width: 100% !important;
+  }
+
+  .case-inner-table thead {
+    display: none;
+  }
+
+  .case-inner-table tr {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fbfcfe;
+    margin-bottom: 10px;
+    padding: 9px 10px;
+  }
+
+  .case-inner-table td {
+    min-height: 30px;
+    border: 0;
+    padding: 6px 0;
+    text-align: left !important;
+  }
+
+  .case-inner-table td:not(.empty-cell) {
+    display: grid;
+    grid-template-columns: 108px minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+  }
+
+  .case-inner-table td:not(.empty-cell)::before {
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 1.25;
+    text-transform: uppercase;
+  }
+
+  .case-actions-table td:nth-child(1)::before {
+    content: "Готово";
+  }
+
+  .case-actions-table td:nth-child(2)::before,
+  .procedural-actions-table td:nth-child(1)::before {
+    content: "Дія";
+  }
+
+  .case-actions-table td:nth-child(3)::before,
+  .procedural-actions-table td:nth-child(5)::before,
+  .case-documents-table td:nth-child(4)::before {
+    content: "Статус";
+  }
+
+  .case-actions-table td:nth-child(4)::before {
+    content: "Дедлайн";
+  }
+
+  .case-actions-table td:nth-child(5)::before {
+    content: "Відповідальний";
+  }
+
+  .case-actions-table td:nth-child(6)::before {
+    content: "Нагадування";
+  }
+
+  .procedural-actions-table td:nth-child(2)::before {
+    content: "Ініціатор";
+  }
+
+  .procedural-actions-table td:nth-child(3)::before {
+    content: "Дата";
+  }
+
+  .procedural-actions-table td:nth-child(4)::before {
+    content: "Строк";
+  }
+
+  .case-documents-table td:nth-child(1)::before {
+    content: "Документ";
+  }
+
+  .case-documents-table td:nth-child(2)::before {
+    content: "Подано";
+  }
+
+  .case-documents-table td:nth-child(3)::before {
+    content: "Відповідь";
+  }
+
+  .folders-table .folder-row > td:nth-child(1)::before {
+    content: "Папка";
+  }
+
+  .folders-table .folder-row > td:nth-child(2)::before {
+    content: "Файлів";
+  }
+
+  .folders-table .folder-row > td:nth-child(3)::before {
+    content: "Оновлено";
+  }
+
+  .row-title-with-actions {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .hover-row-actions,
+  .folder-actions,
+  .procedural-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .task-row-actions,
+  .procedural-row-actions {
+    justify-content: flex-start;
+  }
+
+  .case-inner-table .badge,
+  .dot-status {
+    justify-self: start;
+  }
+
+  .folder-files-row {
+    border: 0 !important;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+
+  .folder-files-row > td {
+    display: block !important;
+    padding: 0 !important;
+  }
+
+  .folder-files-row > td::before {
+    display: none;
+  }
+
+  .folder-files-list {
+    gap: 8px;
+    border-top: 0;
+    padding: 0 0 0 12px;
+  }
+
+  .folder-file-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    align-items: start;
+    border: 1px solid #e4ebf5;
+    border-radius: 8px;
+    background: white;
+    padding: 10px;
+  }
+
+  .folder-file-name {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 0;
+  }
+
+  .folder-row-content {
+    width: 100%;
+    margin: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .folder-title-text {
+    overflow-wrap: anywhere;
+  }
+
+  .folder-file-title {
+    justify-self: start;
+  }
+
+  .folder-status-cell,
+  .folder-updated-cell {
+    display: grid;
+    grid-template-columns: 108px minmax(0, 1fr);
+    justify-content: stretch;
+    gap: 10px;
+    padding: 0;
+    white-space: normal;
+  }
+
+  .folder-status-cell::before,
+  .folder-updated-cell::before {
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  .folder-status-cell::before {
+    content: "Статус";
+  }
+
+  .folder-updated-cell::before {
+    content: "Оновлено";
+  }
+
+  .folder-status-control,
+  .folder-updated-cell {
+    justify-content: start;
   }
 }
 
@@ -7464,6 +7775,62 @@ dialog::backdrop {
     max-width: 100vw;
     overflow-x: hidden;
     padding: 14px 12px 92px;
+  }
+
+  #cases.view .case-reference-screen,
+  #cases.view .case-detail-head,
+  #cases.view .case-detail-grid,
+  #cases.view .case-card,
+  #cases.view .case-finance-card,
+  #cases.view .case-history-card {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  #cases.view .case-detail-grid,
+  #cases.view .case-stack,
+  #cases.view .case-main-column,
+  #cases.view .case-side-column {
+    display: block;
+  }
+
+  #cases.view .case-stack .case-card,
+  #cases.view .case-main-column .case-card,
+  #cases.view .case-side-column .case-card,
+  #cases.view .case-finance-card,
+  #cases.view .case-history-card {
+    margin-bottom: 12px;
+  }
+
+  #cases.view .case-detail-grid > *,
+  #cases.view .case-card > *,
+  #cases.view .case-card p {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  #cases.view .case-card {
+    overflow: hidden;
+  }
+
+  #cases.view .case-card p,
+  #cases.view .case-card-title,
+  #cases.view .case-contact-list span,
+  #cases.view .authority-box strong {
+    width: min(100%, calc(100vw - 52px));
+    max-width: calc(100vw - 52px);
+  }
+
+  #cases.view .case-card p {
+    display: block !important;
+    width: min(100%, calc(100vw - 96px));
+    max-width: calc(100vw - 96px);
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+    overflow-wrap: break-word !important;
+    word-break: break-word !important;
   }
 
   .panel,
