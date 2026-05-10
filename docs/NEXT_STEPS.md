@@ -64,7 +64,8 @@
 - [x] вынести экран клиентов в `frontend/js/screens/clients.js`;
 - [x] вынести экран рассылки в `frontend/js/screens/mailings.js`;
 - [x] вынести экран справ в `frontend/js/screens/cases.js`;
-- [ ] постепенно разнести остальные экраны по файлам: календарь, задачи.
+- [x] вынести экран календаря в `frontend/js/screens/calendar.js`;
+- [ ] постепенно разнести остальные экраны по файлам: задачи.
 
 ### Шаг 4. Подключить frontend к backend
 
