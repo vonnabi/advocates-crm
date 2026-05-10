@@ -9,6 +9,7 @@ This folder is for small JavaScript modules that are split out of the main proto
 - `forms/cases.js` wires case create/edit form submission.
 - `forms/clients.js` wires client create/edit form submission.
 - `forms/documents.js` wires document create/edit submission, folder placement, file metadata, and history updates.
+- `forms/events.js` wires calendar event and case procedural action form submissions.
 - `state.js` loads static JSON demo data and creates the initial application state.
 - `navigation.js` persists and restores the active view, view history, selected cards, and sidebar state.
 - `ui.js` contains shared formatting helpers, status tones, badges, profile photos, and SVG icons.
