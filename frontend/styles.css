@@ -72,6 +72,11 @@ body {
 }
 
 @media (min-width: 901px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+
   body {
     width: var(--desktop-density-expand);
     min-height: var(--desktop-density-height);
