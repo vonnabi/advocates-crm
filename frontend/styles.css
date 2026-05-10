@@ -191,9 +191,24 @@ body {
     padding: 8px 0 10px;
   }
 
+  .tasks-screen {
+    gap: 10px;
+    margin-top: -6px;
+  }
+
+  .tasks-page-head {
+    margin: -4px 0 -2px;
+    padding: 0;
+  }
+
+  .tasks-head-actions {
+    gap: 8px;
+    padding-top: 0;
+  }
+
   .tasks-kpi-grid article {
-    min-height: 92px;
-    padding: 13px 14px;
+    min-height: 78px;
+    padding: 10px 12px;
   }
 
   .tasks-kpi-grid strong {
@@ -201,13 +216,13 @@ body {
   }
 
   .tasks-kpi-grid i {
-    width: 34px;
-    height: 34px;
+    width: 30px;
+    height: 30px;
   }
 
   .tasks-kpi-grid .ui-icon {
-    width: 19px;
-    height: 19px;
+    width: 17px;
+    height: 17px;
   }
 
   .tasks-toolbar input,
