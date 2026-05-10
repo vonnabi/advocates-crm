@@ -49,6 +49,9 @@
   --weight-semibold: 700;
   --weight-bold: 800;
   --weight-black: 900;
+  --desktop-density: 0.78;
+  --desktop-density-expand: 128.205%;
+  --desktop-density-height: 128.205vh;
 }
 
 * {
@@ -66,6 +69,18 @@ body {
   letter-spacing: 0;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+@media (min-width: 901px) {
+  body {
+    width: var(--desktop-density-expand);
+    min-height: var(--desktop-density-height);
+    zoom: var(--desktop-density);
+  }
+
+  .sidebar {
+    height: var(--desktop-density-height);
+  }
 }
 
 body.sidebar-collapsed .sidebar {
