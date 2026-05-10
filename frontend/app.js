@@ -2555,6 +2555,7 @@ function renderTasks() {
       state.selectedTaskKey = row.dataset.taskKey;
       state.taskDetailOpen = true;
       renderTasks();
+      scrollTaskDetailIntoView();
     });
   });
   document.querySelector(".task-side-close")?.addEventListener("click", () => {
@@ -2664,6 +2665,19 @@ function renderTasks() {
   });
   bindViewLinks();
   syncNavigationState();
+}
+
+function scrollTaskDetailIntoView() {
+  if (!window.matchMedia("(max-width: 1180px)").matches) return;
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const card = document.querySelector("#tasks .task-side-card:not(.empty)");
+      if (!card) return;
+      const top = card.getBoundingClientRect().top + window.scrollY - 12;
+      window.scrollTo({ top: Math.max(0, top), behavior: reducedMotion ? "auto" : "smooth" });
+    });
+  });
 }
 
 function renderPlanner() {

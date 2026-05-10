@@ -2544,6 +2544,7 @@ td a,
   height: 650px;
   overflow: auto;
   padding: 16px;
+  scroll-margin-top: 16px;
 }
 
 .tasks-workspace.has-task-detail > .task-side-card {
