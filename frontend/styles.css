@@ -7728,7 +7728,9 @@ dialog::backdrop {
 
   .tasks-table tbody tr {
     display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
+    align-items: center;
     width: 100%;
     max-width: 100%;
     min-width: 0;
@@ -7747,13 +7749,20 @@ dialog::backdrop {
   .tasks-table td {
     border: 0;
     padding: 0;
+    min-width: 0;
+  }
+
+  .tasks-table td:first-child {
+    grid-column: 1 / -1;
+    padding-bottom: 2px;
   }
 
   .tasks-table td:not(:first-child):not(:last-child) {
     display: grid;
-    grid-template-columns: 116px minmax(0, 1fr);
-    gap: 10px;
-    align-items: start;
+    grid-template-columns: 104px minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+    min-height: 28px;
   }
 
   .tasks-table td:not(:first-child):not(:last-child)::before {
@@ -7786,7 +7795,7 @@ dialog::backdrop {
 
   .task-title-cell {
     grid-template-columns: 12px 18px minmax(0, 1fr);
-    align-items: start;
+    align-items: center;
     width: 100%;
     max-width: 100%;
     min-width: 0;
@@ -7801,6 +7810,7 @@ dialog::backdrop {
   .task-title-cell strong {
     max-width: 100%;
     font-size: 14px;
+    line-height: 1.28;
     white-space: normal;
     overflow-wrap: anywhere;
     word-break: break-word;
@@ -7827,11 +7837,26 @@ dialog::backdrop {
     display: inline-flex !important;
     align-items: center;
     gap: 8px;
+    min-width: 0;
+    max-width: 100%;
+    white-space: nowrap;
+  }
+
+  .task-assignee .advocate-photo {
+    width: 24px;
+    height: 24px;
+    flex-basis: 24px;
   }
 
   .tasks-table .task-list-actions {
-    justify-content: flex-start;
-    padding-top: 6px;
+    justify-content: flex-end;
+    padding-top: 4px;
+  }
+
+  .tasks-table td:last-child {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: flex-end;
   }
 }
 
@@ -8178,7 +8203,21 @@ dialog::backdrop {
   }
 
   .tasks-table td:not(:first-child):not(:last-child) {
-    grid-template-columns: 108px minmax(0, 1fr);
+    grid-template-columns: 96px minmax(0, 1fr);
+  }
+
+  .tasks-table tbody tr {
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+
+  .tasks-table td:first-child,
+  .tasks-table td:last-child {
+    grid-column: auto;
+  }
+
+  .tasks-table .task-list-actions {
+    justify-content: flex-start;
   }
 
   .tasks-pagination {
