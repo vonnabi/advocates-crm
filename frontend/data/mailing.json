@@ -1,0 +1,63 @@
+{
+  "text": "Шановний {{client_name}}!\n\nПовідомляємо, що наш офіс працює у звичайному режимі. Якщо у Вас виникли питання, звертайтеся зручним для Вас способом.\n\nЗ повагою,\nКоманда Advocates Bureau",
+  "recipientMode": "segment",
+  "manualClientIds": [
+    1,
+    4
+  ],
+  "editorChannel": "Telegram",
+  "previewChannel": "Telegram",
+  "sendMode": "now",
+  "scheduleDate": "2024-05-15",
+  "scheduleTime": "10:00",
+  "channels": {
+    "Telegram": true,
+    "SMS": true,
+    "Email": false
+  },
+  "testContacts": [
+    {
+      "channel": "Telegram",
+      "value": "@ivanenko_admin",
+      "enabled": true
+    },
+    {
+      "channel": "SMS",
+      "value": "+380 67 000 11 22",
+      "enabled": true
+    },
+    {
+      "channel": "Email",
+      "value": "admin@advocates.ua",
+      "enabled": false
+    }
+  ],
+  "filters": [
+    "Статус клиента: Активный, Постоянный",
+    "Telegram: Подключен",
+    "Источник: Сайт, Рекомендация"
+  ],
+  "templates": [],
+  "campaigns": [],
+  "automationRules": [
+    {
+      "title": "Напоминание за день до события",
+      "description": "Автоматически отправлять клиенту напоминание за 24 часа до события в календаре.",
+      "channel": "Telegram",
+      "enabled": true
+    },
+    {
+      "title": "Поздравление с днём рождения",
+      "description": "Отправлять персональное поздравление клиентам с заполненной датой рождения.",
+      "channel": "SMS",
+      "enabled": false
+    },
+    {
+      "title": "Пропускать отписанных клиентов",
+      "description": "Исключать клиентов без согласия на информационные сообщения из любых рассылок.",
+      "channel": "Все каналы",
+      "enabled": true
+    }
+  ],
+  "statusNotice": ""
+}

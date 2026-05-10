@@ -34,16 +34,16 @@
 
 ### Шаг 2. Разделить данные frontend на отдельные файлы
 
-Сейчас демо-данные находятся в `frontend/app.js`.
+Демо-данные больше не должны жить внутри большого `frontend/app.js`.
 
 Нужно вынести их в:
 
-- `data/clients.json`;
-- `data/cases.json`;
-- `data/events.json`;
-- `data/tasks.json`;
-- `data/finance.json`;
-- `data/mailing_templates.json`.
+- [x] `frontend/data/clients.json`;
+- [x] `frontend/data/cases.json`;
+- [x] `frontend/data/events.json`;
+- [x] `frontend/data/mailing.json`;
+- [x] `frontend/data/settings.json`;
+- [ ] отдельно разнести производные задачи/финансы, если их станет больше.
 
 Это поможет потом легче перенести данные в Django.
 

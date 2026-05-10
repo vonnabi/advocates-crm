@@ -1,224 +1,29 @@
+async function readDataFile(path) {
+  const response = await fetch(new URL(path, import.meta.url));
+  if (!response.ok) throw new Error(`Не удалось загрузить файл данных: ${path}`);
+  return response.json();
+}
+
+async function loadDemoData() {
+  const [clients, cases, events, mailing, settings] = await Promise.all([
+    readDataFile("./data/clients.json"),
+    readDataFile("./data/cases.json"),
+    readDataFile("./data/events.json"),
+    readDataFile("./data/mailing.json"),
+    readDataFile("./data/settings.json")
+  ]);
+  return { clients, cases, events, mailing, settings };
+}
+
+const demoData = await loadDemoData();
+
 const state = {
   currentView: "dashboard",
   previousView: "",
   viewHistory: [],
-  clients: [
-    {
-      id: 1,
-      name: "Петренко Іван Миколайович",
-      phone: "+380 96 123 45 67",
-      email: "petrenko.iv@gmail.com",
-      request: "Оскарження рішення ТЦК про призов та зобов'язання виключити з військового обліку.",
-      status: "Постійний клієнт",
-      telegram: true,
-      telegramUsername: "@petrenko_ivan",
-      clientType: "Фізична особа",
-      consent: true,
-      manager: "Іваненко А.Ю.",
-      source: "Рекомендація",
-      added: "15.05.2024",
-      lastContact: "20.05.2024",
-      nextAction: "Підготувати адміністративний позов",
-      risk: "Високий",
-      notes: "Клієнт служив у ЗСУ у 2018-2020 рр. Є на утриманні двоє неповнолітніх дітей.",
-      communications: [
-        { date: "20.05.2024", channel: "Telegram", title: "Надіслано перелік документів", status: "Доставлено" },
-        { date: "18.05.2024", channel: "Дзвінок", title: "Уточнили дату отримання рішення ТЦК", status: "Проведено" },
-        { date: "15.05.2024", channel: "Email", title: "Надіслано договір та рахунок", status: "Відправлено" }
-      ]
-    },
-    {
-      id: 2,
-      name: "Коваленко Олександр Сергійович",
-      phone: "+380 97 234 56 78",
-      email: "kovalenko.o@gmail.com",
-      request: "Стягнення заборгованості за договором.",
-      status: "Активний",
-      telegram: false,
-      telegramUsername: "",
-      clientType: "Юридична особа",
-      consent: true,
-      manager: "Мельник Н.П.",
-      source: "Сайт",
-      added: "14.05.2024",
-      lastContact: "19.05.2024",
-      nextAction: "Підготувати претензію контрагенту",
-      risk: "Середній",
-      notes: "Потрібно перевірити первинні документи та строки оплати за договором.",
-      communications: [
-        { date: "19.05.2024", channel: "Email", title: "Отримали копію договору", status: "Отримано" },
-        { date: "16.05.2024", channel: "Дзвінок", title: "Первинна консультація", status: "Проведено" }
-      ]
-    },
-    {
-      id: 3,
-      name: "Шевченко Марія Ігорівна",
-      phone: "+380 63 345 67 89",
-      email: "mari.shevchenko@gmail.com",
-      request: "Розірвання шлюбу та поділ майна.",
-      status: "Новий",
-      telegram: true,
-      telegramUsername: "@mari_shevchenko",
-      clientType: "Фізична особа",
-      consent: false,
-      manager: "Іваненко А.Ю.",
-      source: "Instagram",
-      added: "14.05.2024",
-      lastContact: "14.05.2024",
-      nextAction: "Запросити документи щодо майна",
-      risk: "Низький",
-      notes: "Новий клієнт, потрібно підтвердити згоду на інформаційні повідомлення.",
-      communications: [
-        { date: "14.05.2024", channel: "Telegram", title: "Привітальне повідомлення", status: "Доставлено" }
-      ]
-    },
-    {
-      id: 4,
-      name: "Бондаренко Дмитро Єфремович",
-      phone: "+380 95 456 78 90",
-      email: "bond.dmytro@gmail.com",
-      request: "Звільнення з військової служби.",
-      status: "Активний",
-      telegram: true,
-      telegramUsername: "@bondarenko_d",
-      clientType: "Фізична особа",
-      consent: true,
-      manager: "Кравчук А.В.",
-      source: "Рекомендація",
-      added: "13.05.2024",
-      lastContact: "21.05.2024",
-      nextAction: "Підготувати адвокатський запит",
-      risk: "Високий",
-      notes: "Термінове військове питання. Контролювати судові строки та відповіді органів.",
-      communications: [
-        { date: "21.05.2024", channel: "Дзвінок", title: "Обговорили пакет доказів", status: "Проведено" },
-        { date: "17.05.2024", channel: "Telegram", title: "Отримали фото документів", status: "Отримано" }
-      ]
-    }
-  ],
-  cases: [
-    {
-      id: "2024/12345",
-      clientId: 1,
-      title: "Оскарження незаконного рішення ТЦК",
-      type: "Адміністративна",
-      status: "В роботі",
-      stage: "Адміністративний позов",
-      priority: "Високий",
-      responsible: "Іваненко А.Ю.",
-      court: "ТЦК та СП Шевченківського району м. Києва",
-      opened: "12.05.2024",
-      deadline: "25.05.2024",
-      debt: 8500,
-      income: 32000,
-      description: "Оскарження незаконного рішення ТЦК про призов та зобов'язання виключити з обліку. Клієнт вважає рішення протиправним, так як має відстрочку по догляду за батьком.",
-      documents: [
-        { name: "Адміністративний позов", status: "Відповідь очікується", submitted: "15.05.2024", responseDue: "25.05.2024" },
-        { name: "Клопотання про забезпечення позову", status: "Відповідь очікується", submitted: "16.05.2024", responseDue: "20.05.2024" },
-        { name: "Запит документів до ТЦК", status: "Не подано", submitted: "17.05.2024", responseDue: "27.05.2024" },
-        { name: "Пояснення до суду", status: "Не подано", submitted: "-", responseDue: "-" }
-      ],
-      tasks: [
-        { title: "Підготовка та подання адміністративного позову", status: "Срочно", due: "20.05.2024 10:00", responsible: "Іваненко А.Ю.", showInCalendar: true },
-        { title: "Отримати письмову відповідь на ТЦК", status: "Не срочно", due: "25.05.2024 12:00", responsible: "Петренко С.В.", showInCalendar: true },
-        { title: "Підготувати клопотання про забезпечення позову", status: "Срочно", due: "18.05.2024 09:00", responsible: "Іваненко А.Ю.", showInCalendar: true },
-        { title: "Консультація клієнта щодо документів", status: "Не срочно", due: "22.05.2024 14:00", responsible: "Петренко С.В.", showInCalendar: true }
-      ],
-      history: [
-        { date: "17.05.2024 10:30", text: "Петренко С.В. додав документ \"Запит документів до ТЦК.docx\" в розділ Запити." },
-        { date: "16.05.2024 15:20", text: "Іваненко А.Ю. створив справу." }
-      ]
-    },
-    {
-      id: "2024/5678",
-      clientId: 2,
-      title: "Стягнення заборгованості за договором",
-      type: "Господарська",
-      status: "Очікує відповідь",
-      stage: "Запит до контрагента",
-      priority: "Середній",
-      responsible: "Мельник Н.П.",
-      court: "Господарський суд м. Києва",
-      opened: "14.05.2024",
-      deadline: "05.06.2024",
-      debt: 0,
-      income: 18000,
-      description: "Досудове врегулювання та підготовка претензії щодо заборгованості за договором.",
-      documents: [
-        { name: "Договір поставки.pdf", status: "Отримано" },
-        { name: "Акт звірки.xlsx", status: "Очікується" }
-      ],
-      tasks: [
-        { title: "Перевірити первинні документи", status: "В роботі", due: "23.05.2024", showInCalendar: true },
-        { title: "Підготувати претензію", status: "Очікує", due: "26.05.2024", showInCalendar: true }
-      ],
-      history: [
-        { date: "19.05.2024", text: "Клієнт надіслав копію договору." },
-        { date: "14.05.2024", text: "Справу відкрито після звернення з сайту." }
-      ]
-    },
-    {
-      id: "2024/4321",
-      clientId: 3,
-      title: "Розірвання шлюбу та поділ майна",
-      type: "Сімейна",
-      status: "В роботі",
-      stage: "Збір доказів",
-      priority: "Низький",
-      responsible: "Іваненко А.Ю.",
-      court: "Дарницький районний суд м. Києва",
-      opened: "14.05.2024",
-      deadline: "12.06.2024",
-      debt: 3000,
-      income: 15000,
-      description: "Підготовка матеріалів для розірвання шлюбу, визначення майна та позиції по поділу.",
-      documents: [
-        { name: "Свідоцтво про шлюб.pdf", status: "Отримано" },
-        { name: "Перелік майна.docx", status: "Чернетка" }
-      ],
-      tasks: [
-        { title: "Запросити документи щодо майна", status: "Очікує", due: "24.05.2024", showInCalendar: true }
-      ],
-      history: [
-        { date: "14.05.2024", text: "Проведено первинну консультацію." }
-      ]
-    },
-    {
-      id: "2024/9999",
-      clientId: 4,
-      title: "Звільнення з військової служби",
-      type: "Військова",
-      status: "Терміново",
-      stage: "Судове засідання",
-      priority: "Високий",
-      responsible: "Кравчук А.В.",
-      court: "Окружний адміністративний суд",
-      opened: "13.05.2024",
-      deadline: "24.05.2024",
-      debt: 12000,
-      income: 42000,
-      description: "Супровід справи щодо звільнення з військової служби та оскарження бездіяльності органу.",
-      documents: [
-        { name: "Рапорт клієнта.pdf", status: "Отримано" },
-        { name: "Адвокатський запит.docx", status: "В роботі" }
-      ],
-      tasks: [
-        { title: "Підготувати адвокатський запит", status: "В роботі", due: "22.05.2024", showInCalendar: true },
-        { title: "Підготуватися до судового засідання", status: "Терміново", due: "24.05.2024", showInCalendar: true }
-      ],
-      history: [
-        { date: "21.05.2024", text: "Уточнено пакет доказів." },
-        { date: "13.05.2024", text: "Справу відкрито як термінову." }
-      ]
-    }
-  ],
-  events: [
-    { id: 1, day: 1, date: "2024-05-01", time: "11:00", title: "Судове засідання", type: "Судове засідання", clientId: 1, caseId: "2024/1234", description: "Шевченківський районний суд, м. Київ.", status: "Заплановано" },
-    { id: 2, day: 3, date: "2024-05-03", time: "15:00", title: "Підготовка документів", type: "Підготовка документа", clientId: 2, caseId: "2024/5678", description: "Підготувати пакет документів для подачі.", status: "Очікує виконання" },
-    { id: 3, day: 8, date: "2024-05-08", time: "14:00", title: "Засідання в ТЦК", type: "Судове засідання", clientId: 4, caseId: "2024/4321", description: "Підготувати аргументацію та копії заяв.", status: "Заплановано" },
-    { id: 4, day: 15, date: "2024-05-15", time: "10:00", title: "Судове засідання", type: "Судове засідання", clientId: 1, caseId: "2024/12345", description: "Розгляд адміністративного позову щодо оскарження рішення ТЦК.", status: "Заплановано" },
-    { id: 5, day: 22, date: "2024-05-22", time: "16:00", title: "Кінцева дата сплати судового збору", type: "Крайній строк", clientId: 3, caseId: "2024/4321", description: "Контроль оплати та квитанції.", status: "Заплановано" }
-  ],
+  clients: demoData.clients,
+  cases: demoData.cases,
+  events: demoData.events,
   selectedClientId: 1,
   selectedCaseId: "2024/12345",
   caseScreen: "list",
@@ -253,51 +58,29 @@ const state = {
   calendarAuthorityFilter: "",
   calendarOverdueOnly: false,
   calendarQuery: "",
-  mailingText: "Шановний {{client_name}}!\n\nПовідомляємо, що наш офіс працює у звичайному режимі. Якщо у Вас виникли питання, звертайтеся зручним для Вас способом.\n\nЗ повагою,\nКоманда Advocates Bureau",
+  mailingText: demoData.mailing.text,
   mailingMainTab: "new",
   previousMailingTab: "",
-  mailingRecipientMode: "segment",
-  mailingManualClientIds: [1, 4],
-  mailingEditorChannel: "Telegram",
-  mailingPreviewChannel: "Telegram",
-  mailingSendMode: "now",
-  mailingScheduleDate: "2024-05-15",
-  mailingScheduleTime: "10:00",
-  mailingChannels: { Telegram: true, SMS: true, Email: false },
-  mailingTestContacts: [
-    { channel: "Telegram", value: "@ivanenko_admin", enabled: true },
-    { channel: "SMS", value: "+380 67 000 11 22", enabled: true },
-    { channel: "Email", value: "admin@advocates.ua", enabled: false }
-  ],
-  mailingFilters: ["Статус клиента: Активный, Постоянный", "Telegram: Подключен", "Источник: Сайт, Рекомендация"],
+  mailingRecipientMode: demoData.mailing.recipientMode,
+  mailingManualClientIds: demoData.mailing.manualClientIds,
+  mailingEditorChannel: demoData.mailing.editorChannel,
+  mailingPreviewChannel: demoData.mailing.previewChannel,
+  mailingSendMode: demoData.mailing.sendMode,
+  mailingScheduleDate: demoData.mailing.scheduleDate,
+  mailingScheduleTime: demoData.mailing.scheduleTime,
+  mailingChannels: demoData.mailing.channels,
+  mailingTestContacts: demoData.mailing.testContacts,
+  mailingFilters: demoData.mailing.filters,
   mailingFilterMenuOpen: false,
-  mailingTemplates: [],
-  mailingCampaigns: [],
+  mailingTemplates: demoData.mailing.templates || [],
+  mailingCampaigns: demoData.mailing.campaigns || [],
   mailingCampaignFilter: "all",
   mailingCampaignQuery: "",
-  mailingAutomationRules: [
-    { title: "Напоминание за день до события", description: "Автоматически отправлять клиенту напоминание за 24 часа до события в календаре.", channel: "Telegram", enabled: true },
-    { title: "Поздравление с днём рождения", description: "Отправлять персональное поздравление клиентам с заполненной датой рождения.", channel: "SMS", enabled: false },
-    { title: "Пропускать отписанных клиентов", description: "Исключать клиентов без согласия на информационные сообщения из любых рассылок.", channel: "Все каналы", enabled: true }
-  ],
-  bureauSettings: {
-    name: "Advocates Bureau",
-    email: "admin@advocates.ua",
-    phone: "+380 44 000 11 22",
-    address: "м. Київ, вул. Дегтярівська, 31"
-  },
-  settingsIntegrations: {
-    Telegram: true,
-    SMS: true,
-    Email: false,
-    AI: true
-  },
-  settingsNotifications: {
-    deadlines: true,
-    court: true,
-    mailings: true
-  },
-  mailingStatusNotice: ""
+  mailingAutomationRules: demoData.mailing.automationRules,
+  bureauSettings: demoData.settings.bureau,
+  settingsIntegrations: demoData.settings.integrations,
+  settingsNotifications: demoData.settings.notifications,
+  mailingStatusNotice: demoData.mailing.statusNotice || ""
 };
 
 const NAV_STORAGE_KEY = "advocates-crm-navigation";

@@ -1,0 +1,19 @@
+{
+  "bureau": {
+    "name": "Advocates Bureau",
+    "email": "admin@advocates.ua",
+    "phone": "+380 44 000 11 22",
+    "address": "м. Київ, вул. Дегтярівська, 31"
+  },
+  "integrations": {
+    "Telegram": true,
+    "SMS": true,
+    "Email": false,
+    "AI": true
+  },
+  "notifications": {
+    "deadlines": true,
+    "court": true,
+    "mailings": true
+  }
+}
