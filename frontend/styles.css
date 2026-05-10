@@ -6992,52 +6992,99 @@ dialog::backdrop {
   transform: translateY(-1px);
 }
 
-@media (max-width: 1040px) {
-  .sidebar {
-    width: 84px;
+@media (max-width: 1180px) {
+  .topbar {
+    padding: 0 20px;
   }
 
-  .brand div:last-child,
-  .nav-item {
-    font-size: 0;
+  .view {
+    padding: 20px 20px 38px;
   }
 
-  .nav-item {
-    grid-template-columns: 1fr;
-    justify-items: center;
-  }
-
-  .nav-item span {
-    font-size: 14px;
-  }
-
-  .sidebar-user div:last-child {
-    display: none;
-  }
-
-  .app {
-    margin-left: 84px;
+  #cases.view {
+    padding: 14px 14px 28px;
   }
 
   .layout,
   .clients-layout,
-  .profile-screenshot-grid,
-  .split,
-  .case-finance-grid,
+  .case-list-layout,
+  .tasks-workspace.has-task-detail,
   .calendar-layout,
-  .calendar-filter-panel,
   .mailing-layout,
   .mailing-lower-grid,
-  .mailing-stats,
   .settings-screen,
-  .settings-form-grid,
-  .grid.cols-4,
-  .grid.cols-3 {
+  .case-detail-grid,
+  .tasks-bottom-grid,
+  .profile-screenshot-grid {
     grid-template-columns: 1fr;
   }
 
+  .tasks-workspace.has-task-detail {
+    grid-template-rows: auto;
+  }
+
+  .tasks-workspace.has-task-detail .tasks-main-column {
+    display: grid;
+  }
+
+  .tasks-workspace.has-task-detail .tasks-kpi-grid,
+  .tasks-workspace.has-task-detail .tasks-toolbar,
+  .tasks-workspace.has-task-detail .tasks-list-card,
+  .tasks-workspace.has-task-detail > .task-side-card {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .tasks-workspace.has-task-detail > .task-side-card,
+  .task-side-card {
+    height: auto;
+    min-height: 0;
+    max-height: none;
+  }
+
+  .case-list-card,
+  .tasks-list-card,
+  .tasks-workspace .tasks-list-card {
+    height: auto;
+    min-height: 560px;
+  }
+
+  .case-preview-card,
+  .calendar-side {
+    position: static;
+  }
+
+  .case-kpi-grid,
+  .tasks-kpi-grid,
+  .mailing-stats,
+  .coverage-row,
+  .case-finance-grid,
+  .settings-form-grid,
+  .grid.cols-4,
+  .grid.cols-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .case-list-toolbar,
+  .tasks-toolbar,
+  .calendar-filter-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .case-list-toolbar .primary,
+  .tasks-toolbar .primary,
+  .calendar-filter-panel button {
+    width: 100%;
+  }
+
   .calendar-toolbar {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .calendar-toolbar .primary,
+  .calendar-toolbar > select,
+  .calendar-toolbar > input {
+    grid-column: span 1;
   }
 
   .calendar-date-picker {
@@ -7049,6 +7096,103 @@ dialog::backdrop {
     text-align: left;
   }
 
+  .calendar-main-card {
+    overflow-x: auto;
+  }
+
+  .calendar-weekdays,
+  .calendar-grid {
+    min-width: 680px;
+  }
+
+  .recipient-mode-grid,
+  .message-editor-grid,
+  .send-settings-grid,
+  .test-contact-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .send-settings-grid > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 0 0 16px;
+  }
+
+  .send-settings-grid > div:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+}
+
+@media (max-width: 1040px) {
+  .sidebar {
+    width: 76px;
+    padding: 20px 10px;
+  }
+
+  .brand {
+    justify-content: center;
+    padding: 0 0 22px;
+  }
+
+  .brand > div:not(.brand-mark) {
+    display: none;
+  }
+
+  .brand div:last-child,
+  .collapse-menu,
+  .nav-item {
+    font-size: 0;
+  }
+
+  .brand-mark {
+    width: 42px;
+    height: 42px;
+  }
+
+  .nav-item {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    padding: 0;
+  }
+
+  .nav-item span {
+    font-size: 14px;
+  }
+
+  .nav-item.active::before {
+    left: -10px;
+  }
+
+  .nav-badge {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    min-width: 18px;
+    height: 18px;
+    font-size: 10px !important;
+  }
+
+  .nav-new {
+    display: none;
+  }
+
+  .app {
+    margin-left: 76px;
+  }
+
+  body.sidebar-collapsed .app {
+    margin-left: 0;
+  }
+
+  .admin-actions {
+    padding-left: 14px;
+  }
+
+  .admin-profile {
+    min-width: 168px;
+  }
+
   .profile-contact-list {
     border-right: 0;
     border-bottom: 1px solid var(--line);
@@ -7057,47 +7201,515 @@ dialog::backdrop {
   }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 900px) {
   .topbar {
+    min-height: 74px;
     height: auto;
-    padding: 16px;
+    padding: 12px 16px;
+    align-items: center;
+  }
+
+  .topbar-title-wrap {
+    flex: 1 1 auto;
+  }
+
+  h1 {
+    font-size: var(--text-2xl);
+  }
+
+  .eyebrow {
+    font-size: 11px;
+  }
+
+  .top-actions {
+    flex: 0 0 auto;
+  }
+
+  .admin-profile {
+    min-width: 58px;
+    padding: 4px;
+  }
+
+  .admin-profile > div:nth-child(2),
+  .admin-chevron {
+    display: none;
+  }
+
+  .topbar-panel {
+    right: 0;
+    width: min(340px, calc(100vw - 112px));
+    min-width: 0;
+  }
+
+  .case-list-global-search {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr) 42px auto;
+  }
+
+  .calendar-toolbar,
+  .mailing-actionbar,
+  .mailing-list-tools,
+  .mailing-section-head {
+    grid-template-columns: 1fr;
+  }
+
+  .mailing-actionbar,
+  .mailing-list-tools,
+  .mailing-section-head {
+    display: grid;
+    align-items: stretch;
+  }
+
+  .mailing-top-actions,
+  .mailing-section-actions {
+    flex-wrap: wrap;
+  }
+
+  .calendar-toolbar .primary,
+  .calendar-toolbar > select,
+  .calendar-toolbar > input,
+  .calendar-mode-group,
+  .calendar-arrows,
+  .mailing-search {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .calendar-mode-group button,
+  .calendar-arrows button {
+    flex: 1 1 0;
+  }
+
+  .calendar-list-row {
+    grid-template-columns: 12px 98px minmax(0, 1fr) auto;
+  }
+
+  .calendar-list-row > span:nth-of-type(3) {
+    display: none;
+  }
+
+  .calendar-events-list > button {
+    grid-template-columns: 12px minmax(0, 1fr) 112px 64px 104px;
+    gap: 10px;
+  }
+
+  .template-library-row,
+  .automation-rule {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .mailing-row-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 720px) {
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  body {
+    padding-bottom: 74px;
+  }
+
+  .sidebar {
+    inset: auto 0 0 0;
+    width: auto;
+    height: 70px;
+    flex-direction: row;
+    align-items: center;
+    padding: 8px 10px;
+    transform: translateY(0);
+  }
+
+  body.sidebar-collapsed .sidebar {
+    transform: translateY(110%);
+  }
+
+  .brand,
+  .collapse-menu {
+    display: none;
+  }
+
+  .nav {
+    width: 100%;
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0 2px 2px;
+    scrollbar-width: none;
+  }
+
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-item {
+    flex: 0 0 58px;
+    width: 58px;
+    min-height: 52px;
+    border-radius: 12px;
+    font-size: 0;
+  }
+
+  .nav-icon {
+    width: 26px;
+    height: 26px;
+  }
+
+  .nav-icon svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .nav-item.active::before {
+    left: 12px;
+    right: 12px;
+    bottom: -8px;
+    width: auto;
+    height: 3px;
+    border-radius: 999px;
+  }
+
+  .nav-badge {
+    top: 3px;
+    right: 5px;
+  }
+
+  .sidebar-restore {
+    left: 12px;
+    bottom: 84px;
+  }
+
+  .app,
+  body.sidebar-collapsed .app {
+    margin-left: 0;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  .topbar {
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+    width: 100%;
+    padding: 12px 108px 12px 12px;
+    max-width: 100vw;
+  }
+
+  .topbar-title-wrap {
+    flex: 1 1 auto;
+    max-width: calc(100% - 96px);
+    min-width: 0;
+  }
+
+  .topbar-title-wrap h1,
+  .topbar-title-wrap p {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .topbar-back.visible {
+    width: 34px;
+    height: 34px;
+    min-height: 34px;
+  }
+
+  .admin-actions {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 85;
+    transform: none;
+    display: flex !important;
+    align-self: center;
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  .notification-button,
+  .admin-avatar {
+    width: 38px;
+    height: 38px;
+    min-height: 38px;
+  }
+
+  .admin-profile {
+    min-width: 44px;
+  }
+
+  .topbar-panel {
+    position: fixed;
+    top: 68px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+
+  .topbar-panel::before {
+    display: none;
+  }
+
+  .view,
+  #cases.view {
+    max-width: 100vw;
+    overflow-x: hidden;
+    padding: 14px 12px 92px;
+  }
+
+  .panel,
+  .metric,
+  .mailing-section,
+  .mailing-preview-card,
+  .forecast-card,
+  .mailing-tips-card {
+    padding: 14px;
+  }
+
+  .toolbar,
+  .toolbar .left,
+  .toolbar .right,
+  .case-list-head,
+  .mailing-head,
+  .mailing-card-head,
+  .calendar-events-head,
+  .calendar-reminders-head {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .top-actions {
-    align-items: stretch;
+  .primary,
+  .secondary,
+  .ghost,
+  .icon-button,
+  input,
+  select,
+  textarea {
+    min-height: 38px;
   }
 
-  #global-search {
+  .layout,
+  .clients-layout,
+  .profile-screenshot-grid,
+  .split,
+  .case-finance-grid,
+  .calendar-layout,
+  .calendar-filter-panel,
+  .mailing-layout,
+  .mailing-lower-grid,
+  .settings-screen,
+  .settings-form-grid,
+  .case-detail-grid,
+  .tasks-bottom-grid,
+  .grid.cols-4,
+  .grid.cols-3,
+  .case-kpi-grid,
+  .tasks-kpi-grid,
+  .mailing-stats,
+  .coverage-row,
+  .recipient-mode-grid,
+  .manual-recipient-list,
+  .message-editor-grid,
+  .send-settings-grid,
+  .test-contact-grid,
+  .mailing-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .case-list-toolbar,
+  .tasks-toolbar,
+  .calendar-toolbar,
+  .calendar-filter-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .case-list-global-search {
+    grid-template-columns: minmax(0, 1fr) 40px;
+  }
+
+  .case-list-global-search .primary,
+  #create-case-from-list {
+    grid-column: 1 / -1;
     width: 100%;
   }
 
-  .view {
-    padding: 16px;
+  .case-list-card,
+  .tasks-list-card,
+  .tasks-workspace .tasks-list-card {
+    max-width: 100%;
+    overflow-x: auto;
+    min-height: 460px;
+  }
+
+  .case-list-table {
+    min-width: 940px;
+  }
+
+  .tasks-table {
+    min-width: 980px;
+  }
+
+  .calendar-weekdays {
+    display: none;
+  }
+
+  .calendar-weekdays,
+  .calendar-grid {
+    min-width: 0;
   }
 
   .calendar-grid {
     grid-template-columns: 1fr;
   }
 
+  .day {
+    min-height: 96px;
+    border-right: 0;
+  }
+
+  .calendar-grid.week-view .day,
+  .calendar-grid.day-view .day {
+    min-height: 120px;
+  }
+
+  .calendar-list-row,
+  .calendar-events-list > button,
+  .mailing-history-row {
+    grid-template-columns: 12px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .calendar-list-row > *,
+  .calendar-events-list > button > *,
+  .mailing-history-row > * {
+    min-width: 0;
+  }
+
+  .calendar-list-row > span:not(.event-dot),
+  .calendar-list-row > .badge,
+  .calendar-events-list time,
+  .calendar-events-list .upcoming-event-time,
+  .calendar-events-list .badge,
+  .mailing-history-row .badge,
+  .mailing-history-row .mailing-row-actions {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .calendar-events-list .badge {
+    min-width: 0;
+  }
+
+  .event-card-actions,
+  .settings-user-row,
+  .settings-toggle-row,
+  .coverage-row span {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-toggle-row {
+    justify-items: start;
+  }
+
+  .telegram-preview {
+    max-width: 100%;
+  }
+
+  .message-footer-row,
+  .mailing-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  dialog,
+  #event-dialog,
+  #delete-document-dialog {
+    width: calc(100vw - 20px);
+  }
+
+  .modal-form {
+    max-height: 82vh;
+    padding: 16px;
+  }
+
   #event-form {
     grid-template-columns: 1fr;
   }
 
-  .mailing-form-grid {
+  .toast-stack {
+    top: 12px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+  }
+}
+
+@media (max-width: 520px) {
+  .topbar {
+    min-height: 66px;
+  }
+
+  .top-actions {
+    justify-content: flex-end;
+  }
+
+  .case-kpi-grid article,
+  .tasks-kpi-grid article,
+  .mailing-stats article,
+  .metric {
+    min-height: auto;
+  }
+
+  .calendar-title-button {
+    font-size: var(--text-xl);
+    padding: 0;
+  }
+
+  .calendar-picker-menu,
+  .segment-filter-menu,
+  .event-more-menu {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+    transform: none;
+  }
+
+  .calendar-picker-menu {
+    top: 122px;
     grid-template-columns: 1fr;
   }
 
-  .toast-stack {
-    top: 14px;
-    right: 14px;
-    left: 14px;
-    width: auto;
+  .segment-filter-menu,
+  .event-more-menu {
+    top: auto;
   }
 
-  .day {
-    min-height: 86px;
-    border-right: 0;
+  .mailing-top-actions button,
+  .mailing-section-actions button,
+  .mailing-actions button,
+  .event-card-actions button {
+    width: 100%;
+  }
+
+  .template-library-row em {
+    white-space: normal;
+  }
+
+  .case-preview-rows div,
+  .task-preview-rows div,
+  .preview-finance-row,
+  .case-finance-note {
+    grid-template-columns: 1fr;
   }
 }
