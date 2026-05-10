@@ -75,6 +75,7 @@
 - [x] вынести экран OSINT в `frontend/js/screens/osint.js`;
 - [x] вынести экран дашборда в `frontend/js/screens/dashboard.js`.
 - [x] вынести сохранение и восстановление навигации в `frontend/js/navigation.js`.
+- [x] вынести верхнюю панель, профиль, уведомления и сворачивание меню в `frontend/js/chrome.js`.
 
 ### Шаг 4. Подключить frontend к backend
 

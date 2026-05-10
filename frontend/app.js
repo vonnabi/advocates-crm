@@ -1,5 +1,10 @@
 import { createInitialState } from "./js/state.js";
 import {
+  closeTopbarPanels as closeTopbarPanelsInChrome,
+  isTopbarPanelOpen,
+  setupTopbarControls
+} from "./js/chrome.js";
+import {
   restoreNavigationState as restoreNavigationStateFromStorage,
   saveNavigationState as saveNavigationStateToStorage
 } from "./js/navigation.js";
@@ -87,7 +92,6 @@ const titles = {
 const $ = (selector) => document.querySelector(selector);
 const viewNodes = [...document.querySelectorAll(".view")];
 const navNodes = [...document.querySelectorAll(".nav-item")];
-const DEMO_URL = "https://vonnabi.github.io/advocates-crm/";
 
 function showToast(message, type = "success") {
   const stack = $("#toast-stack");
@@ -105,53 +109,7 @@ function showToast(message, type = "success") {
 }
 
 function closeTopbarPanels() {
-  [
-    ["#notifications-toggle", "#notifications-menu"],
-    ["#admin-profile-toggle", "#admin-profile-menu"]
-  ].forEach(([toggleSelector, panelSelector]) => {
-    const toggle = $(toggleSelector);
-    const panel = $(panelSelector);
-    if (!toggle || !panel) return;
-    toggle.classList.remove("active");
-    toggle.setAttribute("aria-expanded", "false");
-    panel.classList.remove("open");
-    panel.hidden = true;
-  });
-}
-
-function toggleTopbarPanel(toggleSelector, panelSelector) {
-  const toggle = $(toggleSelector);
-  const panel = $(panelSelector);
-  if (!toggle || !panel) return;
-  const willOpen = panel.hidden;
-  closeTopbarPanels();
-  panel.hidden = !willOpen;
-  panel.classList.toggle("open", willOpen);
-  toggle.classList.toggle("active", willOpen);
-  toggle.setAttribute("aria-expanded", String(willOpen));
-}
-
-function markNotificationRead() {
-  const badge = $("#notifications-count");
-  if (!badge) return;
-  const nextCount = Math.max(Number(badge.textContent) - 1, 0);
-  badge.textContent = String(nextCount);
-  badge.classList.toggle("empty", nextCount === 0);
-}
-
-function toggleSidebar() {
-  const collapsed = document.body.classList.toggle("sidebar-collapsed");
-  saveNavigationState();
-  showToast(collapsed ? "Бокове меню згорнуто." : "Бокове меню розгорнуто.");
-}
-
-async function copyDemoLink() {
-  try {
-    await navigator.clipboard.writeText(DEMO_URL);
-    showToast("Ссылка для заказчика скопирована.");
-  } catch (error) {
-    window.prompt("Скопируйте ссылку для заказчика:", DEMO_URL);
-  }
+  closeTopbarPanelsInChrome($);
 }
 
 function clientById(id) {
@@ -823,79 +781,11 @@ navNodes.forEach((button) => {
 
 $("#topbar-back")?.addEventListener("click", goBack);
 
-document.addEventListener("click", (event) => {
-  if (event.target.closest("#notifications-toggle")) {
-    event.preventDefault();
-    event.stopPropagation();
-    toggleTopbarPanel("#notifications-toggle", "#notifications-menu");
-    return;
-  }
-  if (event.target.closest("#admin-profile-toggle")) {
-    event.preventDefault();
-    event.stopPropagation();
-    toggleTopbarPanel("#admin-profile-toggle", "#admin-profile-menu");
-  }
-});
-
-document.querySelectorAll("[data-notification-view]").forEach((button) => {
-  button.addEventListener("click", () => {
-    markNotificationRead();
-    closeTopbarPanels();
-    switchView(button.dataset.notificationView);
-    showToast("Відкрито розділ зі сповіщення.");
-  });
-});
-
-$("[data-clear-notifications]")?.addEventListener("click", () => {
-  const badge = $("#notifications-count");
-  if (badge) {
-    badge.textContent = "0";
-    badge.classList.add("empty");
-  }
-  closeTopbarPanels();
-  showToast("Сповіщення позначено як прочитані.");
-});
-
-document.querySelectorAll("[data-profile-action]").forEach((button) => {
-  button.addEventListener("click", () => {
-    const action = button.dataset.profileAction;
-    closeTopbarPanels();
-    if (action === "settings") {
-      switchView("settings");
-      return;
-    }
-    if (action === "team") {
-      switchView("settings");
-      showToast("Розділ користувачів відкривається в налаштуваннях.");
-      return;
-    }
-    if (action === "demo-link") {
-      copyDemoLink();
-      return;
-    }
-    if (action === "open-demo") {
-      window.open(DEMO_URL, "_blank", "noopener");
-      return;
-    }
-    if (action === "compact") {
-      toggleSidebar();
-      return;
-    }
-    showToast("Вихід з акаунта показано як прототипну дію.", "warning");
-  });
-});
-
-$(".collapse-menu")?.addEventListener("click", toggleSidebar);
-$(".sidebar-restore")?.addEventListener("click", toggleSidebar);
-
-document.addEventListener("click", (event) => {
-  if (!event.target.closest(".topbar-menu-wrap")) closeTopbarPanels();
-});
+setupTopbarControls({ $, switchView, saveNavigationState, showToast });
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
-  const topbarPanelOpen = Boolean(document.querySelector(".topbar-panel:not([hidden])"));
-  if (topbarPanelOpen) {
+  if (isTopbarPanelOpen()) {
     event.preventDefault();
     closeTopbarPanels();
     return;
