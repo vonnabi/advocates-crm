@@ -69,7 +69,8 @@
 - [x] вынести экран планера в `frontend/js/screens/planner.js`;
 - [x] вынести экран документов в `frontend/js/screens/documents.js`;
 - [x] вынести экран финансов в `frontend/js/screens/finance.js`;
-- [ ] постепенно разнести оставшиеся небольшие экраны: аналитика, настройки.
+- [x] вынести экран аналитики в `frontend/js/screens/analytics.js`;
+- [ ] постепенно разнести оставшиеся небольшие экраны: настройки.
 
 ### Шаг 4. Подключить frontend к backend
 
