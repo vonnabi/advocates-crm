@@ -76,6 +76,7 @@
 - [x] вынести экран дашборда в `frontend/js/screens/dashboard.js`.
 - [x] вынести сохранение и восстановление навигации в `frontend/js/navigation.js`.
 - [x] вынести верхнюю панель, профиль, уведомления и сворачивание меню в `frontend/js/chrome.js`.
+- [x] вынести закрытие модальных окон и общий confirm удаления в `frontend/js/dialogs.js`.
 
 ### Шаг 4. Подключить frontend к backend
 
