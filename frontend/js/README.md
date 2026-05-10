@@ -12,10 +12,11 @@ This folder is for small JavaScript modules that are split out of the main proto
 - `screens/documents.js` renders the global documents table and document status rows.
 - `screens/finance.js` renders finance metrics and the case finance table.
 - `screens/mailings.js` renders the mailing workflow, campaigns, templates, automation, preview, and mailing actions.
+- `screens/osint.js` renders OSINT metrics, checks, and the selected check summary.
 - `screens/planner.js` renders the planner summary, daily task plan, and team workload block.
 - `screens/settings.js` renders bureau settings, users, integrations, and notification toggles.
 - `screens/tasks.js` renders the tasks list, task detail card, task filters, drag ordering, and shared task derivation.
 
 Next candidates for extraction:
 
-- OSINT, dashboard, and any other smaller secondary pages.
+- dashboard and any other smaller secondary pages.
