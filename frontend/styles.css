@@ -49,6 +49,7 @@
   --weight-semibold: 700;
   --weight-bold: 800;
   --weight-black: 900;
+  --main-side-grid: minmax(0, 4fr) minmax(280px, 1fr);
 }
 
 * {
@@ -217,7 +218,7 @@ body {
   }
 
   .tasks-workspace.has-task-detail {
-    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-columns: var(--main-side-grid);
     grid-template-rows: auto auto 600px;
   }
 
@@ -858,7 +859,7 @@ h3 {
 
 .settings-screen {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.8fr);
+  grid-template-columns: var(--main-side-grid);
   gap: 18px;
 }
 
@@ -1143,7 +1144,7 @@ button {
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: var(--main-side-grid);
   gap: 16px;
 }
 
@@ -1215,7 +1216,7 @@ button {
 
 .clients-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: var(--main-side-grid);
   gap: 16px;
 }
 
@@ -1691,7 +1692,7 @@ td a,
 
 .case-list-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-columns: var(--main-side-grid);
   gap: 16px;
   align-items: stretch;
 }
@@ -2460,7 +2461,7 @@ td a,
 
 .tasks-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 390px;
+  grid-template-columns: var(--main-side-grid);
   gap: 14px;
   align-items: stretch;
 }
@@ -2473,7 +2474,7 @@ td a,
 }
 
 .tasks-workspace.has-task-detail {
-  grid-template-columns: minmax(0, 1fr) 390px;
+  grid-template-columns: var(--main-side-grid);
   grid-template-rows: auto auto 650px;
   align-items: stretch;
 }
@@ -5438,7 +5439,7 @@ td a,
 
 .calendar-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: var(--main-side-grid);
   gap: 14px;
   align-items: start;
 }
@@ -6131,7 +6132,7 @@ td a,
 
 .mailing-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 390px;
+  grid-template-columns: var(--main-side-grid);
   gap: 14px;
   align-items: start;
 }
@@ -6604,7 +6605,7 @@ td a,
 }
 
 .mailing-layout {
-  grid-template-columns: minmax(0, 1fr) 420px;
+  grid-template-columns: var(--main-side-grid);
 }
 
 .mailing-left-stack,
