@@ -34,24 +34,21 @@
   --panel: #ffffff;
   --shadow: 0 14px 36px rgba(18, 33, 56, 0.08);
   --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-  --text-2xs: 10px;
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-base: 13px;
-  --text-md: 14px;
-  --text-lg: 16px;
-  --text-xl: 18px;
-  --text-2xl: 20px;
-  --text-3xl: 24px;
+  --text-2xs: 9px;
+  --text-xs: 10px;
+  --text-sm: 11px;
+  --text-base: 12px;
+  --text-md: 13px;
+  --text-lg: 15px;
+  --text-xl: 16px;
+  --text-2xl: 18px;
+  --text-3xl: 22px;
   --leading-tight: 1.2;
   --leading-normal: 1.4;
   --weight-medium: 600;
   --weight-semibold: 700;
   --weight-bold: 800;
   --weight-black: 900;
-  --desktop-density: 0.78;
-  --desktop-density-expand: 128.205%;
-  --desktop-density-height: 128.205vh;
 }
 
 * {
@@ -61,6 +58,8 @@
 body {
   margin: 0;
   min-height: 100vh;
+  max-width: 100%;
+  overflow-x: hidden;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
@@ -72,19 +71,143 @@ body {
 }
 
 @media (min-width: 901px) {
-  html,
-  body {
-    overflow-x: hidden;
-  }
-
-  body {
-    width: var(--desktop-density-expand);
-    min-height: var(--desktop-density-height);
-    zoom: var(--desktop-density);
-  }
-
   .sidebar {
-    height: var(--desktop-density-height);
+    width: 220px;
+    padding: 20px 10px 18px;
+  }
+
+  .app {
+    margin-left: 220px;
+  }
+
+  .brand {
+    gap: 10px;
+    padding: 0 8px 22px;
+  }
+
+  .brand-mark {
+    width: 40px;
+    height: 40px;
+  }
+
+  .nav {
+    gap: 6px;
+  }
+
+  .nav-item {
+    min-height: 39px;
+    grid-template-columns: 30px 1fr auto;
+    padding: 0 10px;
+  }
+
+  .nav-icon {
+    width: 22px;
+    height: 22px;
+  }
+
+  .nav-icon svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  .nav-badge {
+    min-width: 22px;
+    height: 22px;
+  }
+
+  .topbar {
+    height: 68px;
+    padding: 0 22px;
+  }
+
+  .notification-button {
+    width: 38px;
+    height: 38px;
+    min-height: 38px;
+  }
+
+  .admin-avatar {
+    width: 38px;
+    height: 38px;
+  }
+
+  .admin-profile {
+    min-width: 170px;
+  }
+
+  .view {
+    padding: 20px 22px 36px;
+  }
+
+  #cases.view {
+    padding: 14px;
+  }
+
+  .panel,
+  .card,
+  .metric {
+    padding: 14px;
+  }
+
+  .tasks-tabs button {
+    padding: 8px 0 10px;
+  }
+
+  .tasks-kpi-grid article {
+    min-height: 92px;
+    padding: 13px 14px;
+  }
+
+  .tasks-kpi-grid strong {
+    margin: 6px 0 5px;
+  }
+
+  .tasks-kpi-grid i {
+    width: 34px;
+    height: 34px;
+  }
+
+  .tasks-kpi-grid .ui-icon {
+    width: 19px;
+    height: 19px;
+  }
+
+  .tasks-toolbar input,
+  .tasks-toolbar select,
+  .tasks-toolbar button,
+  .tasks-head-actions button {
+    min-height: 38px;
+  }
+
+  .tasks-workspace.has-task-detail {
+    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-rows: auto auto 600px;
+  }
+
+  .tasks-list-card {
+    min-height: 640px;
+    height: 640px;
+    padding: 12px;
+  }
+
+  .tasks-workspace .tasks-list-card {
+    min-height: 600px;
+    height: 600px;
+  }
+
+  .tasks-table {
+    min-width: 1040px;
+  }
+
+  .tasks-table th,
+  .tasks-table td {
+    padding: 12px 9px;
+  }
+
+  .task-side-card {
+    min-height: 600px;
+    height: 600px;
+    padding: 14px;
   }
 }
 
