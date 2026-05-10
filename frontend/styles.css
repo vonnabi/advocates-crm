@@ -2265,6 +2265,7 @@ td a,
 .tasks-toolbar input,
 .tasks-toolbar select,
 .tasks-toolbar button {
+  min-width: 0;
   min-height: 42px;
 }
 
@@ -2316,6 +2317,7 @@ td a,
 
 .tasks-workspace.has-task-detail .tasks-toolbar {
   grid-row: 2;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .tasks-workspace.has-task-detail .tasks-list-card {
