@@ -1,13 +1,13 @@
 :root {
   --navy: #0f2136;
   --navy-2: #172c45;
-  --blue: #172c45;
-  --blue-soft: rgba(23, 44, 69, 0.08);
-  --action-dark: #172c45;
-  --action-hover: rgba(23, 44, 69, 0.86);
-  --action-soft: rgba(23, 44, 69, 0.08);
-  --action-border: rgba(23, 44, 69, 0.28);
-  --action-shadow: rgba(23, 44, 69, 0.22);
+  --blue: #1f4e79;
+  --blue-soft: rgba(31, 78, 121, 0.1);
+  --action-dark: #1f4e79;
+  --action-hover: rgba(31, 78, 121, 0.86);
+  --action-soft: rgba(31, 78, 121, 0.1);
+  --action-border: rgba(31, 78, 121, 0.28);
+  --action-shadow: rgba(31, 78, 121, 0.2);
   --green: #1b9b69;
   --red: #d64545;
   --amber: #b7791f;
