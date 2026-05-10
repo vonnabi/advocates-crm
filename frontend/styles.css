@@ -140,6 +140,10 @@ body {
     padding: 20px 22px 36px;
   }
 
+  #tasks.view {
+    padding-top: 8px;
+  }
+
   #cases.view {
     padding: 14px;
   }
@@ -192,13 +196,30 @@ body {
   }
 
   .tasks-screen {
-    gap: 10px;
-    margin-top: -6px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px 12px;
+    align-items: end;
+    margin-top: 0;
   }
 
   .tasks-page-head {
-    margin: -4px 0 -2px;
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+    margin: 0;
     padding: 0;
+  }
+
+  .tasks-tabs {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: end;
+    min-height: 38px;
+  }
+
+  .tasks-workspace,
+  .tasks-bottom-grid {
+    grid-column: 1 / -1;
   }
 
   .tasks-head-actions {
