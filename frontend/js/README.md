@@ -3,6 +3,7 @@
 This folder is for small JavaScript modules that are split out of the main prototype file.
 
 - `state.js` loads static JSON demo data and creates the initial application state.
+- `navigation.js` persists and restores the active view, view history, selected cards, and sidebar state.
 - `ui.js` contains shared formatting helpers, status tones, badges, profile photos, and SVG icons.
 - `screens/ai.js` renders AI helper cards, the case assistant chat, and the knowledge base summary.
 - `screens/analytics.js` renders analytics filters, KPI metrics, and summary panels.
