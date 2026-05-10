@@ -3950,10 +3950,31 @@ td a,
   text-align: left;
 }
 
+.case-documents-card,
+.case-folders-card {
+  overflow: visible;
+}
+
+.case-documents-card .case-table-wrap,
+.case-folders-card .case-table-wrap {
+  margin-bottom: 10px;
+}
+
+.case-documents-card .case-link-button,
+.case-folders-card .case-link-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0;
+  line-height: 1.2;
+}
+
 .case-card-actions {
   display: flex;
   justify-content: flex-start;
   gap: 28px;
+  flex-wrap: wrap;
+  margin-top: 4px;
 }
 
 .case-finance-card {
@@ -4534,6 +4555,40 @@ td a,
     padding: 0;
   }
 
+  .case-documents-card,
+  .case-folders-card {
+    display: grid;
+    align-content: start;
+    gap: 10px;
+    overflow: visible;
+  }
+
+  .case-documents-card .scroll-area,
+  .case-folders-card .scroll-area {
+    flex: 0 0 auto;
+    width: 100%;
+    min-height: 0;
+  }
+
+  .case-documents-card .case-table-wrap,
+  .case-folders-card .case-table-wrap {
+    margin-bottom: 0;
+  }
+
+  .case-documents-card .case-link-button,
+  .case-folders-card .case-card-actions {
+    margin-top: 2px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+  }
+
+  .case-folders-card .case-card-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, max-content));
+    gap: 8px 16px;
+    justify-content: start;
+  }
+
   .case-actions-table,
   .procedural-actions-table,
   .case-documents-table,
@@ -4747,6 +4802,14 @@ td a,
   .folder-status-control,
   .folder-updated-cell {
     justify-content: start;
+  }
+
+  .case-documents-card .empty-cell,
+  .case-folders-card .empty-cell {
+    border: 1px dashed #d7e0ec;
+    border-radius: 8px;
+    background: #fbfcfe;
+    padding: 16px;
   }
 }
 
@@ -7814,6 +7877,11 @@ dialog::backdrop {
     overflow: hidden;
   }
 
+  #cases.view .case-documents-card,
+  #cases.view .case-folders-card {
+    overflow: visible;
+  }
+
   #cases.view .case-card p,
   #cases.view .case-card-title,
   #cases.view .case-contact-list span,
@@ -7831,6 +7899,15 @@ dialog::backdrop {
     white-space: normal !important;
     overflow-wrap: break-word !important;
     word-break: break-word !important;
+  }
+
+  #cases.view .case-folders-card .case-card-actions {
+    grid-template-columns: 1fr;
+  }
+
+  #cases.view .case-documents-card .case-link-button,
+  #cases.view .case-folders-card .case-link-button {
+    width: 100%;
   }
 
   .panel,

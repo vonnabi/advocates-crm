@@ -1559,7 +1559,7 @@ function renderCaseProfile(id) {
         </article>
       </section>
       <section class="case-side-column">
-        <article class="case-card scroll-card">
+        <article class="case-card scroll-card case-documents-card">
           <h3>6. ПРОЦЕСУАЛЬНІ ДОКУМЕНТИ</h3>
           <div class="case-table-wrap scroll-area">
             <table class="case-inner-table case-documents-table">
@@ -1569,7 +1569,7 @@ function renderCaseProfile(id) {
           </div>
           <button class="case-link-button" data-add-document="${item.id}">+ Додати документ</button>
         </article>
-        <article class="case-card scroll-card">
+        <article class="case-card scroll-card case-folders-card">
           <h3>7. ДОКУМЕНТИ СПРАВИ</h3>
           <div class="case-table-wrap scroll-area">
             <table class="case-inner-table folders-table">
