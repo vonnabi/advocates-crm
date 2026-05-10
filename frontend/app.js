@@ -474,7 +474,8 @@ function currencyText(value) {
 }
 
 function badge(text, tone = "") {
-  return `<span class="badge ${tone}">${text}</span>`;
+  const resolvedTone = tone || semanticTone(text);
+  return `<span class="badge ${resolvedTone}">${text}</span>`;
 }
 
 const profilePhotos = {
@@ -497,9 +498,7 @@ function advocatePhoto(name = "Адвокат", extraClass = "") {
 }
 
 function documentStatusTone(status) {
-  if (status === "Готово" || status === "Отримано" || status === "Подано") return "green";
-  if (status === "Потрібно перевірити") return "amber";
-  return "blue";
+  return semanticTone(status);
 }
 
 function documentStatusControl(status) {
@@ -544,24 +543,82 @@ function icon(name) {
 }
 
 function statusTone(status) {
-  if (status === "Не турбувати") return "red";
-  if (status === "Новий") return "blue";
-  if (status === "Постійний клієнт") return "green";
-  return "green";
+  return semanticTone(status);
 }
 
 function riskTone(risk) {
-  if (risk === "Високий") return "red";
-  if (risk === "Середній") return "amber";
-  return "green";
+  return semanticTone(risk);
 }
 
 function taskTone(status) {
-  if (status === "Виконано") return "green";
-  if (status === "Терміново" || status === "Срочно") return "red";
-  if (status === "Не срочно") return "green";
-  if (status === "В роботі") return "blue";
-  return "amber";
+  return semanticTone(status);
+}
+
+function semanticTone(value = "") {
+  const text = String(value || "").toLowerCase();
+  if (!text) return "blue";
+  if (text.includes("не срочно") || text.includes("низьк")) return "green";
+  if (
+    text.includes("просроч") ||
+    text.includes("простроч") ||
+    text.includes("терміново") ||
+    text.includes("срочно") ||
+    text.includes("висок") ||
+    text.includes("помилка") ||
+    text.includes("ошибка") ||
+    text.includes("борг") ||
+    text.includes("выключ") ||
+    text.includes("вимк") ||
+    text.includes("не турбувати")
+  ) return "red";
+  if (
+    text.includes("не подано") ||
+    text.includes("не розпочато") ||
+    text.includes("без відпові") ||
+    text.includes("серед") ||
+    text.includes("очіку") ||
+    text.includes("ожида") ||
+    text.includes("чернет") ||
+    text.includes("потрібно") ||
+    text.includes("потреб") ||
+    text.includes("перевір") ||
+    text.includes("процес") ||
+    text.includes("менше") ||
+    text.includes("год")
+  ) return "amber";
+  if (
+    text.includes("викон") ||
+    text.includes("готов") ||
+    text.includes("отрим") ||
+    text.includes("подано") ||
+    text.includes("достав") ||
+    text.includes("провед") ||
+    text.includes("відправ") ||
+    text.includes("створ") ||
+    text.includes("онов") ||
+    text.includes("закрит") ||
+    text.includes("заплан") ||
+    text.includes("увімк") ||
+    text.includes("включ") ||
+    text.includes("актив") ||
+    text.includes("оплач") ||
+    text.includes("постій")
+  ) return "green";
+  if (
+    text.includes("нов") ||
+    text.includes("робот") ||
+    text.includes("тест") ||
+    text.includes("файл") ||
+    text.includes("задач")
+  ) return "blue";
+  return "blue";
+}
+
+function calendarTimeTone(label) {
+  const text = String(label || "").toLowerCase();
+  if (text.includes("просроч") || text.includes("простроч")) return "red";
+  if (text.includes("менше") || text.includes("год")) return "amber";
+  return "blue";
 }
 
 function allCaseTasks() {
@@ -624,7 +681,7 @@ function renderDashboard() {
             return `<div class="list-item">
               <strong>${event.time} · ${event.title}</strong>
               <p class="muted">${event.date} · ${client.name} · Справа №${event.caseId}</p>
-              ${badge(event.status, "blue")}
+              ${badge(event.status)}
             </div>`;
           }).join("")}
         </div>
@@ -774,7 +831,7 @@ function renderClientProfile(id) {
           <div class="avatar large">${icon("user")}</div>
           <div>
             <strong>${client.name}</strong>
-            ${badge(client.status, client.status === "Постійний клієнт" ? "amber" : statusTone(client.status))}
+            ${badge(client.status, statusTone(client.status))}
           </div>
         </div>
         <button class="secondary outline-blue" data-edit-client="${client.id}">Редагувати</button>
@@ -794,7 +851,7 @@ function renderClientProfile(id) {
           <p>${client.notes}</p>
           <h3>Відповідальний менеджер</h3>
           <div class="manager-line">${advocatePhoto(client.manager, "mini")}<strong>${client.manager}</strong></div>
-          <div class="related-case-strip">${relatedCases.map((item) => badge(`Справа №${item.id}`, item.status === "Терміново" ? "red" : "blue")).join("")}</div>
+          <div class="related-case-strip">${relatedCases.map((item) => badge(`Справа №${item.id}`, statusTone(item.status))).join("")}</div>
         </div>
       </div>
     </div>
@@ -895,9 +952,7 @@ function caseFinanceBlock(item) {
 }
 
 function priorityTone(priority) {
-  if (priority === "Високий") return "red";
-  if (priority === "Середній") return "amber";
-  return "green";
+  return semanticTone(priority);
 }
 
 function caseMaterialBadges(item) {
@@ -938,7 +993,7 @@ function casePreviewTasks(item) {
         <strong>${task.title}</strong>
         <span>${task.due || "Без строку"} · ${task.responsible || item.responsible}</span>
       </div>
-      ${badge(task.status, task.status === "Терміново" || task.status === "Срочно" ? "red" : "blue")}
+      ${badge(task.status, taskTone(task.status))}
     </div>
   `).join("");
 }
@@ -1004,7 +1059,7 @@ function casePreviewCard(item) {
     <article class="case-card case-preview-card">
       <div class="case-preview-head">
         <h3 class="case-preview-title">Картка справи</h3>
-        ${badge(item.status, "blue")}
+        ${badge(item.status, semanticTone(item.status))}
       </div>
       <div class="case-preview-meta">
         <span class="case-preview-number">№${item.id}</span>
@@ -1091,7 +1146,7 @@ function renderCaseList() {
         <td><div class="case-materials">${caseMaterialBadges(item)}</div></td>
         <td>${item.deadline}</td>
         <td>${badge(item.priority, priorityTone(item.priority))}</td>
-        <td>${badge(item.status, item.status === "Терміново" ? "red" : "blue")}</td>
+        <td>${badge(item.status, statusTone(item.status))}</td>
         <td>${caseFinanceSummary(item)}</td>
       </tr>`;
     }).join("");
@@ -1264,7 +1319,7 @@ function caseActionRows(item) {
       </span>
       ${task.reminder ? `<span class="task-reminder-note">нагадування увімкнено</span>` : ""}
     </td>
-    <td>${badge(task.status, task.status === "Срочно" || task.status === "Терміново" ? "red" : "green")}</td>
+    <td>${badge(task.status, taskTone(task.status))}</td>
     <td>${task.due}</td>
     <td>${task.responsible || item.responsible}</td>
     <td>
@@ -1297,7 +1352,7 @@ function caseProceduralRows(item) {
     const initiated = Array.isArray(row) ? row[2] : row.initiated;
     const due = Array.isArray(row) ? row[3] : row.due;
     const status = Array.isArray(row) ? row[4] : row.status;
-    const tone = Array.isArray(row) ? row[5] : row.tone;
+    const tone = semanticTone(status);
     return `<tr class="procedural-action-row">
     <td>
       <span class="row-title-with-actions">
@@ -1332,7 +1387,7 @@ function caseDocumentRows(item) {
     </td>
     <td>${doc.submitted || "-"}</td>
     <td>${doc.responseDue || "-"}</td>
-    <td>${badge(doc.status, doc.status.includes("очікується") ? "amber" : "")}</td>
+    <td>${badge(doc.status, documentStatusTone(doc.status))}</td>
   </tr>`).join("");
 }
 
@@ -1443,7 +1498,7 @@ function renderCaseProfile(id) {
       <div>
         <div class="case-title-line">
           <h2>Справа № ${item.id}</h2>
-          ${badge(item.status, "blue")}
+          ${badge(item.status, semanticTone(item.status))}
         </div>
         <div class="case-meta-line">
           <span class="muted">Створено: ${item.opened}</span>
@@ -1870,7 +1925,7 @@ function renderCalendar() {
                   <span><strong>${event.title}</strong><em>${event.type} · ${event.status}</em></span>
                   <span><strong>${meta.client?.name || "Клієнт не вказаний"}</strong><em>№${event.caseId}</em></span>
                   <span><strong>${meta.authority}</strong><em>${meta.responsible}</em></span>
-                  ${badge(eventTimeLeftLabel(event), eventTimeLeftLabel(event) === "Просрочено" ? "red" : "blue")}
+                  ${badge(eventTimeLeftLabel(event), calendarTimeTone(eventTimeLeftLabel(event)))}
                 </button>`;
               }).join("") || `<p class="muted">Подій за цими фільтрами немає.</p>`}
             </div>
@@ -1911,7 +1966,7 @@ function renderCalendar() {
                 <span class="upcoming-event-main"><strong>${event.title}${event.caseId ? ` у справі №${event.caseId}` : ""}</strong><em>Клієнт: ${client?.name || "Не вказано"}</em></span>
                 <time>${formatDate(event.date)}</time>
                 <span class="upcoming-event-time">${event.time}</span>
-                ${badge(leftLabel, leftLabel === "Просрочено" ? "red" : "blue")}
+                ${badge(leftLabel, calendarTimeTone(leftLabel))}
               </button>`;
             }).join("") || `<p class="muted">Подій за цими фільтрами немає.</p>`}
           </div>
@@ -2716,7 +2771,7 @@ function renderMailings() {
         </div>
       </div>
       ${state.mailingStatusNotice ? `<div class="mailing-notice">${state.mailingStatusNotice}</div>` : ""}
-      ${mainTab === "campaigns" ? `<section class="panel mailing-section"><div class="mailing-section-head"><h2>Мои рассылки</h2><div class="mailing-section-actions"><button type="button" class="secondary" data-export-mailings>${icon("file")} Экспорт CSV</button><button type="button" class="primary" data-new-mailing>${icon("telegram")} Новая рассылка</button></div></div><div class="mailing-list-tools"><div class="mailing-filter-tabs">${[{ id: "all", label: "Все" }, { id: "scheduled", label: "Запланированные" }, { id: "test", label: "Тестовые" }, { id: "ready", label: "Готовые" }].map((item) => `<button type="button" class="${campaignFilter === item.id ? "active" : ""}" data-campaign-filter="${item.id}">${item.label}</button>`).join("")}</div><label class="mailing-search">${icon("search")}<input type="search" value="${state.mailingCampaignQuery}" placeholder="Поиск по рассылкам..." data-campaign-search /></label></div>${campaignRows.length ? campaignRows.map((item) => { const sourceIndex = state.mailingCampaigns.indexOf(item); const rowIndex = sourceIndex >= 0 ? sourceIndex : 0; return `<div class="mailing-history-row"><span class="event-dot court"></span><div><strong>${item.title}</strong><em>${item.meta || item.createdAt}</em></div>${badge(item.status, item.status === "Ошибка" ? "red" : item.status === "Запланирована" ? "blue" : "green")}<div class="mailing-row-actions"><button type="button" class="secondary" data-edit-mailing-campaign="${rowIndex}">${icon("edit")} Редактировать</button><button type="button" class="secondary danger-text" data-delete-mailing-campaign="${rowIndex}">${icon("trash")} Удалить</button></div></div>`; }).join("") : `<p class="muted">По этому запросу рассылок не найдено.</p>`}</section>` : ""}
+      ${mainTab === "campaigns" ? `<section class="panel mailing-section"><div class="mailing-section-head"><h2>Мои рассылки</h2><div class="mailing-section-actions"><button type="button" class="secondary" data-export-mailings>${icon("file")} Экспорт CSV</button><button type="button" class="primary" data-new-mailing>${icon("telegram")} Новая рассылка</button></div></div><div class="mailing-list-tools"><div class="mailing-filter-tabs">${[{ id: "all", label: "Все" }, { id: "scheduled", label: "Запланированные" }, { id: "test", label: "Тестовые" }, { id: "ready", label: "Готовые" }].map((item) => `<button type="button" class="${campaignFilter === item.id ? "active" : ""}" data-campaign-filter="${item.id}">${item.label}</button>`).join("")}</div><label class="mailing-search">${icon("search")}<input type="search" value="${state.mailingCampaignQuery}" placeholder="Поиск по рассылкам..." data-campaign-search /></label></div>${campaignRows.length ? campaignRows.map((item) => { const sourceIndex = state.mailingCampaigns.indexOf(item); const rowIndex = sourceIndex >= 0 ? sourceIndex : 0; return `<div class="mailing-history-row"><span class="event-dot court"></span><div><strong>${item.title}</strong><em>${item.meta || item.createdAt}</em></div>${badge(item.status, semanticTone(item.status))}<div class="mailing-row-actions"><button type="button" class="secondary" data-edit-mailing-campaign="${rowIndex}">${icon("edit")} Редактировать</button><button type="button" class="secondary danger-text" data-delete-mailing-campaign="${rowIndex}">${icon("trash")} Удалить</button></div></div>`; }).join("") : `<p class="muted">По этому запросу рассылок не найдено.</p>`}</section>` : ""}
       ${mainTab === "templates" ? `<section class="panel mailing-section"><h2>Шаблоны сообщений</h2>${state.mailingTemplates.map((item, index) => `<div class="template-library-row"><div><strong>${item.title}</strong><em>${item.text}</em></div><span>${item.type}</span><div class="mailing-row-actions"><button type="button" class="secondary" data-use-template="${index}">${icon("check")} Использовать</button><button type="button" class="secondary" data-edit-template="${index}">${icon("edit")} Редактировать</button><button type="button" class="secondary danger-text" data-delete-template="${index}">${icon("trash")} Удалить</button></div></div>`).join("")}</section>` : ""}
       ${mainTab === "automation" ? `<section class="panel mailing-section"><h2>Автоматизация</h2><div class="automation-grid">${state.mailingAutomationRules.map((rule, index) => `<article class="automation-rule ${rule.enabled ? "enabled" : ""}"><label><input type="checkbox" data-toggle-automation="${index}" ${rule.enabled ? "checked" : ""} /><span><strong>${rule.title}</strong><em>${rule.description}</em></span></label><select data-automation-channel="${index}">${["Telegram", "SMS", "Email", "Все каналы"].map((channel) => `<option ${rule.channel === channel ? "selected" : ""}>${channel}</option>`).join("")}</select>${badge(rule.enabled ? "Включено" : "Выключено", rule.enabled ? "green" : "red")}</article>`).join("")}</div></section>` : ""}
       ${mainTab === "new" ? `
@@ -3206,7 +3261,7 @@ function renderAnalytics() {
     <div class="grid cols-3" style="margin-top:16px">
       <div class="panel"><h2>Справи за типами</h2><div class="list"><div class="profile-line"><span>Військові</span><strong>34%</strong></div><div class="profile-line"><span>Сімейні</span><strong>22%</strong></div><div class="profile-line"><span>Господарські</span><strong>18%</strong></div></div></div>
       <div class="panel"><h2>Джерела клієнтів</h2><div class="list"><div class="profile-line"><span>Рекомендації</span><strong>41%</strong></div><div class="profile-line"><span>Сайт</span><strong>27%</strong></div><div class="profile-line"><span>Соцмережі</span><strong>19%</strong></div></div></div>
-      <div class="panel"><h2>Ризики</h2><div class="list"><div class="list-item">${badge("2 просрочені задачі", "red")}</div><div class="list-item">${badge("3 клієнти з боргом", "amber")}</div><div class="list-item">${badge("1 документ без відповіді", "blue")}</div></div></div>
+      <div class="panel"><h2>Ризики</h2><div class="list"><div class="list-item">${badge("2 просрочені задачі")}</div><div class="list-item">${badge("3 клієнти з боргом")}</div><div class="list-item">${badge("1 документ без відповіді")}</div></div></div>
     </div>
   `;
 }
@@ -3249,7 +3304,7 @@ function renderDocuments() {
       <table>
         <thead><tr><th>Документ</th><th>Справа</th><th>Клієнт</th><th>Статус</th><th>Джерело</th></tr></thead>
         <tbody>
-          ${documents.map((doc) => `<tr><td>${doc.name}</td><td>№${doc.caseId}</td><td>${doc.client}</td><td>${badge(doc.status, "blue")}</td><td>${doc.source || "CRM"}</td></tr>`).join("") || `<tr><td colspan="5">Документів поки немає</td></tr>`}
+          ${documents.map((doc) => `<tr><td>${doc.name}</td><td>№${doc.caseId}</td><td>${doc.client}</td><td>${badge(doc.status, documentStatusTone(doc.status))}</td><td>${doc.source || "CRM"}</td></tr>`).join("") || `<tr><td colspan="5">Документів поки немає</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -4607,7 +4662,7 @@ $("#event-form").addEventListener("submit", (event) => {
       time: form.get("time"),
       due: due ? formatDate(due) : `${formatDate(date)} ${form.get("time")}`,
       status,
-      tone: status === "Заплановано" ? "blue" : status === "В процесі" ? "amber" : "",
+      tone: semanticTone(status),
       description: form.get("description")
     });
     caseItem.history.unshift({

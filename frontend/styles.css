@@ -12,6 +12,21 @@
   --red: #d64545;
   --amber: #b7791f;
   --violet: #6d5bd0;
+  --semantic-red: #dc2626;
+  --semantic-red-soft: #feecec;
+  --semantic-red-border: #f6c6c6;
+  --semantic-amber: #b7791f;
+  --semantic-amber-soft: #fff4db;
+  --semantic-amber-border: #f4d89b;
+  --semantic-green: #15925a;
+  --semantic-green-soft: #e8f7ef;
+  --semantic-green-border: #c8ead8;
+  --semantic-blue: #1f4e79;
+  --semantic-blue-soft: rgba(31, 78, 121, 0.1);
+  --semantic-blue-border: rgba(31, 78, 121, 0.24);
+  --semantic-violet: #6d5bd0;
+  --semantic-violet-soft: #efecff;
+  --semantic-violet-border: #d8d1ff;
   --line: #e7ebf1;
   --text: #152033;
   --muted: #68758a;
@@ -1332,34 +1347,40 @@ td a,
   padding: 3px 9px;
   font-size: var(--text-sm);
   font-weight: var(--weight-bold);
+  border: 1px solid transparent;
   background: #eef2f7;
   color: #34435b;
   white-space: nowrap;
 }
 
 .badge.green {
-  background: #e5f7ef;
-  color: var(--green);
+  border-color: var(--semantic-green-border);
+  background: var(--semantic-green-soft);
+  color: var(--semantic-green);
 }
 
 .badge.red {
-  background: #ffebeb;
-  color: var(--red);
+  border-color: var(--semantic-red-border);
+  background: var(--semantic-red-soft);
+  color: var(--semantic-red);
 }
 
 .badge.amber {
-  background: #fff4db;
-  color: var(--amber);
+  border-color: var(--semantic-amber-border);
+  background: var(--semantic-amber-soft);
+  color: var(--semantic-amber);
 }
 
 .badge.blue {
-  background: var(--blue-soft);
-  color: var(--blue);
+  border-color: var(--semantic-blue-border);
+  background: var(--semantic-blue-soft);
+  color: var(--semantic-blue);
 }
 
 .badge.violet {
-  background: #efecff;
-  color: var(--violet);
+  border-color: var(--semantic-violet-border);
+  background: var(--semantic-violet-soft);
+  color: var(--semantic-violet);
 }
 
 .profile {
@@ -1653,26 +1674,27 @@ td a,
 }
 
 .case-list-screen .badge.blue {
-  background: #edf5ff;
-  color: #1f6fd8;
+  border-color: var(--semantic-blue-border);
+  background: var(--semantic-blue-soft);
+  color: var(--semantic-blue);
 }
 
 .case-list-screen .badge.red {
-  border-color: #ffdada;
-  background: #fff1f1;
-  color: #db4545;
+  border-color: var(--semantic-red-border);
+  background: var(--semantic-red-soft);
+  color: var(--semantic-red);
 }
 
 .case-list-screen .badge.amber {
-  border-color: #f7e6bf;
-  background: #fff8eb;
-  color: #a86a12;
+  border-color: var(--semantic-amber-border);
+  background: var(--semantic-amber-soft);
+  color: var(--semantic-amber);
 }
 
 .case-list-screen .badge.green {
-  border-color: #d8f0e3;
-  background: #eefaf4;
-  color: #15925a;
+  border-color: var(--semantic-green-border);
+  background: var(--semantic-green-soft);
+  color: var(--semantic-green);
 }
 
 .case-number-cell {
@@ -3997,11 +4019,19 @@ td a,
 }
 
 .dot-status.amber {
-  color: #e57b1d;
+  color: var(--semantic-amber);
 }
 
 .dot-status.blue {
-  color: var(--blue);
+  color: var(--semantic-blue);
+}
+
+.dot-status.green {
+  color: var(--semantic-green);
+}
+
+.dot-status.red {
+  color: var(--semantic-red);
 }
 
 .procedural-doc-name {
@@ -5344,8 +5374,6 @@ td a,
   justify-self: end;
   min-width: 96px;
   justify-content: center;
-  background: var(--action-dark);
-  color: white;
 }
 
 .calendar-reminders {
