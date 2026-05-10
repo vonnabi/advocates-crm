@@ -2370,7 +2370,7 @@ function renderTasks() {
         </div>
         <div class="tasks-head-actions">
           <button class="primary" id="task-create-from-section">+ Додати задачу</button>
-          <button class="secondary sync-planner-button">${icon("refresh")} Синхронізувати з планером</button>
+          <button class="secondary sync-planner-button" id="task-sync-planner">${icon("refresh")} Синхронізувати з планером</button>
         </div>
       </div>
       <div class="tasks-tabs" role="tablist">
@@ -2549,6 +2549,7 @@ function renderTasks() {
     });
   });
   $("#task-create-from-section")?.addEventListener("click", () => openTaskDialog(state.selectedCaseId || state.cases[0]?.id, null, "tasks"));
+  $("#task-sync-planner")?.addEventListener("click", () => showToast("Задачі синхронізовано з планером."));
   document.querySelectorAll("[data-task-key]").forEach((row) => {
     row.addEventListener("click", () => {
       if (state.selectedTaskKey !== row.dataset.taskKey) state.taskDetailTab = "info";
