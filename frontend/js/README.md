@@ -9,6 +9,7 @@ This folder is for small JavaScript modules that are split out of the main proto
 - `screens/calendar.js` renders the calendar, event card, reminders, date navigation, and calendar-derived task entries.
 - `screens/cases.js` renders the cases list, case preview, case detail screen, and related case UI helpers.
 - `screens/clients.js` renders the clients list, client profile, and client mailing preview.
+- `screens/dashboard.js` renders the dashboard metrics, upcoming events, and finance summary.
 - `screens/documents.js` renders the global documents table and document status rows.
 - `screens/finance.js` renders finance metrics and the case finance table.
 - `screens/mailings.js` renders the mailing workflow, campaigns, templates, automation, preview, and mailing actions.
@@ -19,4 +20,4 @@ This folder is for small JavaScript modules that are split out of the main proto
 
 Next candidates for extraction:
 
-- dashboard and any other smaller secondary pages.
+- any other smaller secondary pages that are added later.
