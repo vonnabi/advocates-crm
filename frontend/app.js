@@ -317,7 +317,11 @@ function switchView(view, options = {}) {
   viewNodes.forEach((node) => node.classList.toggle("active", node.id === view));
   navNodes.forEach((node) => node.classList.toggle("active", node.dataset.view === view));
   $("#page-title").textContent = titles[view] || "CRM";
-  $("#page-eyebrow").textContent = view === "tasks" ? "Управління задачами та контроль виконання" : "Юридичне бюро";
+  $("#page-eyebrow").textContent = view === "tasks"
+    ? "Управління задачами та контроль виконання"
+    : view === "planner"
+      ? "Ваш план на день, синхронізований із календарем та справами"
+      : "Юридичне бюро";
   document.body.dataset.view = view;
   syncNavigationState();
 }
