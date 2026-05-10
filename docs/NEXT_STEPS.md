@@ -79,6 +79,7 @@
 - [x] вынести закрытие модальных окон и общий confirm удаления в `frontend/js/dialogs.js`.
 - [x] вынести submit-обработчик формы клиента в `frontend/js/forms/clients.js`.
 - [x] вынести submit-обработчик формы справы в `frontend/js/forms/cases.js`.
+- [x] вынести формы деталей справы в `frontend/js/forms/case-details.js`.
 
 ### Шаг 4. Подключить frontend к backend
 
