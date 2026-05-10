@@ -8,7 +8,8 @@ This folder is for small JavaScript modules that are split out of the main proto
 - `screens/cases.js` renders the cases list, case preview, case detail screen, and related case UI helpers.
 - `screens/clients.js` renders the clients list, client profile, and client mailing preview.
 - `screens/mailings.js` renders the mailing workflow, campaigns, templates, automation, preview, and mailing actions.
+- `screens/tasks.js` renders the tasks list, task detail card, task filters, drag ordering, and shared task derivation.
 
 Next candidates for extraction:
 
-- tasks screen.
+- planner screen and smaller secondary pages.
