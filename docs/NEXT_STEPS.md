@@ -80,6 +80,7 @@
 - [x] вынести submit-обработчик формы клиента в `frontend/js/forms/clients.js`.
 - [x] вынести submit-обработчик формы справы в `frontend/js/forms/cases.js`.
 - [x] вынести формы деталей справы в `frontend/js/forms/case-details.js`.
+- [x] вынести submit-обработчик формы документов в `frontend/js/forms/documents.js`.
 
 ### Шаг 4. Подключить frontend к backend
 
