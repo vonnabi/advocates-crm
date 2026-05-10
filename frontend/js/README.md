@@ -12,8 +12,9 @@ This folder is for small JavaScript modules that are split out of the main proto
 - `screens/finance.js` renders finance metrics and the case finance table.
 - `screens/mailings.js` renders the mailing workflow, campaigns, templates, automation, preview, and mailing actions.
 - `screens/planner.js` renders the planner summary, daily task plan, and team workload block.
+- `screens/settings.js` renders bureau settings, users, integrations, and notification toggles.
 - `screens/tasks.js` renders the tasks list, task detail card, task filters, drag ordering, and shared task derivation.
 
 Next candidates for extraction:
 
-- settings and other smaller secondary pages.
+- AI, OSINT, dashboard, and any other smaller secondary pages.
