@@ -3,6 +3,7 @@
 This folder is for small JavaScript modules that are split out of the main prototype file.
 
 - `chrome.js` wires the topbar menus, notification controls, profile actions, sidebar collapse, and demo link actions.
+- `dialog-openers.js` fills and opens create/edit dialogs for clients, cases, tasks, events, folders, documents, and delete confirmations.
 - `dialogs.js` wires modal close buttons and the shared delete confirmation flow.
 - `forms/case-details.js` wires case essence, authority, and finance form submissions.
 - `forms/case-items.js` wires case task and document folder form submissions.

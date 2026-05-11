@@ -7,6 +7,8 @@ db.sqlite3
 media/
 staticfiles/
 node_modules/
+test-results/
+playwright-report/
 
 # Local project materials that can contain private chat/task context.
 materials/

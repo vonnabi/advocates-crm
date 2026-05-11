@@ -77,11 +77,13 @@
 - [x] вынести сохранение и восстановление навигации в `frontend/js/navigation.js`.
 - [x] вынести верхнюю панель, профиль, уведомления и сворачивание меню в `frontend/js/chrome.js`.
 - [x] вынести закрытие модальных окон и общий confirm удаления в `frontend/js/dialogs.js`.
+- [x] вынести открытие и заполнение модальных окон в `frontend/js/dialog-openers.js`.
 - [x] вынести submit-обработчик формы клиента в `frontend/js/forms/clients.js`.
 - [x] вынести submit-обработчик формы справы в `frontend/js/forms/cases.js`.
 - [x] вынести формы деталей справы в `frontend/js/forms/case-details.js`.
 - [x] вынести submit-обработчик формы документов в `frontend/js/forms/documents.js`.
 - [x] вынести формы задач и папок документов в `frontend/js/forms/case-items.js`.
+- [x] установить Playwright и добавить smoke-тесты для меню и основных модальных окон.
 
 ### Шаг 4. Подключить frontend к backend
 
