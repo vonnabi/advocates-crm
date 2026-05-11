@@ -4,11 +4,16 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => window.localStorage.clear());
 });
 
+async function openApp(page) {
+  await page.goto("/");
+  await expect(page.locator("#dashboard")).toHaveClass(/active/);
+}
+
 test("client form creates and edits a client", async ({ page }) => {
   const originalName = "Тестовий клієнт Автотест";
   const updatedName = "Тестовий клієнт Оновлено";
 
-  await page.goto("/");
+  await openApp(page);
   await page.locator('.nav-item[data-view="clients"]').click();
   await page.locator("#add-client").click();
 
@@ -37,7 +42,7 @@ test("client form creates and edits a client", async ({ page }) => {
 test("case form creates a case and opens its detail screen", async ({ page }) => {
   const caseTitle = "Автотестова справа щодо договору";
 
-  await page.goto("/");
+  await openApp(page);
   await page.locator('.nav-item[data-view="cases"]').click();
   await page.locator("#create-case-from-list").click();
 
@@ -59,7 +64,7 @@ test("task form creates, edits, and deletes a task", async ({ page }) => {
   const taskTitle = "Автотестова задача для перевірки";
   const updatedTitle = "Автотестова задача оновлена";
 
-  await page.goto("/");
+  await openApp(page);
   await page.locator('.nav-item[data-view="tasks"]').click();
   await page.locator("#task-create-from-section").click();
 

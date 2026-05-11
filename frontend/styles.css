@@ -1218,6 +1218,17 @@ button {
   gap: 16px;
 }
 
+.layout > *,
+.clients-layout > *,
+.case-list-layout > *,
+.calendar-layout > *,
+.mailing-layout > *,
+.settings-screen > *,
+.tasks-workspace > *,
+.tasks-bottom-grid > * {
+  min-width: 0;
+}
+
 .panel,
 .card,
 .metric {
@@ -1396,6 +1407,8 @@ button {
 }
 
 .side-card {
+  width: 100%;
+  min-width: 0;
   padding: 16px;
 }
 
@@ -5728,6 +5741,8 @@ td a,
 }
 
 .client-profile-card {
+  width: 100%;
+  min-width: 0;
   padding: 0;
 }
 
@@ -8541,11 +8556,28 @@ dialog::backdrop {
   .mailing-section-head {
     display: grid;
     align-items: stretch;
+    min-width: 0;
   }
 
   .mailing-top-actions,
   .mailing-section-actions {
     flex-wrap: wrap;
+  }
+
+  .mailing-tabs {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .mailing-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mailing-tabs button {
+    flex: 0 0 auto;
   }
 
   .calendar-toolbar .primary,
@@ -9025,6 +9057,10 @@ dialog::backdrop {
     padding: 14px;
   }
 
+  .client-profile-card {
+    padding: 0;
+  }
+
   .toolbar,
   .toolbar .left,
   .toolbar .right,
@@ -9073,6 +9109,36 @@ dialog::backdrop {
   .test-contact-grid,
   .mailing-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .mailing-layout,
+  .mailing-left-stack,
+  .mailing-right-stack,
+  .mailing-section,
+  .message-editor,
+  .telegram-preview {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .recipient-mode-grid button,
+  .message-editor textarea,
+  .mailing-section .secondary,
+  .mailing-section .primary {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .editor-toolbar {
+    flex-wrap: wrap;
+    padding: 8px;
+  }
+
+  .editor-toolbar .variables-button {
+    flex: 1 1 118px;
+    margin-left: 0;
+    min-width: 0;
   }
 
   .case-list-toolbar,
