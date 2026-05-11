@@ -517,6 +517,11 @@ textarea {
   min-width: 0;
 }
 
+.topbar-title-wrap > div {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .topbar-back {
   width: 0;
   min-width: 0;
@@ -8868,13 +8873,14 @@ dialog::backdrop {
     flex-direction: row;
     gap: 10px;
     width: 100%;
-    padding: 12px 108px 12px 12px;
+    padding: 12px 118px 12px 12px;
     max-width: 100vw;
   }
 
   .topbar-title-wrap {
-    flex: 1 1 auto;
-    max-width: none;
+    flex: 0 1 auto;
+    width: min(100%, calc(100vw - 146px));
+    max-width: calc(100vw - 146px);
     min-width: 0;
   }
 
