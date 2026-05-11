@@ -519,8 +519,11 @@ textarea {
 
 .topbar-back {
   width: 0;
+  min-width: 0;
+  flex: 0 0 0;
   height: 38px;
   min-height: 38px;
+  padding: 0;
   display: grid;
   place-items: center;
   border: 0 solid transparent;
@@ -536,6 +539,8 @@ textarea {
 
 .topbar-back.visible {
   width: 38px;
+  min-width: 38px;
+  flex-basis: 38px;
   border-width: 1px;
   border-color: var(--line);
   opacity: 1;
@@ -550,8 +555,10 @@ textarea {
 }
 
 .topbar-back svg {
+  display: block;
   width: 20px;
   height: 20px;
+  pointer-events: none;
   fill: none;
   stroke: currentColor;
   stroke-width: 2;
@@ -849,12 +856,12 @@ h3 {
 
 .demo-share-box {
   display: grid;
-  gap: 8px;
+  gap: 7px;
   border: 1px solid var(--action-border);
   border-radius: 8px;
-  background: #f6f9fd;
+  background: #f8fbff;
   margin: 0 0 8px;
-  padding: 10px;
+  padding: 9px;
 }
 
 .demo-share-box span {
@@ -892,11 +899,15 @@ h3 {
 }
 
 .profile-panel .demo-share-box button {
-  min-height: 32px;
-  border: 1px solid rgba(31, 78, 121, 0.24);
-  background: rgba(31, 78, 121, 0.08);
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d6e2ef;
+  border-radius: 7px;
+  background: white;
   color: var(--action-dark);
-  padding: 7px 8px;
+  padding: 6px 8px;
   text-align: center;
   font-size: 11px;
   line-height: 1.2;
@@ -8863,7 +8874,7 @@ dialog::backdrop {
 
   .topbar-title-wrap {
     flex: 1 1 auto;
-    max-width: calc(100% - 96px);
+    max-width: none;
     min-width: 0;
   }
 
@@ -8875,9 +8886,16 @@ dialog::backdrop {
   }
 
   .topbar-back.visible {
-    width: 34px;
-    height: 34px;
-    min-height: 34px;
+    width: 36px;
+    min-width: 36px;
+    flex-basis: 36px;
+    height: 36px;
+    min-height: 36px;
+  }
+
+  .topbar-back svg {
+    width: 19px;
+    height: 19px;
   }
 
   .admin-actions {
