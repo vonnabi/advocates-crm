@@ -18,7 +18,7 @@ for (const viewport of viewports) {
     await page.goto("/");
 
     for (const view of criticalViews) {
-      await page.locator(`[data-view="${view}"]`).click();
+      await page.locator(`.nav-item[data-view="${view}"]`).click();
       await expect(page.locator(`#${view}`)).toHaveClass(/active/);
 
       const overflow = await page.evaluate(() => ({

@@ -6,7 +6,7 @@ test.beforeEach(async ({ page }) => {
 
 test("topbar back returns from case detail to the cases list", async ({ page }) => {
   await page.goto("/");
-  await page.locator('[data-view="cases"]').click();
+  await page.locator('.nav-item[data-view="cases"]').click();
   await page.locator("[data-open-case]").first().click();
 
   await expect(page.locator("#cases")).toHaveClass(/active/);
@@ -23,8 +23,10 @@ test("topbar back returns from case detail to the cases list", async ({ page }) 
 
 test("topbar back closes the task detail panel before leaving tasks", async ({ page }) => {
   await page.goto("/");
-  await page.locator('[data-view="tasks"]').click();
-  await page.locator("[data-task-key]").first().click();
+  await page.locator('.nav-item[data-view="tasks"]').click();
+  const taskRow = page.locator("#tasks [data-task-key]").first();
+  await expect(taskRow).toBeVisible();
+  await taskRow.click();
 
   await expect(page.locator("#tasks")).toHaveClass(/active/);
   await expect(page.locator("#tasks .task-side-card:not(.empty)")).toBeVisible();
