@@ -4,8 +4,13 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => window.localStorage.clear());
 });
 
+async function waitForAppReady(page) {
+  await expect(page.locator("#dashboard")).toContainText("Активних справ");
+}
+
 test("topbar back returns from case detail to the cases list", async ({ page }) => {
   await page.goto("/");
+  await waitForAppReady(page);
   await page.locator('.nav-item[data-view="cases"]').click();
   await page.locator("[data-open-case]").first().click();
 
@@ -23,6 +28,7 @@ test("topbar back returns from case detail to the cases list", async ({ page }) 
 
 test("topbar back closes the task detail panel before leaving tasks", async ({ page }) => {
   await page.goto("/");
+  await waitForAppReady(page);
   await page.locator('.nav-item[data-view="tasks"]').click();
   const taskRow = page.locator("#tasks [data-task-key]").first();
   await expect(taskRow).toBeVisible();
@@ -41,6 +47,7 @@ test("topbar back closes the task detail panel before leaving tasks", async ({ p
 
 test("notifications menu navigates, closes, and clears the badge", async ({ page }) => {
   await page.goto("/");
+  await waitForAppReady(page);
   await page.locator("#notifications-toggle").click();
 
   await expect(page.locator("#notifications-menu")).toBeVisible();
@@ -62,6 +69,7 @@ test("notifications menu navigates, closes, and clears the badge", async ({ page
 
 test("sidebar collapse and restore controls keep the navigation usable", async ({ page }) => {
   await page.goto("/");
+  await waitForAppReady(page);
 
   await page.locator(".collapse-menu").click();
   await expect(page.locator("body")).toHaveClass(/sidebar-collapsed/);
@@ -74,6 +82,7 @@ test("sidebar collapse and restore controls keep the navigation usable", async (
 
 test("profile menu actions can open settings and collapse the sidebar", async ({ page }) => {
   await page.goto("/");
+  await waitForAppReady(page);
   await page.locator("#admin-profile-toggle").click();
 
   await expect(page.locator("#admin-profile-menu")).toBeVisible();
