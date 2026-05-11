@@ -3822,6 +3822,7 @@ td a,
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+  position: relative;
 }
 
 .planner-item-actions .secondary {
@@ -3835,6 +3836,65 @@ td a,
   height: 32px;
   min-height: 32px;
   font-size: 18px;
+}
+
+.planner-more-wrap {
+  position: relative;
+}
+
+.planner-more-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 210px;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  padding: 6px;
+  box-shadow: var(--shadow);
+}
+
+.planner-more-menu[hidden] {
+  display: none;
+}
+
+.planner-more-menu button {
+  width: 100%;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  padding: 0 9px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+}
+
+.planner-more-menu button:hover {
+  background: var(--action-hover);
+  color: white;
+}
+
+.planner-more-menu button.danger {
+  color: var(--semantic-red);
+}
+
+.planner-more-menu button.danger:hover {
+  color: white;
+  background: var(--semantic-red);
+}
+
+.planner-more-menu .ui-icon {
+  width: 15px;
+  height: 15px;
 }
 
 .planner-add-row {

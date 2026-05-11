@@ -143,7 +143,15 @@ export function renderPlannerScreen(ctx) {
                       <div class="planner-item-actions">
                         <button type="button" class="secondary" data-open-planner-case="${task.caseId}">Відкрити справу</button>
                         <button type="button" class="secondary" data-complete-planner-task="${task.key}">Виконано</button>
-                        <button type="button" class="icon-button compact" data-edit-planner-task="${task.key}" aria-label="Редагувати">⋮</button>
+                        <div class="planner-more-wrap">
+                          <button type="button" class="icon-button compact" data-planner-more="${task.key}" aria-label="Додаткові дії" aria-expanded="false">⋮</button>
+                          <div class="planner-more-menu" data-planner-menu="${task.key}" hidden>
+                            <button type="button" data-edit-planner-task="${task.key}">${icon("edit")} Редагувати</button>
+                            <button type="button" data-reschedule-planner-task="${task.key}">${icon("calendar")} Перенести дедлайн</button>
+                            <button type="button" data-important-planner-task="${task.key}">${icon("bell")} ${task.plannerImportant ? "Зняти важливість" : "Позначити важливу"}</button>
+                            <button type="button" class="danger" data-remove-planner-task="${task.key}">${icon("trash")} Прибрати з плану</button>
+                          </div>
+                        </div>
                       </div>
                     </article>
                   `).join("")}
@@ -237,6 +245,18 @@ export function renderPlannerScreen(ctx) {
       showToast("Задачу виконано і прибрано з плану.");
     });
   });
+  document.querySelectorAll("[data-planner-more]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const menu = document.querySelector(`[data-planner-menu="${button.dataset.plannerMore}"]`);
+      if (!menu) return;
+      const willOpen = menu.hidden;
+      document.querySelectorAll(".planner-more-menu").forEach((item) => item.hidden = true);
+      document.querySelectorAll("[data-planner-more]").forEach((item) => item.setAttribute("aria-expanded", "false"));
+      menu.hidden = !willOpen;
+      button.setAttribute("aria-expanded", String(willOpen));
+    });
+  });
   document.querySelectorAll("[data-edit-planner-task]").forEach((button) => {
     button.addEventListener("click", () => {
       const task = tasks.find((item) => item.key === button.dataset.editPlannerTask);
@@ -244,4 +264,41 @@ export function renderPlannerScreen(ctx) {
       openTaskDialog(task.caseId, task.taskIndex, "planner");
     });
   });
+  document.querySelectorAll("[data-reschedule-planner-task]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const task = tasks.find((item) => item.key === button.dataset.reschedulePlannerTask);
+      if (!task) return;
+      openTaskDialog(task.caseId, task.taskIndex, "planner");
+    });
+  });
+  document.querySelectorAll("[data-important-planner-task]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const task = tasks.find((item) => item.key === button.dataset.importantPlannerTask);
+      const source = sourceTask(task);
+      if (!source) return;
+      source.plannerImportant = !task.plannerImportant;
+      if (source.plannerImportant) source.plannerSuppressed = false;
+      renderAll();
+      switchView("planner");
+      showToast(source.plannerImportant ? "Задачу позначено важливою." : "Важливість задачі знято.");
+    });
+  });
+  document.querySelectorAll("[data-remove-planner-task]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const task = tasks.find((item) => item.key === button.dataset.removePlannerTask);
+      const source = sourceTask(task);
+      if (!source) return;
+      source.plannerManual = false;
+      source.plannerImportant = false;
+      source.plannerSuppressed = true;
+      renderAll();
+      switchView("planner");
+      showToast("Задачу прибрано з плану.");
+    });
+  });
+  document.addEventListener("click", (event) => {
+    if (event.target.closest(".planner-more-wrap")) return;
+    document.querySelectorAll(".planner-more-menu").forEach((item) => item.hidden = true);
+    document.querySelectorAll("[data-planner-more]").forEach((item) => item.setAttribute("aria-expanded", "false"));
+  }, { once: true });
 }

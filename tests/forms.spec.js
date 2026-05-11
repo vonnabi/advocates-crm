@@ -122,6 +122,12 @@ test("task planner flags sync with the planner screen", async ({ page }) => {
 
   const plannerItem = page.locator(".planner-item").filter({ hasText: taskTitle });
   await expect(plannerItem).toBeVisible();
+  await plannerItem.locator("[data-planner-more]").click();
+  await expect(plannerItem.locator(".planner-more-menu")).toBeVisible();
+  await plannerItem.locator("[data-edit-planner-task]").click();
+  await expect(page.locator("#task-dialog")).toHaveJSProperty("open", true);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#task-dialog")).toHaveJSProperty("open", false);
   await plannerItem.locator('[data-complete-planner-task]').click();
   await expect(plannerItem).toHaveCount(0);
 

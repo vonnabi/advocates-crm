@@ -112,6 +112,7 @@ export function allCaseTasks(ctx = null) {
       const autoReason = plannerAutoReason(priority, overdue, daysUntilDue);
       const manualReason = task.plannerManual ? "Додано вручну" : "";
       const importantReason = task.plannerImportant ? "Важлива задача" : "";
+      const plannerSuppressed = Boolean(task.plannerSuppressed && !task.plannerManual && !task.plannerImportant);
       return {
         ...task,
         key: `${item.id}:${index}`,
@@ -128,9 +129,10 @@ export function allCaseTasks(ctx = null) {
         priority,
         plannerAutoReason: autoReason,
         plannerReason: manualReason || importantReason || autoReason || "",
-        plannerIncluded: Boolean(task.plannerManual || task.plannerImportant || autoReason),
+        plannerIncluded: Boolean(!plannerSuppressed && (task.plannerManual || task.plannerImportant || autoReason)),
         plannerManual: Boolean(task.plannerManual),
-        plannerImportant: Boolean(task.plannerImportant)
+        plannerImportant: Boolean(task.plannerImportant),
+        plannerSuppressed
       };
     });
   });
@@ -618,6 +620,7 @@ function renderTasks() {
       const source = sourceTask(task);
       if (!source) return;
       source.plannerManual = !task.plannerManual;
+      if (source.plannerManual) source.plannerSuppressed = false;
       renderAll();
       switchView("tasks");
       showToast(source.plannerManual ? "Задачу додано в Планер." : "Задачу прибрано з ручного плану.");
@@ -630,6 +633,7 @@ function renderTasks() {
       const source = sourceTask(task);
       if (!source) return;
       source.plannerImportant = !task.plannerImportant;
+      if (source.plannerImportant) source.plannerSuppressed = false;
       renderAll();
       switchView("tasks");
       showToast(source.plannerImportant ? "Задачу позначено важливою." : "Важливість задачі знято.");
