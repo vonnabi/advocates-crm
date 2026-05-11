@@ -85,6 +85,7 @@
 - [x] вынести формы задач и папок документов в `frontend/js/forms/case-items.js`.
 - [x] установить Playwright и добавить smoke-тесты для меню и основных модальных окон.
 - [x] добавить Playwright-проверку адаптива на desktop, планшете и мобильном размере.
+- [x] подключить Playwright smoke-тесты к GitHub Actions перед публикацией Pages.
 
 ### Шаг 4. Подключить frontend к backend
 
