@@ -375,7 +375,7 @@ function hasInternalBack(view = state.currentView) {
 function updateTopbarBack() {
   const backButton = $("#topbar-back");
   if (backButton) {
-    const visible = state.viewHistory.length > 0 || hasInternalBack();
+    const visible = state.currentView !== "dashboard" || state.viewHistory.length > 0 || hasInternalBack();
     backButton.classList.toggle("visible", visible);
     const label = backTargetLabel();
     backButton.title = label;
@@ -392,6 +392,7 @@ function backTargetLabel() {
   if (state.currentView === "cases" && state.caseScreen === "detail") return "Назад к списку справ";
   if (state.currentView === "tasks" && state.taskDetailOpen) return "Назад к списку задач";
   if (state.currentView === "mailings" && state.previousMailingTab) return "Назад к предыдущей вкладке рассылки";
+  if (!state.viewHistory.length && state.currentView !== "dashboard") return "Назад к разделу: Дашборд";
   const previousTitle = titles[state.viewHistory.at(-1)] || "предыдущему разделу";
   return `Назад к разделу: ${previousTitle}`;
 }

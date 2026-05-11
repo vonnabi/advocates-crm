@@ -852,7 +852,7 @@ h3 {
   gap: 8px;
   border: 1px solid var(--action-border);
   border-radius: 8px;
-  background: var(--action-soft);
+  background: #f6f9fd;
   margin: 0 0 8px;
   padding: 10px;
 }
@@ -866,21 +866,19 @@ h3 {
 
 .demo-share-box strong {
   color: #172033;
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
 .demo-share-box div {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .demo-share-box button {
-  background: var(--action-dark);
-  color: white;
-  border: 1px solid var(--action-dark);
-  text-align: center;
+  min-width: 0;
 }
 
 .profile-panel button {
@@ -891,6 +889,26 @@ h3 {
   text-align: left;
   font-size: 13px;
   font-weight: 800;
+}
+
+.profile-panel .demo-share-box button {
+  min-height: 32px;
+  border: 1px solid rgba(31, 78, 121, 0.24);
+  background: rgba(31, 78, 121, 0.08);
+  color: var(--action-dark);
+  padding: 7px 8px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.profile-panel .demo-share-box button:hover {
+  border-color: var(--action-dark);
+  background: var(--action-dark);
+  color: white;
 }
 
 .settings-screen {

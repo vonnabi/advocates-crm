@@ -1,9 +1,5 @@
 import { expect, test } from "@playwright/test";
 
-test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => window.localStorage.clear());
-});
-
 async function waitForAppReady(page) {
   await expect(page.locator("#dashboard")).toContainText("Активних справ");
 }
@@ -44,6 +40,23 @@ test("topbar back closes the task detail panel before leaving tasks", async ({ p
   await expect(page.locator("#tasks .task-side-card")).toHaveCount(0);
   await expect(page.locator("#topbar-back")).not.toHaveAttribute("aria-label", "Назад к списку задач");
 });
+
+for (const view of ["tasks", "planner"]) {
+  test(`mobile topbar back returns from a restored ${view} screen to dashboard`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript((currentView) => {
+      window.localStorage.setItem("advocates-crm-navigation", JSON.stringify({ currentView, viewHistory: [] }));
+    }, view);
+    await page.goto("/");
+
+    await expect(page.locator(`#${view}`)).toHaveClass(/active/);
+    await expect(page.locator("#topbar-back")).toHaveClass(/visible/);
+    await expect(page.locator("#topbar-back")).toHaveAttribute("aria-label", "Назад к разделу: Дашборд");
+
+    await page.locator("#topbar-back").click();
+    await expect(page.locator("#dashboard")).toHaveClass(/active/);
+  });
+}
 
 test("notifications menu navigates, closes, and clears the badge", async ({ page }) => {
   await page.goto("/");
@@ -92,4 +105,22 @@ test("profile menu actions can open settings and collapse the sidebar", async ({
   await page.locator("#admin-profile-toggle").click();
   await page.locator('[data-profile-action="compact"]').click();
   await expect(page.locator("body")).toHaveClass(/sidebar-collapsed/);
+});
+
+test("mobile profile demo buttons stay inside the dropdown", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await waitForAppReady(page);
+  await page.locator("#admin-profile-toggle").click();
+
+  await expect(page.locator("#admin-profile-menu")).toBeVisible();
+  const buttonsFit = await page.locator(".demo-share-box").evaluate((box) => {
+    const boxRect = box.getBoundingClientRect();
+    return [...box.querySelectorAll("button")].every((button) => {
+      const rect = button.getBoundingClientRect();
+      return rect.left >= boxRect.left - 1 && rect.right <= boxRect.right + 1;
+    });
+  });
+
+  expect(buttonsFit).toBe(true);
 });
