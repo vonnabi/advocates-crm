@@ -44,10 +44,12 @@ export function renderPlannerScreen(ctx) {
     bindViewLinks,
     calendarEntries,
     calendarToday,
+    caseById,
     dateFromIso,
     icon,
     monthNames,
     openTaskDialog,
+    renderAll,
     renderCases,
     switchView,
     showToast
@@ -55,9 +57,10 @@ export function renderPlannerScreen(ctx) {
   const tasks = allCaseTasks();
   const entries = calendarEntries();
   const planDate = dateFromIso(calendarToday);
-  const priorityOrder = { "Високий": 0, "Середній": 1, "Низький": 2 };
+  const sourceTask = (task) => task ? caseById(task.caseId)?.tasks?.[task.taskIndex] : null;
+  const priorityOrder = { "Високий": 0, "Середній": 1, "Низький": 2, "Плановий": 3 };
   const planItems = tasks
-    .filter((task) => !task.completed)
+    .filter((task) => task.plannerIncluded && !task.completed)
     .sort((a, b) => {
       const priorityDiff = (priorityOrder[a.priority] ?? 3) - (priorityOrder[b.priority] ?? 3);
       return priorityDiff || String(a.dueText).localeCompare(String(b.dueText));
@@ -83,7 +86,7 @@ export function renderPlannerScreen(ctx) {
       title: "Планові (низький пріоритет)",
       tone: "green",
       icon: "calendar",
-      items: planItems.filter((task) => task.priority === "Низький")
+      items: planItems.filter((task) => ["Низький", "Плановий"].includes(task.priority))
     }
   ];
   const completed = tasks.filter((task) => task.completed).length;
@@ -130,7 +133,7 @@ export function renderPlannerScreen(ctx) {
                       <div class="planner-item-icon">${icon(taskIconName(task))}</div>
                       <div class="planner-item-main">
                         <strong>${task.title}</strong>
-                        <span>${task.caseTitle}</span>
+                        <span>${task.caseTitle} · ${task.plannerReason || task.status}</span>
                       </div>
                       ${badge(taskCategory(task), group.tone)}
                       <div class="planner-item-case">
@@ -139,7 +142,8 @@ export function renderPlannerScreen(ctx) {
                       </div>
                       <div class="planner-item-actions">
                         <button type="button" class="secondary" data-open-planner-case="${task.caseId}">Відкрити справу</button>
-                        <button type="button" class="icon-button compact" aria-label="Додаткові дії">⋮</button>
+                        <button type="button" class="secondary" data-complete-planner-task="${task.key}">Виконано</button>
+                        <button type="button" class="icon-button compact" data-edit-planner-task="${task.key}" aria-label="Редагувати">⋮</button>
                       </div>
                     </article>
                   `).join("")}
@@ -202,7 +206,16 @@ export function renderPlannerScreen(ctx) {
   `;
 
   bindViewLinks();
-  $("#generate-plan")?.addEventListener("click", () => showToast("План на завтра оновлено."));
+  $("#generate-plan")?.addEventListener("click", () => {
+    tasks.forEach((task) => {
+      const source = sourceTask(task);
+      if (!source) return;
+      source.plannerAutoReason = task.plannerAutoReason || "";
+    });
+    renderAll();
+    switchView("planner");
+    showToast(`План на завтра оновлено: ${planItems.length} задач.`);
+  });
   $("#add-plan-task")?.addEventListener("click", () => openTaskDialog(state.selectedCaseId || state.cases[0]?.id, null, "planner"));
   $("#add-plan-task-bottom")?.addEventListener("click", () => openTaskDialog(state.selectedCaseId || state.cases[0]?.id, null, "planner"));
   document.querySelectorAll("[data-open-planner-case]").forEach((button) => {
@@ -211,6 +224,24 @@ export function renderPlannerScreen(ctx) {
       state.caseScreen = "detail";
       renderCases();
       switchView("cases");
+    });
+  });
+  document.querySelectorAll("[data-complete-planner-task]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const task = tasks.find((item) => item.key === button.dataset.completePlannerTask);
+      const source = sourceTask(task);
+      if (!source) return;
+      source.status = "Виконано";
+      renderAll();
+      switchView("planner");
+      showToast("Задачу виконано і прибрано з плану.");
+    });
+  });
+  document.querySelectorAll("[data-edit-planner-task]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const task = tasks.find((item) => item.key === button.dataset.editPlannerTask);
+      if (!task) return;
+      openTaskDialog(task.caseId, task.taskIndex, "planner");
     });
   });
 }

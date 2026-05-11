@@ -159,7 +159,7 @@ export function taskTone(status) {
 export function semanticTone(value = "") {
   const text = String(value || "").toLowerCase();
   if (!text) return "blue";
-  if (text.includes("не срочно") || text.includes("низьк")) return "green";
+  if (text.includes("не срочно") || text.includes("низьк") || text.includes("планов")) return "green";
   if (
     text.includes("просроч") ||
     text.includes("простроч") ||

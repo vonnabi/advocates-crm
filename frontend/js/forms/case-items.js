@@ -7,14 +7,20 @@ export function setupCaseItemForms({ state, $, caseById, caseFolders, formatDate
     const item = caseById(taskIndex !== null ? event.currentTarget.dataset.originalCaseId : form.get("caseId"));
     const due = form.get("due");
     const title = form.get("title");
+    const priority = form.get("priority") || "Середній";
+    const plannerManual = Boolean(form.get("plannerManual"));
+    const plannerImportant = Boolean(form.get("plannerImportant"));
     if (taskIndex !== null) {
       const task = item.tasks[taskIndex];
       if (!task) return;
       task.title = title;
       task.status = form.get("status");
+      task.priority = priority;
       task.responsible = form.get("responsible");
       task.due = due ? formatDate(due) : "Не вказано";
       task.showInCalendar = Boolean(form.get("showInCalendar") && due);
+      task.plannerManual = plannerManual;
+      task.plannerImportant = plannerImportant;
       item.history.unshift({
         date: new Date().toLocaleDateString("uk-UA"),
         text: `Оновлено задачу: ${title}.`
@@ -29,9 +35,12 @@ export function setupCaseItemForms({ state, $, caseById, caseFolders, formatDate
     item.tasks.unshift({
       title,
       status: form.get("status"),
+      priority,
       responsible: form.get("responsible"),
       due: due ? formatDate(due) : "Не вказано",
-      showInCalendar: Boolean(form.get("showInCalendar") && due)
+      showInCalendar: Boolean(form.get("showInCalendar") && due),
+      plannerManual,
+      plannerImportant
     });
     item.history.unshift({
       date: new Date().toLocaleDateString("uk-UA"),

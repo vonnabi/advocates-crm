@@ -197,6 +197,13 @@ export function createDialogOpeners({
     $("#document-dialog").showModal();
   }
 
+  function taskPriority(task = {}) {
+    if (task.priority) return task.priority;
+    if (["Терміново", "Срочно"].includes(task.status)) return "Високий";
+    if (task.status === "Не срочно") return "Низький";
+    return "Середній";
+  }
+
   function openTaskDialog(caseId, taskIndex = null, returnView = null) {
     const form = $("#task-form");
     form.reset();
@@ -206,6 +213,9 @@ export function createDialogOpeners({
     form.elements.taskIndex.value = "";
     state.taskDialogReturnView = returnView || ($("#tasks")?.classList.contains("active") ? "tasks" : "cases");
     form.elements.showInCalendar.checked = true;
+    form.elements.plannerManual.checked = returnView === "planner";
+    form.elements.plannerImportant.checked = false;
+    form.elements.priority.value = "Середній";
     $("#task-dialog-title").textContent = "Нова задача";
     $("#task-submit-button").textContent = "Додати задачу";
     if (taskIndex !== null) {
@@ -214,9 +224,12 @@ export function createDialogOpeners({
       form.elements.taskIndex.value = taskIndex;
       form.elements.title.value = task.title;
       form.elements.status.value = task.status;
+      form.elements.priority.value = taskPriority(task);
       form.elements.responsible.value = task.responsible || caseById(caseId)?.responsible || "Іваненко А.Ю.";
       form.elements.due.value = parseDisplayDate(task.due);
       form.elements.showInCalendar.checked = Boolean(task.showInCalendar);
+      form.elements.plannerManual.checked = Boolean(task.plannerManual);
+      form.elements.plannerImportant.checked = Boolean(task.plannerImportant);
       $("#task-dialog-title").textContent = "Редагувати задачу";
       $("#task-submit-button").textContent = "Зберегти задачу";
     }

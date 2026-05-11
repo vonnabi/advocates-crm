@@ -336,12 +336,26 @@
         <label>Назва задачі<input name="title" required placeholder="Наприклад: Підготувати позов" /></label>
         <label>Статус
           <select name="status">
+            <option>Нова</option>
+            <option>Заплановано</option>
             <option>Очікує</option>
             <option>В роботі</option>
+            <option>На перевірці</option>
+            <option>Перенесено</option>
+            <option>Просрочено</option>
+            <option>Скасовано</option>
             <option>Терміново</option>
             <option>Срочно</option>
             <option>Не срочно</option>
             <option>Виконано</option>
+          </select>
+        </label>
+        <label>Пріоритет
+          <select name="priority">
+            <option>Високий</option>
+            <option selected>Середній</option>
+            <option>Низький</option>
+            <option>Плановий</option>
           </select>
         </label>
         <label>Відповідальний
@@ -356,6 +370,14 @@
         <label class="checkline">
           <input name="showInCalendar" type="checkbox" />
           <span>Показувати в календарі</span>
+        </label>
+        <label class="checkline">
+          <input name="plannerManual" type="checkbox" />
+          <span>Додати в Планер</span>
+        </label>
+        <label class="checkline">
+          <input name="plannerImportant" type="checkbox" />
+          <span>Позначити як важливу</span>
         </label>
         <button class="primary" id="task-submit-button" value="default" type="submit">Додати задачу</button>
       </form>

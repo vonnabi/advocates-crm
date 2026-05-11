@@ -99,3 +99,35 @@ test("task form creates, edits, and deletes a task", async ({ page }) => {
   await expect(page.locator("#delete-document-dialog")).toHaveJSProperty("open", false);
   await expect(page.locator("#tasks [data-task-key]").filter({ hasText: updatedTitle })).toHaveCount(0);
 });
+
+test("task planner flags sync with the planner screen", async ({ page }) => {
+  const taskTitle = "Автотестова задача для планера";
+
+  await openApp(page);
+  await page.locator('.nav-item[data-view="tasks"]').click();
+  await page.locator("#task-create-from-section").click();
+
+  await expect(page.locator("#task-dialog")).toHaveJSProperty("open", true);
+  await page.locator('#task-form [name="title"]').fill(taskTitle);
+  await page.locator('#task-form [name="status"]').selectOption("В роботі");
+  await page.locator('#task-form [name="priority"]').selectOption("Високий");
+  await page.locator('#task-form [name="responsible"]').selectOption("Іваненко А.Ю.");
+  await page.locator('#task-form [name="due"]').fill("2026-06-21");
+  await page.locator('#task-form [name="plannerManual"]').check();
+  await page.locator("#task-submit-button").click();
+
+  await expect(page.locator("#tasks")).toHaveClass(/active/);
+  await page.locator("#task-sync-planner").click();
+  await page.locator('.nav-item[data-view="planner"]').click();
+
+  const plannerItem = page.locator(".planner-item").filter({ hasText: taskTitle });
+  await expect(plannerItem).toBeVisible();
+  await plannerItem.locator('[data-complete-planner-task]').click();
+  await expect(plannerItem).toHaveCount(0);
+
+  await page.locator('.nav-item[data-view="tasks"]').click();
+  await page.locator("#task-search").fill(taskTitle);
+  const taskRow = page.locator("#tasks [data-task-key]").filter({ hasText: taskTitle });
+  await expect(taskRow).toBeVisible();
+  await expect(taskRow).toContainText("Виконано");
+});
