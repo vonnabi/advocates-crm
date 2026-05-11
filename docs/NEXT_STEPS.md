@@ -84,6 +84,7 @@
 - [x] вынести submit-обработчик формы документов в `frontend/js/forms/documents.js`.
 - [x] вынести формы задач и папок документов в `frontend/js/forms/case-items.js`.
 - [x] установить Playwright и добавить smoke-тесты для меню и основных модальных окон.
+- [x] добавить Playwright-проверку адаптива на desktop, планшете и мобильном размере.
 
 ### Шаг 4. Подключить frontend к backend
 
