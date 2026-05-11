@@ -494,7 +494,7 @@ function renderCaseList() {
     event.stopPropagation();
     const [caseId, encoded] = node.dataset.previewDeleteDocument.split("|");
     const [folderIndex, fileIndex] = encoded.split(":").map(Number);
-    openDeleteDocumentConfirm({ caseId, folderIndex, fileIndex, type: "folder" });
+    openDeleteDocumentConfirm({ caseId, folderIndex, fileIndex, type: "folderFile" });
   }));
   document.querySelectorAll("[data-edit-case-row]").forEach((node) => node.addEventListener("click", (event) => {
     event.preventDefault();
@@ -890,7 +890,7 @@ function renderCaseProfile(id) {
   document.querySelectorAll("[data-delete-folder-file]").forEach((button) => button.addEventListener("click", (event) => {
     event.stopPropagation();
     const [folderIndex, fileIndex] = button.dataset.deleteFolderFile.split(":").map(Number);
-    openDeleteDocumentConfirm({ caseId: item.id, folderIndex, fileIndex, type: "folder" });
+    openDeleteDocumentConfirm({ caseId: item.id, folderIndex, fileIndex, type: "folderFile" });
   }));
   document.querySelectorAll("[data-delete-procedural-doc]").forEach((button) => button.addEventListener("click", (event) => {
     event.stopPropagation();

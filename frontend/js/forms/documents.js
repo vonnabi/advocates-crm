@@ -77,7 +77,7 @@ export function setupDocumentForm({
       state.selectedCaseId = item.id;
       $("#document-dialog").close();
       renderAll();
-      switchView("cases");
+      switchView(state.documentDialogReturnView || "cases");
       showToast("Документ оновлено.");
       return;
     }
@@ -128,7 +128,7 @@ export function setupDocumentForm({
     state.openCaseSection = "documents";
     $("#document-dialog").close();
     renderAll();
-    switchView("cases");
+    switchView(state.documentDialogReturnView || "cases");
     showToast("Документ додано до справи.");
   });
 }

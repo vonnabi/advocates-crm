@@ -185,6 +185,8 @@ function screenContext() {
     advocatePhoto,
     clientById,
     caseById,
+    caseFolders,
+    findFolderFileByDocument,
     allCaseTasks,
     calendarEntries,
     openClientDialog,

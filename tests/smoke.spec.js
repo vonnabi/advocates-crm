@@ -47,3 +47,19 @@ test("primary create dialogs open", async ({ page }) => {
   await page.locator("#add-plan-task").click();
   await expect(page.locator("#task-dialog")).toHaveJSProperty("open", true);
 });
+
+test("global documents screen exposes document actions", async ({ page }) => {
+  await page.goto("/");
+
+  await page.locator('.nav-item[data-view="documents"]').click();
+  await expect(page.locator("#documents")).toHaveClass(/active/);
+  await expect(page.locator("#documents [data-document-row]").first()).toBeVisible();
+
+  await page.locator("#documents [data-document-row]").first().click();
+  await page.locator("#documents [data-edit-global-document]").first().click();
+  await expect(page.locator("#document-dialog")).toHaveJSProperty("open", true);
+  await page.locator("#document-dialog-close").click();
+
+  await page.locator("#documents [data-documents-add]").click();
+  await expect(page.locator("#document-dialog")).toHaveJSProperty("open", true);
+});

@@ -76,7 +76,7 @@ export function setupCaseItemForms({ state, $, caseById, caseFolders, formatDate
       state.selectedCaseId = item.id;
       $("#folder-dialog").close();
       renderAll();
-      switchView("cases");
+      switchView(state.folderDialogReturnView || "cases");
       showToast("Папку перейменовано.");
       return;
     }
@@ -92,7 +92,7 @@ export function setupCaseItemForms({ state, $, caseById, caseFolders, formatDate
     state.selectedCaseId = item.id;
     $("#folder-dialog").close();
     renderAll();
-    switchView("cases");
+    switchView(state.folderDialogReturnView || "cases");
     showToast("Папку створено.");
   });
 }

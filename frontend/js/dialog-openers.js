@@ -160,11 +160,12 @@ export function createDialogOpeners({
     showToast(`Для документа «${documentData.name}» пока нет файла или ссылки.`, "warning");
   }
 
-  function openDocumentDialog(caseId, editContext = null) {
+  function openDocumentDialog(caseId, editContext = null, returnView = null) {
     const form = $("#document-form");
     form.reset();
     form.elements.caseId.value = caseId;
     const item = caseById(caseId);
+    state.documentDialogReturnView = returnView || ($("#documents")?.classList.contains("active") ? "documents" : "cases");
     $("#document-folder").innerHTML = [
       ...caseFolders(item).map((folder, index) => `<option value="${index}">${folder.name}</option>`),
       `<option value="__new__">+ Создать новую папку</option>`
@@ -292,11 +293,12 @@ export function createDialogOpeners({
     $("#event-dialog").showModal();
   }
 
-  function openFolderDialog(caseId, folderIndex = null) {
+  function openFolderDialog(caseId, folderIndex = null, returnView = null) {
     const form = $("#folder-form");
     form.reset();
     form.elements.caseId.value = caseId;
     form.elements.folderIndex.value = "";
+    state.folderDialogReturnView = returnView || ($("#documents")?.classList.contains("active") ? "documents" : "cases");
     $("#folder-dialog-title").textContent = "Нова папка";
     $("#folder-submit-button").textContent = "Створити папку";
     if (folderIndex !== null) {
