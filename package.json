@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "serve": "python3 -m http.server 8000 -d frontend",
+    "serve": "python3 scripts/dev_server.py",
     "test": "npm run test:smoke",
     "test:smoke": "playwright test",
     "test:smoke:headed": "playwright test --headed"

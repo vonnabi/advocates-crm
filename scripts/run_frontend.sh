@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
-cd "$(dirname "$0")/../frontend"
-python3 -m http.server 8000
+cd "$(dirname "$0")/.."
+python3 scripts/dev_server.py
