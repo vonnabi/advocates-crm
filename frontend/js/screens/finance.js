@@ -149,6 +149,71 @@ const FINANCE_ACTIONS = {
   }
 };
 
+const FINANCE_WORKSPACES = {
+  income: {
+    title: "Надходження",
+    subtitle: "Оплати клієнтів, консультації та гонорари, пов'язані зі справами.",
+    action: "income",
+    actionLabel: "Додати надходження",
+    empty: "Надходжень за обраний період немає."
+  },
+  expenses: {
+    title: "Витрати",
+    subtitle: "Судові збори, поштові та інші витрати, які потрібно врахувати у фінансах.",
+    action: "expense",
+    actionLabel: "Додати витрату",
+    empty: "Витрат за обраний період немає."
+  },
+  cases: {
+    title: "Фінанси по справах",
+    subtitle: "Контроль договорів, оплат і боргів у розрізі кожної справи.",
+    action: "invoice",
+    actionLabel: "Виставити рахунок",
+    empty: "Справи з фінансовими даними не знайдені."
+  },
+  clients: {
+    title: "Клієнти та борги",
+    subtitle: "Клієнти з неоплаченими рахунками або частковими платежами.",
+    action: "income",
+    actionLabel: "Додати оплату",
+    empty: "Активних боргів за обраний період немає."
+  },
+  invoices: {
+    title: "Рахунки",
+    subtitle: "Виставлені рахунки, очікувані надходження і статуси оплати.",
+    action: "invoice",
+    actionLabel: "Виставити рахунок",
+    empty: "Рахунків за обраний період немає."
+  },
+  acts: {
+    title: "Акти",
+    subtitle: "Акти виконаних робіт, які створюються у документах справи.",
+    action: "act",
+    actionLabel: "Створити акт",
+    empty: "Актів за обраний період немає."
+  },
+  payments: {
+    title: "Платежі",
+    subtitle: "Усі фактичні надходження та витрати за вибраний період.",
+    action: "income",
+    actionLabel: "Додати платіж",
+    empty: "Платежів за обраний період немає."
+  }
+};
+
+const SALARY_ROWS = [
+  ["Іваненко А.Ю.", "Адвокат", "80 000 грн", "12 000 грн", "92 000 грн", "Готово"],
+  ["Мельник Н.П.", "Адвокат", "62 000 грн", "8 000 грн", "70 000 грн", "Готово"],
+  ["Кравчук А.В.", "Помічник", "34 000 грн", "3 500 грн", "37 500 грн", "Очікує"],
+  ["Петренко С.В.", "Юрист", "48 000 грн", "6 000 грн", "54 000 грн", "Готово"]
+];
+
+const REPORT_ROWS = [
+  ["Фінансовий звіт за період", "Доходи, витрати, прибуток і борги", "CSV"],
+  ["Звіт по заборгованості", "Клієнти, суми боргу і прострочки", "PDF"],
+  ["Реєстр рахунків та актів", "Документи, статуси і пов'язані справи", "XLSX"]
+];
+
 function isoToday() {
   return "2024-05-15";
 }
@@ -318,6 +383,157 @@ function expenseRows(rows) {
       <strong>${percent}% (${amount})</strong>
     </div>
   `).join("");
+}
+
+function financeWorkspaceSummary(label, value, hint) {
+  return `
+    <div class="finance-workspace-metric">
+      <span>${label}</span>
+      <strong>${value}</strong>
+      <small>${hint}</small>
+    </div>
+  `;
+}
+
+function financeCaseWorkspace(rows, currencyText, badge) {
+  return `
+    <div class="finance-workspace-table case-finance-workspace">
+      <div class="finance-workspace-head">
+        <span>Справа</span><span>Клієнт</span><span>Договір</span><span>Оплачено</span><span>Борг</span><span>Статус</span><span></span>
+      </div>
+      ${rows.map((item) => `
+        <div class="finance-workspace-row">
+          <button class="case-link-button" type="button" data-finance-open-case="${item.id}">№${item.id}</button>
+          <span>${item.client}</span>
+          <strong>${currencyText(item.total)}</strong>
+          <span>${currencyText(item.paid)}</span>
+          <b class="${item.debt ? "danger" : ""}">${currencyText(item.debt)}</b>
+          ${badge(item.financeStatus, item.debt ? "red" : "green")}
+          <button class="secondary compact" type="button" data-finance-work-case="${item.id}">Відкрити</button>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function financeClientWorkspace(rows, currencyText) {
+  const debtRows = rows.filter((item) => item.debt > 0);
+  if (!debtRows.length) {
+    return `<div class="finance-operation-empty">Активних боргів немає.</div>`;
+  }
+  return `
+    <div class="finance-workspace-cards">
+      ${debtRows.map((item) => `
+        <button class="finance-client-card" type="button" data-finance-open-case="${item.id}">
+          <span>${item.client}</span>
+          <strong>${currencyText(item.debt)}</strong>
+          <small>Справа №${item.id}</small>
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
+function financeSalaryWorkspace(icon) {
+  return `
+    <div class="finance-workspace-table salary-workspace">
+      <div class="finance-workspace-head">
+        <span>Співробітник</span><span>Роль</span><span>Ставка</span><span>Бонус</span><span>До виплати</span><span>Статус</span>
+      </div>
+      ${SALARY_ROWS.map(([name, role, base, bonus, total, status]) => `
+        <div class="finance-workspace-row">
+          <strong>${name}</strong>
+          <span>${role}</span>
+          <span>${base}</span>
+          <span>${bonus}</span>
+          <b>${total}</b>
+          <span class="status-pill ${status === "Готово" ? "green" : "amber"}">${status}</span>
+        </div>
+      `).join("")}
+    </div>
+    <div class="finance-workspace-footer">
+      <button class="secondary" type="button" data-finance-salary-export>${icon("file")} Відомість зарплати</button>
+      <button class="primary" type="button" data-finance-salary-run>${icon("check")} Нарахувати зарплату</button>
+    </div>
+  `;
+}
+
+function financeReportsWorkspace(icon, totals, currencyText) {
+  return `
+    <div class="finance-report-grid">
+      ${REPORT_ROWS.map(([title, text, format]) => `
+        <article class="finance-report-card">
+          <span>${icon("file")}</span>
+          <strong>${title}</strong>
+          <p>${text}</p>
+          <button class="secondary compact" type="button" data-export-finance>${format}</button>
+        </article>
+      `).join("")}
+    </div>
+    <div class="finance-workspace-footer finance-report-total">
+      <span>Поточний фінансовий результат</span>
+      <strong>${currencyText(totals.profit)}</strong>
+      <button class="primary" type="button" data-export-finance>${icon("file")} Експорт звіту</button>
+    </div>
+  `;
+}
+
+function financeWorkspace(ctx, rows, operations, visibleOperations, totals) {
+  const { state, icon, badge, currencyText } = ctx;
+  const meta = FINANCE_WORKSPACES[state.financeTab];
+  const isCases = state.financeTab === "cases";
+  const isClients = state.financeTab === "clients";
+  const isSalary = state.financeTab === "salary";
+  const isReports = state.financeTab === "reports";
+  const income = operations.filter((item) => item.type === "Надходження").reduce((sum, item) => sum + Math.max(item.amount, 0), 0);
+  const expenses = Math.abs(operations.filter((item) => item.type === "Витрата").reduce((sum, item) => sum + item.amount, 0));
+  const currentMeta = meta || {
+    title: FINANCE_TABS.find(([tab]) => tab === state.financeTab)?.[1] || "Фінанси",
+    subtitle: "Окремий фінансовий розділ з власними діями та записами.",
+    action: "income",
+    actionLabel: "Додати запис",
+    empty: "Записів за обраний період немає."
+  };
+
+  return `
+    <section class="panel finance-workspace-panel">
+      <div class="finance-workspace-top">
+        <div>
+          <span class="section-kicker">Робочий розділ</span>
+          <h2>${currentMeta.title}</h2>
+          <p>${currentMeta.subtitle}</p>
+        </div>
+        <div class="finance-workspace-actions">
+          <button class="secondary" type="button" data-finance-back-overview>${icon("calendar")} Повернутись до огляду</button>
+          ${!isSalary && !isReports ? `<button class="primary" type="button" data-finance-work-action="${currentMeta.action}">${currentMeta.actionLabel}</button>` : ""}
+        </div>
+      </div>
+
+      <div class="finance-workspace-metrics">
+        ${financeWorkspaceSummary("Записів", isCases ? rows.length : isClients ? rows.filter((item) => item.debt > 0).length : isSalary ? SALARY_ROWS.length : isReports ? REPORT_ROWS.length : visibleOperations.length, "у цьому розділі")}
+        ${financeWorkspaceSummary("Надходження", currencyText(income), "за вибраний період")}
+        ${financeWorkspaceSummary("Витрати", currencyText(expenses), "за вибраний період")}
+        ${financeWorkspaceSummary("Борг", currencyText(totals.debt), "поточний контроль")}
+      </div>
+
+      ${isSalary
+        ? financeSalaryWorkspace(icon)
+        : isReports
+          ? financeReportsWorkspace(icon, totals, currencyText)
+          : isCases
+            ? financeCaseWorkspace(rows, currencyText, badge)
+            : isClients
+              ? financeClientWorkspace(rows, currencyText)
+              : `
+                <div class="finance-workspace-table">
+                  <div class="finance-operation-head">
+                    <span>Дата</span><span>Тип</span><span>Назва / Опис</span><span>Справа</span><span>Клієнт</span><span>Сума</span><span>Статус</span><span>Спосіб оплати</span><span></span>
+                  </div>
+                  <div class="finance-operation-list">${visibleOperations.length ? operationRows(visibleOperations, badge) : `<div class="finance-operation-empty">${currentMeta.empty}</div>`}</div>
+                </div>
+              `}
+    </section>
+  `;
 }
 
 function ensureFinanceFolder(item, caseFolders) {
@@ -567,6 +783,7 @@ export function renderFinanceScreen(ctx) {
         `).join("")}
       </nav>
 
+      ${state.financeTab === "overview" ? `
       <section class="finance-kpi-grid">
         ${[
           { title: "Загальний дохід", value: currencyText(totals.income), trend: "+12%", iconName: "briefcase", tone: "blue" },
@@ -690,6 +907,7 @@ export function renderFinanceScreen(ctx) {
           </article>
         </aside>
       </section>
+      ` : financeWorkspace(ctx, rows, operationsInRange, visibleOperations, totals)}
     </div>
   `;
 
@@ -724,14 +942,33 @@ export function renderFinanceScreen(ctx) {
     showToast("Період фінансів застосовано.");
     rerender();
   });
-  document.querySelector("[data-export-finance]")?.addEventListener("click", () => exportFinanceReport(ctx, totals, visibleOperations));
+  document.querySelectorAll("[data-export-finance]").forEach((button) => button.addEventListener("click", () => {
+    exportFinanceReport(ctx, totals, visibleOperations);
+  }));
   document.querySelectorAll("[data-finance-open-case]").forEach((button) => button.addEventListener("click", () => {
     openFinanceCase(ctx, button.dataset.financeOpenCase);
+  }));
+  document.querySelectorAll("[data-finance-work-case]").forEach((button) => button.addEventListener("click", () => {
+    openFinanceCase(ctx, button.dataset.financeWorkCase);
   }));
   document.querySelectorAll("[data-finance-row-action]").forEach((button) => button.addEventListener("click", () => {
     state.selectedFinanceCaseId = button.dataset.financeRowAction;
     openFinanceDialog(button.dataset.financeRowAction);
   }));
+  document.querySelector("[data-finance-back-overview]")?.addEventListener("click", () => {
+    state.financeTab = "overview";
+    rerender();
+  });
+  document.querySelectorAll("[data-finance-work-action]").forEach((button) => button.addEventListener("click", () => {
+    state.selectedFinanceCaseId = selectedCaseId;
+    openFinanceActionDialog(ctx, button.dataset.financeWorkAction);
+  }));
+  document.querySelector("[data-finance-salary-run]")?.addEventListener("click", () => {
+    showToast("Зарплатну відомість сформовано для 4 співробітників.");
+  });
+  document.querySelector("[data-finance-salary-export]")?.addEventListener("click", () => {
+    showToast("Відомість зарплати підготовлено до експорту.");
+  });
   document.querySelector("[data-finance-all-operations]")?.addEventListener("click", () => {
     state.financeTab = "payments";
     showToast("Відкрито вкладку платежів.");
