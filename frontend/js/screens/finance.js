@@ -208,6 +208,8 @@ const SALARY_ROWS = [
   { name: "Петренко С.В.", role: "Юрист", base: 48000, bonus: 6000, total: 54000, status: "Готово", date: "15.05.2024", comment: "Ставка за травень" }
 ];
 
+const SALARY_MONTHS = ["Черв", "Лип", "Серп", "Вер", "Жов", "Лис", "Гру", "Січ", "Лют", "Бер", "Квіт", "Трав"];
+
 const REPORT_ROWS = [
   ["Фінансовий звіт за період", "Доходи, витрати, прибуток і борги", "CSV"],
   ["Звіт по заборгованості", "Клієнти, суми боргу і прострочки", "PDF"],
@@ -285,16 +287,49 @@ function financeOperations(state) {
 
 function salaryRows(state) {
   state.salaryRows = state.salaryRows || [];
-  return [...state.salaryRows, ...SALARY_ROWS];
+  state.deletedSalaryIds = state.deletedSalaryIds || [];
+  const deleted = new Set(state.deletedSalaryIds);
+  const baseRows = SALARY_ROWS.map((row, index) => ({
+    id: `salary-base-${index}`,
+    custom: false,
+    ...row
+  }));
+  return [...state.salaryRows, ...baseRows].filter((row) => !deleted.has(row.id));
 }
 
 function statusPillTone(status) {
   return status === "Готово" || status === "Виплачено" ? "green" : "amber";
 }
 
+function filteredSalaryRows(state) {
+  const selected = state.salaryFilter || "all";
+  return salaryRows(state).filter((row) => selected === "all" || row.name === selected);
+}
+
+function findSalaryRow(state, salaryId) {
+  return salaryRows(state).find((row) => row.id === salaryId);
+}
+
+function salaryTotals(rows) {
+  return rows.reduce((totals, row) => ({
+    base: totals.base + row.base,
+    bonus: totals.bonus + row.bonus,
+    total: totals.total + row.total
+  }), { base: 0, bonus: 0, total: 0 });
+}
+
+function salaryHistoryValues(rows) {
+  const average = rows.length ? Math.round(rows.reduce((sum, row) => sum + row.total, 0) / rows.length) : 0;
+  const fallback = average || 45000;
+  return SALARY_MONTHS.map((month, index) => ({
+    month,
+    value: Math.round(fallback * (0.88 + ((index % 5) * 0.04)))
+  }));
+}
+
 function salaryEmployeeOptions(state) {
   const employees = new Map();
-  [...(state.settingsUsers || []), ...SALARY_ROWS].forEach((item) => {
+  [...(state.settingsUsers || []), ...salaryRows(state), ...SALARY_ROWS].forEach((item) => {
     const name = item.name;
     const role = item.role || "Співробітник";
     if (name && !employees.has(name)) employees.set(name, role);
@@ -458,27 +493,77 @@ function financeClientWorkspace(rows, currencyText) {
 }
 
 function financeSalaryWorkspace(state, icon, currencyText) {
-  const rows = salaryRows(state);
+  const rows = filteredSalaryRows(state);
+  const employees = salaryEmployeeOptions(state);
+  const totals = salaryTotals(rows);
+  const history = salaryHistoryValues(rows);
+  const historyMax = Math.max(...history.map((item) => item.value), 1);
+  const selectedEmployee = state.salaryFilter || "all";
   return `
+    <div class="salary-toolbar">
+      <label>Співробітник
+        <select data-salary-filter>
+          <option value="all" ${selectedEmployee === "all" ? "selected" : ""}>Усі співробітники</option>
+          ${employees.map((employee) => `
+            <option value="${employee.name}" ${selectedEmployee === employee.name ? "selected" : ""}>${employee.name} · ${employee.role}</option>
+          `).join("")}
+        </select>
+      </label>
+      <div class="salary-toolbar-total">
+        <span>${selectedEmployee === "all" ? "Загальний фонд" : "Фонд співробітника"}</span>
+        <strong>${currencyText(totals.total)}</strong>
+      </div>
+      <button class="secondary compact" type="button" data-finance-salary-export>${icon("file")} Експорт відомості</button>
+    </div>
+
+    <div class="salary-history-card">
+      <div>
+        <span class="section-kicker">Динаміка за 12 місяців</span>
+        <h3>${selectedEmployee === "all" ? "Нарахування команди" : selectedEmployee}</h3>
+        <p>Ставка, бонуси та загальна сума для швидкої перевірки.</p>
+      </div>
+      <div class="salary-history-bars">
+        ${history.map((item) => `
+          <div class="salary-month">
+            <span style="height: ${Math.max(18, Math.round((item.value / historyMax) * 76))}px"></span>
+            <small>${item.month}</small>
+          </div>
+        `).join("")}
+      </div>
+      <div class="salary-history-total">
+        <span>Середньомісячно</span>
+        <strong>${currencyText(rows.length ? Math.round(totals.total / rows.length) : 0)}</strong>
+      </div>
+    </div>
+
     <div class="finance-workspace-table salary-workspace">
       <div class="finance-workspace-head">
-        <span>Співробітник</span><span>Роль</span><span>Ставка</span><span>Бонус</span><span>До виплати</span><span>Дата</span><span>Статус</span>
+        <span>Співробітник</span><span>Роль</span><span>Ставка</span><span>Бонус</span><span>До виплати</span><span>Дата</span><span>Статус</span><span></span>
       </div>
-      ${rows.map((row) => `
+      ${rows.length ? rows.map((row) => `
         <div class="finance-workspace-row">
-          <strong>${row.name}</strong>
+          <div class="salary-person">
+            <strong>${row.name}</strong>
+            <small>${row.comment || "Поточне нарахування"}</small>
+          </div>
           <span>${row.role}</span>
           <span>${currencyText(row.base)}</span>
           <span>${currencyText(row.bonus)}</span>
           <b>${currencyText(row.total)}</b>
           <span>${row.date}</span>
           <span class="status-pill ${statusPillTone(row.status)}">${row.status}</span>
+          <div class="salary-action-cell">
+            <button class="icon-button finance-row-menu" type="button" aria-label="Дії зарплати" data-salary-menu="${row.id}">⋮</button>
+            ${state.salaryMenuId === row.id ? `
+              <div class="salary-row-menu">
+                <button type="button" data-salary-edit="${row.id}">${icon("edit")} Редагувати</button>
+                <button type="button" data-salary-export-row="${row.id}">${icon("file")} Експорт</button>
+                <button class="danger" type="button" data-salary-delete="${row.id}">${icon("trash")} Видалити</button>
+              </div>
+            ` : ""}
+          </div>
         </div>
-      `).join("")}
-    </div>
-    <div class="finance-workspace-footer">
-      <button class="secondary" type="button" data-finance-salary-export>${icon("file")} Відомість зарплати</button>
-      <button class="primary" type="button" data-finance-salary-open>${icon("check")} Нарахувати зарплату</button>
+      `).join("") : `<div class="finance-operation-empty">Для обраного співробітника нарахувань немає.</div>`}
     </div>
   `;
 }
@@ -512,6 +597,8 @@ function financeWorkspace(ctx, rows, operations, visibleOperations, totals) {
   const isReports = state.financeTab === "reports";
   const income = operations.filter((item) => item.type === "Надходження").reduce((sum, item) => sum + Math.max(item.amount, 0), 0);
   const expenses = Math.abs(operations.filter((item) => item.type === "Витрата").reduce((sum, item) => sum + item.amount, 0));
+  const currentSalaryRows = isSalary ? filteredSalaryRows(state) : [];
+  const currentSalaryTotals = isSalary ? salaryTotals(currentSalaryRows) : { base: 0, bonus: 0, total: 0 };
   const currentMeta = meta || {
     title: FINANCE_TABS.find(([tab]) => tab === state.financeTab)?.[1] || "Фінанси",
     subtitle: "Окремий фінансовий розділ з власними діями та записами.",
@@ -539,10 +626,10 @@ function financeWorkspace(ctx, rows, operations, visibleOperations, totals) {
       </div>
 
       <div class="finance-workspace-metrics">
-        ${financeWorkspaceSummary("Записів", isCases ? rows.length : isClients ? rows.filter((item) => item.debt > 0).length : isSalary ? salaryRows(state).length : isReports ? REPORT_ROWS.length : visibleOperations.length, "у цьому розділі")}
-        ${financeWorkspaceSummary("Надходження", currencyText(income), "за вибраний період")}
-        ${financeWorkspaceSummary("Витрати", currencyText(expenses), "за вибраний період")}
-        ${financeWorkspaceSummary("Борг", currencyText(totals.debt), "поточний контроль")}
+        ${financeWorkspaceSummary("Записів", isCases ? rows.length : isClients ? rows.filter((item) => item.debt > 0).length : isSalary ? currentSalaryRows.length : isReports ? REPORT_ROWS.length : visibleOperations.length, "у цьому розділі")}
+        ${financeWorkspaceSummary(isSalary ? "Ставка" : "Надходження", isSalary ? currencyText(currentSalaryTotals.base) : currencyText(income), isSalary ? "за вибраним фільтром" : "за вибраний період")}
+        ${financeWorkspaceSummary(isSalary ? "Бонуси" : "Витрати", isSalary ? currencyText(currentSalaryTotals.bonus) : currencyText(expenses), isSalary ? "премії та доплати" : "за вибраний період")}
+        ${financeWorkspaceSummary(isSalary ? "До виплати" : "Борг", isSalary ? currencyText(currentSalaryTotals.total) : currencyText(totals.debt), isSalary ? "поточний фонд" : "поточний контроль")}
       </div>
 
       ${isSalary
@@ -726,19 +813,31 @@ function bindFinanceActionDialog(ctx) {
   });
 }
 
-function openSalaryDialog(ctx) {
+function salaryDateInput(value) {
+  const date = dateFromAny(value);
+  if (!date) return isoToday();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function openSalaryDialog(ctx, salaryId = "") {
   const { state } = ctx;
   const form = document.querySelector("#salary-form");
   if (!form) return;
   const employees = salaryEmployeeOptions(state);
+  const row = salaryId ? findSalaryRow(state, salaryId) : null;
   form.reset();
   document.querySelector("#salary-employee").innerHTML = employees.map((employee) => (
     `<option value="${employee.name}" data-role="${employee.role}">${employee.name} · ${employee.role}</option>`
   )).join("");
-  form.elements.base.value = 45000;
-  form.elements.bonus.value = 0;
-  form.elements.date.value = isoToday();
-  form.elements.status.value = "Готово";
+  form.elements.salaryId.value = row?.id || "";
+  form.elements.employee.value = row?.name || employees[0]?.name || "";
+  form.elements.base.value = row?.base ?? 45000;
+  form.elements.bonus.value = row?.bonus ?? 0;
+  form.elements.date.value = row ? salaryDateInput(row.date) : isoToday();
+  form.elements.status.value = row?.status || "Готово";
+  form.elements.comment.value = row?.comment || "";
+  document.querySelector("#salary-dialog-title").textContent = row ? "Редагувати зарплату" : "Нарахувати зарплату";
+  document.querySelector("#salary-submit").textContent = row ? "Зберегти зміни" : "Додати зарплату";
   document.querySelector("#salary-dialog").showModal();
 }
 
@@ -753,8 +852,11 @@ function applySalary(ctx, formData) {
 
   const dateIso = formData.get("date") || isoToday();
   const status = formData.get("status") || "Готово";
+  const salaryId = formData.get("salaryId");
+  const previousRow = salaryId ? findSalaryRow(state, salaryId) : null;
+  const nextId = previousRow?.custom ? previousRow.id : `salary-${Date.now()}`;
   const row = {
-    id: `salary-${Date.now()}`,
+    id: nextId,
     name: employee,
     role: employeeMeta?.role || "Співробітник",
     base,
@@ -767,8 +869,16 @@ function applySalary(ctx, formData) {
   };
 
   state.salaryRows = state.salaryRows || [];
+  state.deletedSalaryIds = state.deletedSalaryIds || [];
+  if (salaryId) {
+    state.salaryRows = state.salaryRows.filter((item) => item.id !== salaryId && item.id !== nextId);
+    if (previousRow && !previousRow.custom && !state.deletedSalaryIds.includes(previousRow.id)) {
+      state.deletedSalaryIds.push(previousRow.id);
+    }
+  }
   state.salaryRows.unshift(row);
   state.financeOperations = state.financeOperations || [];
+  state.financeOperations = state.financeOperations.filter((item) => item.salaryRowId !== salaryId && item.salaryRowId !== row.id);
   state.financeOperations.unshift({
     id: `finance-salary-${Date.now()}`,
     date: row.date,
@@ -780,14 +890,56 @@ function applySalary(ctx, formData) {
     status: status === "Очікує" ? "Очікується" : "Оплачено",
     method: "Зарплата",
     custom: true,
-    salary: true
+    salary: true,
+    salaryRowId: row.id
   });
 
   state.financeTab = "salary";
+  state.salaryFilter = row.name;
+  state.salaryMenuId = "";
   document.querySelector("#salary-dialog")?.close();
   renderAll();
   switchView("finance");
-  showToast(`Зарплату для ${row.name} додано: ${currencyText(total)}.`);
+  showToast(salaryId ? `Зарплату для ${row.name} оновлено: ${currencyText(total)}.` : `Зарплату для ${row.name} додано: ${currencyText(total)}.`);
+}
+
+function deleteSalary(ctx, salaryId) {
+  const { state, renderAll, switchView, showToast } = ctx;
+  const row = findSalaryRow(state, salaryId);
+  if (!row) return;
+  state.salaryRows = (state.salaryRows || []).filter((item) => item.id !== salaryId);
+  state.deletedSalaryIds = state.deletedSalaryIds || [];
+  if (!row.custom && !state.deletedSalaryIds.includes(row.id)) {
+    state.deletedSalaryIds.push(row.id);
+  }
+  state.financeOperations = (state.financeOperations || []).filter((item) => item.salaryRowId !== salaryId);
+  state.salaryMenuId = "";
+  renderAll();
+  switchView("finance");
+  showToast(`Нарахування для ${row.name} видалено.`, "danger");
+}
+
+function exportSalaryRows(ctx, rows, filename = "salary-statement.csv") {
+  const lines = [
+    "Співробітник,Роль,Ставка,Бонус,До виплати,Дата,Статус,Коментар",
+    ...rows.map((row) => [
+      row.name,
+      row.role,
+      row.base,
+      row.bonus,
+      row.total,
+      row.date,
+      row.status,
+      row.comment || ""
+    ].join(","))
+  ];
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
+  ctx.showToast("Зарплатну відомість підготовлено до експорту.");
 }
 
 function bindSalaryDialog(ctx) {
@@ -1071,8 +1223,30 @@ export function renderFinanceScreen(ctx) {
   document.querySelectorAll("[data-finance-salary-open]").forEach((button) => button.addEventListener("click", () => {
     openSalaryDialog(ctx);
   }));
+  document.querySelector("[data-salary-filter]")?.addEventListener("change", (event) => {
+    state.salaryFilter = event.currentTarget.value;
+    state.salaryMenuId = "";
+    rerender();
+  });
+  document.querySelectorAll("[data-salary-menu]").forEach((button) => button.addEventListener("click", () => {
+    state.salaryMenuId = state.salaryMenuId === button.dataset.salaryMenu ? "" : button.dataset.salaryMenu;
+    rerender();
+  }));
+  document.querySelectorAll("[data-salary-edit]").forEach((button) => button.addEventListener("click", () => {
+    state.salaryMenuId = "";
+    openSalaryDialog(ctx, button.dataset.salaryEdit);
+  }));
+  document.querySelectorAll("[data-salary-delete]").forEach((button) => button.addEventListener("click", () => {
+    deleteSalary(ctx, button.dataset.salaryDelete);
+  }));
+  document.querySelectorAll("[data-salary-export-row]").forEach((button) => button.addEventListener("click", () => {
+    const row = findSalaryRow(state, button.dataset.salaryExportRow);
+    state.salaryMenuId = "";
+    if (row) exportSalaryRows(ctx, [row], `salary-${row.name.replaceAll(" ", "-")}.csv`);
+    rerender();
+  }));
   document.querySelector("[data-finance-salary-export]")?.addEventListener("click", () => {
-    showToast("Відомість зарплати підготовлено до експорту.");
+    exportSalaryRows(ctx, filteredSalaryRows(state));
   });
   document.querySelector("[data-finance-all-operations]")?.addEventListener("click", () => {
     state.financeTab = "payments";

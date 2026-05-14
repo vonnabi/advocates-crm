@@ -317,9 +317,10 @@
     <dialog id="salary-dialog">
       <form method="dialog" class="modal-form" id="salary-form">
         <div class="modal-head">
-          <h2>Нарахувати зарплату</h2>
+          <h2 id="salary-dialog-title">Нарахувати зарплату</h2>
           <button id="salary-dialog-close" class="ghost" type="button">Закрити</button>
         </div>
+        <input name="salaryId" type="hidden" />
         <p class="finance-action-hint">Запис буде додано у зарплатну відомість і у фінансові витрати.</p>
         <label>Співробітник
           <select name="employee" id="salary-employee"></select>
