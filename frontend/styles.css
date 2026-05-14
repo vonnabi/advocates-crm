@@ -10060,6 +10060,13 @@ dialog::backdrop {
   margin: 0;
 }
 
+.finance-action-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
 #event-form {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }

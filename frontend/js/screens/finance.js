@@ -106,6 +106,53 @@ const FINANCE_LINE = {
 
 const chartDates = ["01.05", "03.05", "05.05", "07.05", "09.05", "11.05", "13.05", "15.05"];
 
+const FINANCE_ACTIONS = {
+  income: {
+    tab: "income",
+    title: "Додати надходження",
+    hint: "Платіж зменшить борг по вибраній справі і з'явиться у фінансових операціях.",
+    operationType: "Надходження",
+    defaultTitle: "Оплата за правову допомогу",
+    status: "Оплачено",
+    method: "Банківський переказ",
+    submit: "Зберегти надходження"
+  },
+  expense: {
+    tab: "expenses",
+    title: "Додати витрату",
+    hint: "Витрата буде прив'язана до справи, але не збільшить борг клієнта.",
+    operationType: "Витрата",
+    defaultTitle: "Судові витрати",
+    status: "Оплачено",
+    method: "Картка",
+    submit: "Зберегти витрату"
+  },
+  invoice: {
+    tab: "invoices",
+    title: "Виставити рахунок клієнту",
+    hint: "Буде створено документ-рахунок у папці «Фінансові документи» і очікуване надходження.",
+    operationType: "Рахунок",
+    defaultTitle: "Рахунок клієнту",
+    status: "Очікується",
+    method: "Документ",
+    submit: "Створити рахунок"
+  },
+  act: {
+    tab: "acts",
+    title: "Створити акт",
+    hint: "Буде створено акт виконаних робіт у документах справи.",
+    operationType: "Акт",
+    defaultTitle: "Акт виконаних робіт",
+    status: "Чернетка",
+    method: "Документ",
+    submit: "Створити акт"
+  }
+};
+
+function isoToday() {
+  return "2024-05-15";
+}
+
 function financeRows(ctx) {
   const { state, clientById, caseFinance } = ctx;
   return state.cases.map((item) => {
@@ -165,34 +212,46 @@ function linePoints(values, max = 100, width = 560, height = 190) {
   return values.map((value, index) => `${Math.round(index * step)},${Math.round(height - (value / max) * height)}`).join(" ");
 }
 
+function financeOperations(state) {
+  state.financeOperations = state.financeOperations || [];
+  return [...state.financeOperations, ...FINANCE_OPERATIONS];
+}
+
 function operationMatchesTab(operation, tab) {
   if (tab === "income") return operation.type === "Надходження";
   if (tab === "expenses") return operation.type === "Витрата";
-  if (tab === "payments") return operation.status === "Оплачено" || operation.status === "Частково";
-  if (tab === "invoices") return operation.title.toLowerCase().includes("оплата");
-  if (tab === "clients") return operation.status === "Частково";
+  if (tab === "payments") return ["Надходження", "Витрата"].includes(operation.type);
+  if (tab === "invoices") return operation.type === "Рахунок";
+  if (tab === "acts") return operation.type === "Акт";
+  if (tab === "clients") return operation.status === "Частково" || operation.status === "Очікується";
   return true;
 }
 
 function financeTotals(rows, operations, state) {
   const isDefaultRange = (state.financeDateStart || DEFAULT_START) === DEFAULT_START
     && (state.financeDateEnd || DEFAULT_END) === DEFAULT_END;
+  const dynamicIncome = operations.filter((item) => item.custom && item.type === "Надходження").reduce((sum, item) => sum + item.amount, 0);
+  const dynamicExpenses = Math.abs(operations.filter((item) => item.custom && item.type === "Витрата").reduce((sum, item) => sum + item.amount, 0));
+  const dynamicExpected = operations.filter((item) => item.custom && item.type === "Рахунок").reduce((sum, item) => sum + item.amount, 0);
   if (isDefaultRange) {
+    const income = 1245000 + dynamicIncome;
+    const expenses = 320000 + dynamicExpenses;
     return {
-      income: 1245000,
-      expenses: 320000,
-      profit: 925000,
-      expected: 340500,
-      debt: 215300
+      income,
+      expenses,
+      profit: Math.max(0, 925000 + dynamicIncome - dynamicExpenses),
+      expected: 340500 + dynamicExpected,
+      debt: Math.max(215300 + dynamicExpected - dynamicIncome, rows.reduce((sum, item) => sum + item.debt, 0))
     };
   }
-  const income = operations.filter((item) => item.amount > 0).reduce((sum, item) => sum + item.amount, 0);
-  const expenses = Math.abs(operations.filter((item) => item.amount < 0).reduce((sum, item) => sum + item.amount, 0));
+  const income = operations.filter((item) => item.type === "Надходження").reduce((sum, item) => sum + Math.max(item.amount, 0), 0);
+  const expenses = Math.abs(operations.filter((item) => item.type === "Витрата").reduce((sum, item) => sum + item.amount, 0));
+  const expected = operations.filter((item) => item.type === "Рахунок").reduce((sum, item) => sum + item.amount, 0);
   return {
     income,
     expenses,
     profit: Math.max(0, income - expenses),
-    expected: Math.round(income * 0.28),
+    expected,
     debt: rows.reduce((sum, item) => sum + item.debt, 0)
   };
 }
@@ -213,19 +272,31 @@ function operationRows(operations, badge) {
   if (!operations.length) {
     return `<div class="finance-operation-empty">Фінансових операцій за обраний період не знайдено.</div>`;
   }
-  return operations.map((item) => `
-    <div class="finance-operation-row">
-      <span>${item.date}</span>
-      <strong class="${item.type === "Витрата" ? "danger" : "success"}">${item.type}</strong>
-      <span>${item.title}</span>
-      <button class="case-link-button" type="button" data-finance-open-case="${item.caseId}">№${item.caseId}</button>
-      <span>${item.client}</span>
-      <b class="${item.amount < 0 ? "danger" : ""}">${item.amount < 0 ? "-" : ""}${new Intl.NumberFormat("uk-UA").format(Math.abs(item.amount))} грн</b>
-      ${badge(item.status, item.status === "Частково" ? "red" : "green")}
-      <span>${item.method}</span>
-      <button class="icon-button finance-row-menu" type="button" data-finance-row-action="${item.caseId}" title="Дії">⋮</button>
-    </div>
-  `).join("");
+  return operations.map((item) => {
+    const statusTone = item.status === "Частково"
+      ? "red"
+      : item.status === "Очікується"
+        ? "amber"
+        : item.status === "Чернетка"
+          ? "blue"
+          : "green";
+    const amountText = item.amount
+      ? `${item.amount < 0 ? "-" : ""}${new Intl.NumberFormat("uk-UA").format(Math.abs(item.amount))} грн`
+      : "Документ";
+    return `
+      <div class="finance-operation-row">
+        <span>${item.date}</span>
+        <strong class="${item.type === "Витрата" ? "danger" : "success"}">${item.type}</strong>
+        <span>${item.title}</span>
+        <button class="case-link-button" type="button" data-finance-open-case="${item.caseId}">№${item.caseId}</button>
+        <span>${item.client}</span>
+        <b class="${item.amount < 0 ? "danger" : ""}">${amountText}</b>
+        ${badge(item.status, statusTone)}
+        <span>${item.method}</span>
+        <button class="icon-button finance-row-menu" type="button" data-finance-row-action="${item.caseId}" title="Дії">⋮</button>
+      </div>
+    `;
+  }).join("");
 }
 
 function barRows(rows, color = "#1f7ae0") {
@@ -247,6 +318,167 @@ function expenseRows(rows) {
       <strong>${percent}% (${amount})</strong>
     </div>
   `).join("");
+}
+
+function ensureFinanceFolder(item, caseFolders) {
+  const folders = caseFolders(item);
+  let folder = folders.find((entry) => entry.name === "Фінансові документи");
+  if (!folder) {
+    folder = { name: "Фінансові документи", updated: new Date().toLocaleDateString("uk-UA"), files: [] };
+    folders.unshift(folder);
+  }
+  return folder;
+}
+
+function addFinanceDocument(ctx, item, action, amount, title, date, comment) {
+  const { caseFolders, makeDocumentId } = ctx;
+  const config = FINANCE_ACTIONS[action];
+  const today = new Date().toLocaleDateString("uk-UA");
+  const type = action === "invoice" ? "Рахунок" : "Акт";
+  const documentId = makeDocumentId();
+  const name = `${type}: ${title} · №${item.id}.docx`;
+  const documentData = {
+    documentId,
+    name,
+    type,
+    status: action === "invoice" ? "Подано" : "Чернетка",
+    submitted: date,
+    responseDue: "-",
+    comment: `${comment || config.hint} Сума: ${new Intl.NumberFormat("uk-UA").format(amount)} грн.`,
+    source: "Фінанси",
+    added: today
+  };
+  const folder = ensureFinanceFolder(item, caseFolders);
+  item.documents.unshift(documentData);
+  folder.files.unshift({ ...documentData, updated: today });
+  folder.updated = today;
+  return documentData;
+}
+
+function openFinanceActionDialog(ctx, action) {
+  const { state, caseById, clientById, currencyText } = ctx;
+  const config = FINANCE_ACTIONS[action];
+  const form = document.querySelector("#finance-action-form");
+  if (!config || !form) return;
+  const selected = caseById(state.selectedFinanceCaseId) || state.cases[0];
+  const selectedDebt = selected?.debt || selected?.income || 20000;
+  form.reset();
+  form.elements.action.value = action;
+  document.querySelector("#finance-action-title").textContent = config.title;
+  document.querySelector("#finance-action-hint").textContent = config.hint;
+  document.querySelector("#finance-action-submit").textContent = config.submit;
+  document.querySelector("#finance-action-case").innerHTML = state.cases.map((item) => {
+    const client = clientById(item.clientId)?.name || "Клієнт не вказаний";
+    return `<option value="${item.id}">№${item.id} · ${client}</option>`;
+  }).join("");
+  form.elements.caseId.value = selected?.id || state.cases[0]?.id || "";
+  form.elements.title.value = config.defaultTitle;
+  form.elements.amount.value = action === "expense" ? 5000 : selectedDebt;
+  form.elements.date.value = isoToday();
+  form.elements.status.value = config.status;
+  form.elements.method.value = config.method;
+  form.elements.comment.value = action === "invoice"
+    ? `Рахунок буде додано у документи справи. Поточний борг: ${currencyText(selected?.debt || 0)}.`
+    : "";
+  document.querySelector("#finance-action-dialog").showModal();
+}
+
+function applyFinanceAction(ctx, formData) {
+  const {
+    state,
+    caseById,
+    clientById,
+    caseFinance,
+    formatDate,
+    currencyText,
+    renderAll,
+    switchView,
+    showToast
+  } = ctx;
+  const action = formData.get("action");
+  const config = FINANCE_ACTIONS[action];
+  const item = caseById(formData.get("caseId"));
+  const amount = Math.max(0, Number(formData.get("amount")) || 0);
+  if (!config || !item || !amount) return;
+
+  const finance = caseFinance(item);
+  const dateIso = formData.get("date") || isoToday();
+  const date = financeDate(dateIso);
+  const title = formData.get("title") || config.defaultTitle;
+  const status = formData.get("status") || config.status;
+  const method = formData.get("method") || config.method;
+  const comment = formData.get("comment") || "";
+  const today = new Date().toLocaleDateString("uk-UA");
+  const client = clientById(item.clientId)?.name || "Клієнт не вказаний";
+  const operation = {
+    id: `finance-${Date.now()}`,
+    date,
+    type: config.operationType,
+    title,
+    caseId: item.id,
+    client,
+    amount: action === "expense" ? -amount : action === "act" ? 0 : amount,
+    status,
+    method,
+    custom: true
+  };
+
+  state.financeOperations = state.financeOperations || [];
+  state.financeOperations.unshift(operation);
+
+  if (action === "income") {
+    const nextPaid = finance.paid + amount;
+    const nextTotal = Math.max(finance.total, nextPaid);
+    item.totalFee = nextTotal;
+    item.income = nextTotal;
+    item.paid = Math.min(nextPaid, nextTotal);
+    item.debt = Math.max(nextTotal - item.paid, 0);
+    item.firstPaymentDate = item.firstPaymentDate || formatDate(dateIso);
+  }
+
+  if (action === "invoice") {
+    item.totalFee = finance.total + amount;
+    item.income = item.totalFee;
+    item.paid = finance.paid;
+    item.debt = Math.max(item.totalFee - item.paid, 0);
+    item.nextPaymentDue = item.nextPaymentDue || formatDate(dateIso);
+    addFinanceDocument(ctx, item, action, amount, title, date, comment);
+  }
+
+  if (action === "expense") {
+    item.expenses = (item.expenses || 0) + amount;
+  }
+
+  if (action === "act") {
+    addFinanceDocument(ctx, item, action, amount, title, date, comment);
+  }
+
+  item.financeComment = comment || item.financeComment || "";
+  item.history.unshift({
+    date: today,
+    text: `${config.title}: ${title} на ${currencyText(amount)}.`
+  });
+  state.selectedCaseId = item.id;
+  state.selectedFinanceCaseId = item.id;
+  state.financeTab = config.tab;
+  state.documentCaseFilter = item.id;
+  document.querySelector("#finance-action-dialog")?.close();
+  renderAll();
+  switchView("finance");
+  showToast(action === "invoice" || action === "act"
+    ? `${config.title} створено і додано до документів справи.`
+    : `${config.title} збережено у фінансах справи.`);
+}
+
+function bindFinanceActionDialog(ctx) {
+  const form = document.querySelector("#finance-action-form");
+  if (!form || form.dataset.bound === "true") return;
+  form.dataset.bound = "true";
+  form.addEventListener("submit", (event) => {
+    if (event.submitter?.value === "cancel") return;
+    event.preventDefault();
+    applyFinanceAction(ctx, new FormData(event.currentTarget));
+  });
 }
 
 function exportFinanceReport(ctx, totals, operations) {
@@ -293,9 +525,10 @@ export function renderFinanceScreen(ctx) {
   state.financeDateStart = state.financeDateStart || DEFAULT_START;
   state.financeDateEnd = state.financeDateEnd || DEFAULT_END;
   state.financeDatePickerOpen = Boolean(state.financeDatePickerOpen);
+  bindFinanceActionDialog(ctx);
 
   const rows = financeRows(ctx);
-  const operationsInRange = FINANCE_OPERATIONS.filter((item) => inDateRange(item.date, state.financeDateStart, state.financeDateEnd));
+  const operationsInRange = financeOperations(state).filter((item) => inDateRange(item.date, state.financeDateStart, state.financeDateEnd));
   const visibleOperations = operationsInRange.filter((item) => operationMatchesTab(item, state.financeTab));
   const totals = financeTotals(rows, operationsInRange, state);
   const debtRows = rows.filter((item) => item.debt > 0).slice(0, 4);
@@ -511,11 +744,20 @@ export function renderFinanceScreen(ctx) {
   });
   document.querySelector("[data-finance-add-income]")?.addEventListener("click", () => {
     state.selectedFinanceCaseId = selectedCaseId;
-    openFinanceDialog(selectedCaseId);
+    openFinanceActionDialog(ctx, "income");
   });
-  document.querySelector("[data-finance-add-expense]")?.addEventListener("click", () => showToast("Форма додавання витрати підготовлена як прототипна дія.", "warning"));
-  document.querySelector("[data-finance-invoice]")?.addEventListener("click", () => openFinanceDialog(selectedCaseId));
-  document.querySelector("[data-finance-act]")?.addEventListener("click", () => showToast("Акт по вибраній справі сформовано як чернетку."));
+  document.querySelector("[data-finance-add-expense]")?.addEventListener("click", () => {
+    state.selectedFinanceCaseId = selectedCaseId;
+    openFinanceActionDialog(ctx, "expense");
+  });
+  document.querySelector("[data-finance-invoice]")?.addEventListener("click", () => {
+    state.selectedFinanceCaseId = selectedCaseId;
+    openFinanceActionDialog(ctx, "invoice");
+  });
+  document.querySelector("[data-finance-act]")?.addEventListener("click", () => {
+    state.selectedFinanceCaseId = selectedCaseId;
+    openFinanceActionDialog(ctx, "act");
+  });
   document.querySelector("[data-finance-payments]")?.addEventListener("click", () => {
     state.financeTab = "payments";
     rerender();

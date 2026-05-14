@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Advocates Bureau CRM</title>
-    <link rel="stylesheet" href="styles.css?v=finance-dashboard-1" />
+    <link rel="stylesheet" href="styles.css?v=finance-actions-1" />
   </head>
   <body>
     <aside class="sidebar">
@@ -271,6 +271,49 @@
       </form>
     </dialog>
 
+    <dialog id="finance-action-dialog">
+      <form method="dialog" class="modal-form" id="finance-action-form">
+        <div class="modal-head">
+          <h2 id="finance-action-title">Фінансова дія</h2>
+          <button id="finance-action-dialog-close" class="ghost" type="button">Закрити</button>
+        </div>
+        <input name="action" type="hidden" />
+        <p class="finance-action-hint" id="finance-action-hint">Дія буде прив'язана до справи, клієнта і фінансової історії.</p>
+        <label>Справа
+          <select name="caseId" id="finance-action-case"></select>
+        </label>
+        <label>Назва / опис
+          <input name="title" required placeholder="Наприклад: Оплата за правову допомогу" />
+        </label>
+        <label>Сума
+          <input name="amount" type="number" min="0" step="100" required placeholder="Наприклад: 20000" />
+        </label>
+        <label>Дата
+          <input name="date" type="date" required />
+        </label>
+        <label>Статус
+          <select name="status">
+            <option>Оплачено</option>
+            <option>Частково</option>
+            <option>Очікується</option>
+            <option>Чернетка</option>
+          </select>
+        </label>
+        <label>Спосіб / канал
+          <select name="method">
+            <option>Банківський переказ</option>
+            <option>Картка</option>
+            <option>Готівка</option>
+            <option>Документ</option>
+          </select>
+        </label>
+        <label>Коментар
+          <textarea name="comment" rows="3" placeholder="Коротке пояснення для історії справи"></textarea>
+        </label>
+        <button class="primary" id="finance-action-submit" value="default" type="submit">Зберегти</button>
+      </form>
+    </dialog>
+
     <dialog id="document-dialog">
       <form method="dialog" class="modal-form" id="document-form">
         <div class="modal-head">
@@ -292,6 +335,7 @@
             <option>Доказ</option>
             <option>Договір</option>
             <option>Рахунок</option>
+            <option>Акт</option>
             <option>Інше</option>
           </select>
         </label>

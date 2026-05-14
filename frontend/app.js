@@ -176,6 +176,7 @@ function screenContext() {
     calendarViewDays,
     dateFromIso,
     isoFromDate,
+    makeDocumentId,
     monthNames,
     todayIso,
     weekDayNames,
