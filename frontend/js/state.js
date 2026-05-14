@@ -61,6 +61,7 @@ export async function createInitialState() {
     financeDateEnd: "2024-05-15",
     financeDatePickerOpen: false,
     financeOperations: [],
+    salaryRows: [],
     analyticsPeriod: "custom",
     analyticsResponsible: "all",
     analyticsStatus: "all",

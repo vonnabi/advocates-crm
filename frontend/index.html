@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Advocates Bureau CRM</title>
-    <link rel="stylesheet" href="styles.css?v=finance-workspaces-1" />
+    <link rel="stylesheet" href="styles.css?v=salary-actions-1" />
   </head>
   <body>
     <aside class="sidebar">
@@ -311,6 +311,39 @@
           <textarea name="comment" rows="3" placeholder="Коротке пояснення для історії справи"></textarea>
         </label>
         <button class="primary" id="finance-action-submit" value="default" type="submit">Зберегти</button>
+      </form>
+    </dialog>
+
+    <dialog id="salary-dialog">
+      <form method="dialog" class="modal-form" id="salary-form">
+        <div class="modal-head">
+          <h2>Нарахувати зарплату</h2>
+          <button id="salary-dialog-close" class="ghost" type="button">Закрити</button>
+        </div>
+        <p class="finance-action-hint">Запис буде додано у зарплатну відомість і у фінансові витрати.</p>
+        <label>Співробітник
+          <select name="employee" id="salary-employee"></select>
+        </label>
+        <label>Ставка / основна сума
+          <input name="base" type="number" min="0" step="100" required placeholder="Наприклад: 45000" />
+        </label>
+        <label>Бонус / премія
+          <input name="bonus" type="number" min="0" step="100" placeholder="Наприклад: 5000" />
+        </label>
+        <label>Дата нарахування
+          <input name="date" type="date" required />
+        </label>
+        <label>Статус
+          <select name="status">
+            <option>Готово</option>
+            <option>Очікує</option>
+            <option>Виплачено</option>
+          </select>
+        </label>
+        <label>Коментар
+          <textarea name="comment" rows="3" placeholder="Наприклад: бонус за закриті справи"></textarea>
+        </label>
+        <button class="primary" id="salary-submit" value="default" type="submit">Додати зарплату</button>
       </form>
     </dialog>
 

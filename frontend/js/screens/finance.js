@@ -202,10 +202,10 @@ const FINANCE_WORKSPACES = {
 };
 
 const SALARY_ROWS = [
-  ["Іваненко А.Ю.", "Адвокат", "80 000 грн", "12 000 грн", "92 000 грн", "Готово"],
-  ["Мельник Н.П.", "Адвокат", "62 000 грн", "8 000 грн", "70 000 грн", "Готово"],
-  ["Кравчук А.В.", "Помічник", "34 000 грн", "3 500 грн", "37 500 грн", "Очікує"],
-  ["Петренко С.В.", "Юрист", "48 000 грн", "6 000 грн", "54 000 грн", "Готово"]
+  { name: "Іваненко А.Ю.", role: "Адвокат", base: 80000, bonus: 12000, total: 92000, status: "Готово", date: "15.05.2024", comment: "Ставка та бонус за закриті задачі" },
+  { name: "Мельник Н.П.", role: "Адвокат", base: 62000, bonus: 8000, total: 70000, status: "Готово", date: "15.05.2024", comment: "Ставка за травень" },
+  { name: "Кравчук А.В.", role: "Помічник", base: 34000, bonus: 3500, total: 37500, status: "Очікує", date: "15.05.2024", comment: "Потребує підтвердження" },
+  { name: "Петренко С.В.", role: "Юрист", base: 48000, bonus: 6000, total: 54000, status: "Готово", date: "15.05.2024", comment: "Ставка за травень" }
 ];
 
 const REPORT_ROWS = [
@@ -237,6 +237,7 @@ function financeRows(ctx) {
 
 function openFinanceCase(ctx, caseId) {
   const { state, renderCases, switchView } = ctx;
+  if (!caseId) return;
   state.selectedCaseId = caseId;
   state.caseScreen = "detail";
   state.openCaseSection = "finance";
@@ -280,6 +281,25 @@ function linePoints(values, max = 100, width = 560, height = 190) {
 function financeOperations(state) {
   state.financeOperations = state.financeOperations || [];
   return [...state.financeOperations, ...FINANCE_OPERATIONS];
+}
+
+function salaryRows(state) {
+  state.salaryRows = state.salaryRows || [];
+  return [...state.salaryRows, ...SALARY_ROWS];
+}
+
+function statusPillTone(status) {
+  return status === "Готово" || status === "Виплачено" ? "green" : "amber";
+}
+
+function salaryEmployeeOptions(state) {
+  const employees = new Map();
+  [...(state.settingsUsers || []), ...SALARY_ROWS].forEach((item) => {
+    const name = item.name;
+    const role = item.role || "Співробітник";
+    if (name && !employees.has(name)) employees.set(name, role);
+  });
+  return [...employees.entries()].map(([name, role]) => ({ name, role }));
 }
 
 function operationMatchesTab(operation, tab) {
@@ -348,12 +368,15 @@ function operationRows(operations, badge) {
     const amountText = item.amount
       ? `${item.amount < 0 ? "-" : ""}${new Intl.NumberFormat("uk-UA").format(Math.abs(item.amount))} грн`
       : "Документ";
+    const caseCell = item.caseId
+      ? `<button class="case-link-button" type="button" data-finance-open-case="${item.caseId}">№${item.caseId}</button>`
+      : `<span class="muted">Без справи</span>`;
     return `
       <div class="finance-operation-row">
         <span>${item.date}</span>
         <strong class="${item.type === "Витрата" ? "danger" : "success"}">${item.type}</strong>
         <span>${item.title}</span>
-        <button class="case-link-button" type="button" data-finance-open-case="${item.caseId}">№${item.caseId}</button>
+        ${caseCell}
         <span>${item.client}</span>
         <b class="${item.amount < 0 ? "danger" : ""}">${amountText}</b>
         ${badge(item.status, statusTone)}
@@ -434,26 +457,28 @@ function financeClientWorkspace(rows, currencyText) {
   `;
 }
 
-function financeSalaryWorkspace(icon) {
+function financeSalaryWorkspace(state, icon, currencyText) {
+  const rows = salaryRows(state);
   return `
     <div class="finance-workspace-table salary-workspace">
       <div class="finance-workspace-head">
-        <span>Співробітник</span><span>Роль</span><span>Ставка</span><span>Бонус</span><span>До виплати</span><span>Статус</span>
+        <span>Співробітник</span><span>Роль</span><span>Ставка</span><span>Бонус</span><span>До виплати</span><span>Дата</span><span>Статус</span>
       </div>
-      ${SALARY_ROWS.map(([name, role, base, bonus, total, status]) => `
+      ${rows.map((row) => `
         <div class="finance-workspace-row">
-          <strong>${name}</strong>
-          <span>${role}</span>
-          <span>${base}</span>
-          <span>${bonus}</span>
-          <b>${total}</b>
-          <span class="status-pill ${status === "Готово" ? "green" : "amber"}">${status}</span>
+          <strong>${row.name}</strong>
+          <span>${row.role}</span>
+          <span>${currencyText(row.base)}</span>
+          <span>${currencyText(row.bonus)}</span>
+          <b>${currencyText(row.total)}</b>
+          <span>${row.date}</span>
+          <span class="status-pill ${statusPillTone(row.status)}">${row.status}</span>
         </div>
       `).join("")}
     </div>
     <div class="finance-workspace-footer">
       <button class="secondary" type="button" data-finance-salary-export>${icon("file")} Відомість зарплати</button>
-      <button class="primary" type="button" data-finance-salary-run>${icon("check")} Нарахувати зарплату</button>
+      <button class="primary" type="button" data-finance-salary-open>${icon("check")} Нарахувати зарплату</button>
     </div>
   `;
 }
@@ -505,19 +530,23 @@ function financeWorkspace(ctx, rows, operations, visibleOperations, totals) {
         </div>
         <div class="finance-workspace-actions">
           <button class="secondary" type="button" data-finance-back-overview>${icon("calendar")} Повернутись до огляду</button>
-          ${!isSalary && !isReports ? `<button class="primary" type="button" data-finance-work-action="${currentMeta.action}">${currentMeta.actionLabel}</button>` : ""}
+          ${isSalary
+            ? `<button class="primary" type="button" data-finance-salary-open>${icon("check")} Нарахувати зарплату</button>`
+            : !isReports
+              ? `<button class="primary" type="button" data-finance-work-action="${currentMeta.action}">${currentMeta.actionLabel}</button>`
+              : ""}
         </div>
       </div>
 
       <div class="finance-workspace-metrics">
-        ${financeWorkspaceSummary("Записів", isCases ? rows.length : isClients ? rows.filter((item) => item.debt > 0).length : isSalary ? SALARY_ROWS.length : isReports ? REPORT_ROWS.length : visibleOperations.length, "у цьому розділі")}
+        ${financeWorkspaceSummary("Записів", isCases ? rows.length : isClients ? rows.filter((item) => item.debt > 0).length : isSalary ? salaryRows(state).length : isReports ? REPORT_ROWS.length : visibleOperations.length, "у цьому розділі")}
         ${financeWorkspaceSummary("Надходження", currencyText(income), "за вибраний період")}
         ${financeWorkspaceSummary("Витрати", currencyText(expenses), "за вибраний період")}
         ${financeWorkspaceSummary("Борг", currencyText(totals.debt), "поточний контроль")}
       </div>
 
       ${isSalary
-        ? financeSalaryWorkspace(icon)
+        ? financeSalaryWorkspace(state, icon, currencyText)
         : isReports
           ? financeReportsWorkspace(icon, totals, currencyText)
           : isCases
@@ -697,6 +726,81 @@ function bindFinanceActionDialog(ctx) {
   });
 }
 
+function openSalaryDialog(ctx) {
+  const { state } = ctx;
+  const form = document.querySelector("#salary-form");
+  if (!form) return;
+  const employees = salaryEmployeeOptions(state);
+  form.reset();
+  document.querySelector("#salary-employee").innerHTML = employees.map((employee) => (
+    `<option value="${employee.name}" data-role="${employee.role}">${employee.name} · ${employee.role}</option>`
+  )).join("");
+  form.elements.base.value = 45000;
+  form.elements.bonus.value = 0;
+  form.elements.date.value = isoToday();
+  form.elements.status.value = "Готово";
+  document.querySelector("#salary-dialog").showModal();
+}
+
+function applySalary(ctx, formData) {
+  const { state, currencyText, renderAll, switchView, showToast } = ctx;
+  const employee = formData.get("employee");
+  const employeeMeta = salaryEmployeeOptions(state).find((item) => item.name === employee);
+  const base = Math.max(0, Number(formData.get("base")) || 0);
+  const bonus = Math.max(0, Number(formData.get("bonus")) || 0);
+  const total = base + bonus;
+  if (!employee || !total) return;
+
+  const dateIso = formData.get("date") || isoToday();
+  const status = formData.get("status") || "Готово";
+  const row = {
+    id: `salary-${Date.now()}`,
+    name: employee,
+    role: employeeMeta?.role || "Співробітник",
+    base,
+    bonus,
+    total,
+    status,
+    date: financeDate(dateIso),
+    comment: formData.get("comment") || "",
+    custom: true
+  };
+
+  state.salaryRows = state.salaryRows || [];
+  state.salaryRows.unshift(row);
+  state.financeOperations = state.financeOperations || [];
+  state.financeOperations.unshift({
+    id: `finance-salary-${Date.now()}`,
+    date: row.date,
+    type: "Витрата",
+    title: `Зарплата: ${row.name}`,
+    caseId: "",
+    client: row.name,
+    amount: -total,
+    status: status === "Очікує" ? "Очікується" : "Оплачено",
+    method: "Зарплата",
+    custom: true,
+    salary: true
+  });
+
+  state.financeTab = "salary";
+  document.querySelector("#salary-dialog")?.close();
+  renderAll();
+  switchView("finance");
+  showToast(`Зарплату для ${row.name} додано: ${currencyText(total)}.`);
+}
+
+function bindSalaryDialog(ctx) {
+  const form = document.querySelector("#salary-form");
+  if (!form || form.dataset.bound === "true") return;
+  form.dataset.bound = "true";
+  form.addEventListener("submit", (event) => {
+    if (event.submitter?.value === "cancel") return;
+    event.preventDefault();
+    applySalary(ctx, new FormData(event.currentTarget));
+  });
+}
+
 function exportFinanceReport(ctx, totals, operations) {
   const lines = [
     "Показник,Значення",
@@ -711,7 +815,7 @@ function exportFinanceReport(ctx, totals, operations) {
       item.date,
       item.type,
       item.title,
-      `№${item.caseId}`,
+      item.caseId ? `№${item.caseId}` : "—",
       item.client,
       item.amount,
       item.status,
@@ -742,6 +846,7 @@ export function renderFinanceScreen(ctx) {
   state.financeDateEnd = state.financeDateEnd || DEFAULT_END;
   state.financeDatePickerOpen = Boolean(state.financeDatePickerOpen);
   bindFinanceActionDialog(ctx);
+  bindSalaryDialog(ctx);
 
   const rows = financeRows(ctx);
   const operationsInRange = financeOperations(state).filter((item) => inDateRange(item.date, state.financeDateStart, state.financeDateEnd));
@@ -963,9 +1068,9 @@ export function renderFinanceScreen(ctx) {
     state.selectedFinanceCaseId = selectedCaseId;
     openFinanceActionDialog(ctx, button.dataset.financeWorkAction);
   }));
-  document.querySelector("[data-finance-salary-run]")?.addEventListener("click", () => {
-    showToast("Зарплатну відомість сформовано для 4 співробітників.");
-  });
+  document.querySelectorAll("[data-finance-salary-open]").forEach((button) => button.addEventListener("click", () => {
+    openSalaryDialog(ctx);
+  }));
   document.querySelector("[data-finance-salary-export]")?.addEventListener("click", () => {
     showToast("Відомість зарплати підготовлено до експорту.");
   });

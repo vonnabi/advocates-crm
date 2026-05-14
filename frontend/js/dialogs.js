@@ -5,6 +5,7 @@ const DIALOG_CLOSE_BUTTONS = [
   ["#authority-dialog-close", "#authority-dialog"],
   ["#finance-dialog-close", "#finance-dialog"],
   ["#finance-action-dialog-close", "#finance-action-dialog"],
+  ["#salary-dialog-close", "#salary-dialog"],
   ["#document-dialog-close", "#document-dialog"],
   ["#task-dialog-close", "#task-dialog"],
   ["#event-dialog-close", "#event-dialog"],

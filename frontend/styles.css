@@ -1957,8 +1957,8 @@ button {
 
 .salary-workspace .finance-workspace-head,
 .salary-workspace .finance-workspace-row {
-  min-width: 780px;
-  grid-template-columns: minmax(150px, 1.4fr) minmax(90px, 0.8fr) repeat(3, minmax(90px, 0.8fr)) auto;
+  min-width: 920px;
+  grid-template-columns: minmax(150px, 1.35fr) minmax(90px, 0.75fr) repeat(4, minmax(90px, 0.8fr)) auto;
 }
 
 .finance-workspace-cards {
