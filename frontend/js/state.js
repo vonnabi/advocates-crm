@@ -53,6 +53,52 @@ export async function createInitialState() {
     selectedDocumentKey: "",
     documentDialogReturnView: "cases",
     folderDialogReturnView: "cases",
+    financeQuery: "",
+    financeStatusFilter: "all",
+    selectedFinanceCaseId: "2024/12345",
+    analyticsPeriod: "month",
+    analyticsResponsible: "all",
+    analyticsStatus: "all",
+    aiSelectedHelper: "Військове право",
+    aiSelectedCaseId: "2024/12345",
+    aiMessages: [],
+    osintQuery: "",
+    osintStatusFilter: "all",
+    selectedOsintId: "osint-1",
+    osintChecks: [
+      {
+        id: "osint-1",
+        title: "Перевірка контрагента по договору",
+        caseId: "2024/5678",
+        object: "ТОВ / контрагент",
+        sources: ["ЄДР", "Судові рішення", "Борги"],
+        risks: ["Є виконавче провадження", "Потрібна перевірка бенефіціарів"],
+        status: "В роботі"
+      },
+      {
+        id: "osint-2",
+        title: "Аналіз відкритих джерел клієнта",
+        caseId: "2024/9999",
+        object: "Клієнт / публічні згадки",
+        sources: ["Пошук", "Реєстри", "Документи"],
+        risks: ["Знайдено розбіжності у датах"],
+        status: "Потребує уваги"
+      },
+      {
+        id: "osint-3",
+        title: "Моніторинг судових реєстрів",
+        caseId: "2024/12345",
+        object: "Активні справи бюро",
+        sources: ["Судовий реєстр", "Календар", "Справи"],
+        risks: [],
+        status: "Активний"
+      }
+    ],
+    settingsUsers: [
+      { name: "Іваненко А.Ю.", role: "Адміністратор", access: "Повний доступ", photo: "І" },
+      { name: "Мельник Н.П.", role: "Адвокат", access: "Справи, клієнти, календар", photo: "М" },
+      { name: "Кравчук А.В.", role: "Помічник", access: "Задачі та документи", photo: "К" }
+    ],
     selectedEventId: "event-4",
     calendarMode: "month",
     calendarDate: "2024-05-15",

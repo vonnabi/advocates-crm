@@ -15,6 +15,8 @@ test("client form creates and edits a client", async ({ page }) => {
 
   await openApp(page);
   await page.locator('.nav-item[data-view="clients"]').click();
+  await expect(page.locator("#clients")).toHaveClass(/active/);
+  await expect(page.locator("#add-client")).toBeVisible();
   await page.locator("#add-client").click();
 
   await expect(page.locator("#client-dialog")).toHaveJSProperty("open", true);

@@ -8,7 +8,11 @@ const views = [
   ["documents", "Документи"],
   ["mailings", "Получатели"],
   ["planner", "План на завтра"],
-  ["analytics", "Справи за типами"]
+  ["finance", "Фінанси по справах"],
+  ["analytics", "Справи за типами"],
+  ["ai", "AI помічник по справі"],
+  ["osint", "OSINT перевірки"],
+  ["settings", "Профіль бюро"]
 ];
 
 test.beforeEach(async ({ page }) => {

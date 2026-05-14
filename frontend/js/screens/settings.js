@@ -1,10 +1,6 @@
 export function renderSettingsScreen(ctx) {
   const { state, $, icon, badge, saveNavigationState, showToast } = ctx;
-  const users = [
-    { name: "Іваненко А.Ю.", role: "Адміністратор", access: "Повний доступ", photo: "І" },
-    { name: "Мельник Н.П.", role: "Адвокат", access: "Справи, клієнти, календар", photo: "М" },
-    { name: "Кравчук А.В.", role: "Помічник", access: "Задачі та документи", photo: "К" }
-  ];
+  const users = state.settingsUsers;
   const integrations = [
     { key: "Telegram", description: "Повідомлення клієнтам, тестові відправки, нагадування" },
     { key: "SMS", description: "Короткі сповіщення про події та дедлайни" },
@@ -39,11 +35,15 @@ export function renderSettingsScreen(ctx) {
           <button type="button" class="secondary" data-settings-action="invite">+ Запросити</button>
         </div>
         <div class="settings-users-list">
-          ${users.map((user) => `<article class="settings-user-row">
+          ${users.map((user, index) => `<article class="settings-user-row">
             <div class="avatar">${user.photo}</div>
             <div><strong>${user.name}</strong><span>${user.role}</span></div>
             <em>${user.access}</em>
-            ${badge(user.role === "Адміністратор" ? "Owner" : "Active", user.role === "Адміністратор" ? "blue" : "green")}
+            <div class="settings-user-actions">
+              ${badge(user.role === "Адміністратор" ? "Owner" : "Active", user.role === "Адміністратор" ? "blue" : "green")}
+              <button type="button" class="case-row-icon" data-settings-user-role="${index}" title="Змінити роль">${icon("edit")}</button>
+              ${user.role === "Адміністратор" ? "" : `<button type="button" class="case-row-icon danger-icon" data-settings-user-delete="${index}" title="Видалити користувача">${icon("trash")}</button>`}
+            </div>
           </article>`).join("")}
         </div>
       </section>
@@ -93,8 +93,31 @@ export function renderSettingsScreen(ctx) {
     showToast("Налаштування бюро збережено.");
   });
   document.querySelector("[data-settings-action='invite']")?.addEventListener("click", () => {
-    showToast("Запрошення користувача показано як прототипну дію.", "warning");
+    state.settingsUsers.push({
+      name: "Новий користувач",
+      role: "Помічник",
+      access: "Задачі та документи",
+      photo: "Н"
+    });
+    saveNavigationState();
+    renderSettingsScreen(ctx);
+    showToast("Користувача додано до прототипу.");
   });
+  document.querySelectorAll("[data-settings-user-role]").forEach((button) => button.addEventListener("click", () => {
+    const user = state.settingsUsers[Number(button.dataset.settingsUserRole)];
+    if (!user || user.role === "Адміністратор") return;
+    user.role = user.role === "Адвокат" ? "Помічник" : "Адвокат";
+    user.access = user.role === "Адвокат" ? "Справи, клієнти, календар" : "Задачі та документи";
+    saveNavigationState();
+    renderSettingsScreen(ctx);
+    showToast(`Роль користувача змінено: ${user.role}.`);
+  }));
+  document.querySelectorAll("[data-settings-user-delete]").forEach((button) => button.addEventListener("click", () => {
+    const [removed] = state.settingsUsers.splice(Number(button.dataset.settingsUserDelete), 1);
+    saveNavigationState();
+    renderSettingsScreen(ctx);
+    showToast(`Користувача ${removed.name} видалено.`, "danger");
+  }));
   document.querySelectorAll("[data-settings-integration]").forEach((input) => input.addEventListener("change", () => {
     const key = input.dataset.settingsIntegration;
     state.settingsIntegrations[key] = input.checked;

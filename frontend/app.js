@@ -168,6 +168,7 @@ function screenContext() {
     formatDate,
     currency,
     currencyText,
+    caseFinance,
     addDays,
     calendarTimeTone,
     calendarTitle,
