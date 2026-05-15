@@ -3735,7 +3735,7 @@ button {
 
 .osint-lower-columns {
   display: grid;
-  grid-template-columns: minmax(360px, 1.42fr) minmax(230px, 0.76fr) minmax(270px, 0.82fr);
+  grid-template-columns: minmax(340px, 1.02fr) minmax(300px, 0.9fr) minmax(270px, 0.74fr);
   align-items: stretch;
 }
 
@@ -3743,7 +3743,7 @@ button {
 .osint-graph-column,
 .osint-types-column {
   min-width: 0;
-  padding: 14px 16px 16px;
+  padding: 12px 16px 14px;
 }
 
 .osint-graph-column,
@@ -3978,19 +3978,19 @@ button {
 
 .osint-mention-row {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) auto;
-  gap: 8px 12px;
+  grid-template-columns: 34px minmax(0, 1fr) 104px;
+  gap: 4px 10px;
   align-items: start;
   border-width: 0 0 1px;
   border-radius: 0;
   background: transparent;
-  padding: 10px 0;
+  padding: 6px 0;
   text-align: left;
 }
 
 .source-icon {
-  width: 38px;
-  height: 38px;
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -4029,7 +4029,7 @@ button {
 }
 
 .source-icon.facebook b {
-  font-size: 22px;
+  font-size: 20px;
 }
 
 .osint-mention-row strong,
@@ -4039,40 +4039,43 @@ button {
 
 .osint-mention-row strong {
   color: var(--text);
+  font-size: 11px;
+  line-height: 1.2;
 }
 
 .osint-mention-row small,
 .osint-mention-row time {
   color: var(--muted);
-  font-size: var(--text-xs);
+  font-size: 10px;
   font-weight: var(--weight-semibold);
+  line-height: 1.22;
 }
 
 .osint-mention-row > .source-icon {
   grid-row: 1 / span 2;
 }
 
-.osint-mention-row > span:not(.source-icon) {
+.osint-mention-row > span:not(.source-icon):not(.badge) {
   grid-column: 2;
   min-width: 0;
 }
 
 .osint-mention-row time {
   grid-column: 3;
-  grid-row: 1;
+  grid-row: 2;
   justify-self: end;
   white-space: nowrap;
 }
 
 .osint-mention-row .badge {
   grid-column: 3;
-  grid-row: 2;
+  grid-row: 1;
   justify-self: end;
   white-space: nowrap;
 }
 
-.osint-mention-row > span:not(.source-icon) strong,
-.osint-mention-row > span:not(.source-icon) small {
+.osint-mention-row > span:not(.source-icon):not(.badge) strong,
+.osint-mention-row > span:not(.source-icon):not(.badge) small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4086,6 +4089,10 @@ button {
 .osint-graph {
   min-height: 230px;
   position: relative;
+}
+
+.osint-graph-column .osint-graph {
+  min-height: 285px;
 }
 
 .osint-graph .node {
@@ -4107,26 +4114,26 @@ button {
 .osint-graph .center {
   left: 50%;
   top: 50%;
-  width: 62px;
-  height: 62px;
+  width: 72px;
+  height: 72px;
   transform: translate(-50%, -50%);
   border-radius: 50%;
   background: var(--blue);
   color: white;
 }
 
-.osint-graph .n1 { left: 50%; top: 8%; }
-.osint-graph .n2 { right: 1%; top: 33%; }
-.osint-graph .n3 { right: 5%; bottom: 15%; }
-.osint-graph .n4 { left: 1%; bottom: 16%; }
-.osint-graph .n5 { left: 1%; top: 33%; }
+.osint-graph .n1 { left: 50%; top: 6%; }
+.osint-graph .n2 { right: 2%; top: 32%; }
+.osint-graph .n3 { right: 6%; bottom: 14%; }
+.osint-graph .n4 { left: 4%; bottom: 15%; }
+.osint-graph .n5 { left: 3%; top: 32%; }
 
 .osint-graph .edge {
   position: absolute;
   z-index: 1;
   left: 50%;
   top: 50%;
-  width: 82px;
+  width: 102px;
   height: 1px;
   background: #cbd5e1;
   transform-origin: left center;
