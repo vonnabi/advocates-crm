@@ -3644,9 +3644,9 @@ button {
   display: grid;
   grid-template-columns: minmax(320px, 1.08fr) minmax(190px, 0.66fr) minmax(250px, 0.82fr) minmax(240px, 0.76fr);
   grid-template-areas:
-    "line line sources active"
-    "lower lower lower active"
-    "data data data quick";
+    "line line sources side"
+    "lower lower lower side"
+    "data data data side";
   gap: 14px;
   align-items: start;
 }
@@ -3715,22 +3715,33 @@ button {
   overflow: hidden;
 }
 
-.osint-active-panel {
-  grid-area: active;
-}
-
-.osint-quick-panel {
-  grid-area: quick;
-}
-
 .osint-sources-panel {
   grid-area: data;
 }
 
+.osint-side-stack {
+  grid-area: side;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  min-width: 0;
+}
+
 .osint-lower-composite .osint-subtabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   margin: 0;
-  padding: 0 16px;
+  padding: 0 14px;
   border-bottom: 1px solid var(--line);
+}
+
+.osint-lower-composite .osint-subtabs button {
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  padding-inline: 2px;
+  text-align: center;
+  white-space: normal;
 }
 
 .osint-lower-columns {
@@ -3904,9 +3915,9 @@ button {
 .osint-active-list button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 7px;
+  gap: 4px 7px;
   text-align: left;
-  padding: 11px 0;
+  padding: 8px 0;
   border-width: 0 0 1px;
   border-radius: 0;
 }
@@ -3926,20 +3937,24 @@ button {
 .osint-active-list b,
 .osint-focus-card strong {
   color: var(--text);
-  margin-top: 4px;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.2;
 }
 
 .osint-active-list small {
   color: var(--muted);
-  font-size: var(--text-xs);
+  font-size: 10px;
   font-weight: var(--weight-semibold);
+  line-height: 1.2;
 }
 
 .osint-active-list .badge {
   align-self: start;
   white-space: nowrap;
-  padding: 4px 8px;
-  font-size: var(--text-xs);
+  min-height: 22px;
+  padding: 3px 8px;
+  font-size: 10px;
 }
 
 .osint-active-list em {
@@ -4389,9 +4404,8 @@ button {
     grid-template-areas:
       "line"
       "sources"
-      "active"
+      "side"
       "lower"
-      "quick"
       "data";
   }
 

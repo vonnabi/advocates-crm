@@ -9,6 +9,14 @@ const OSINT_TABS = [
   ["settings", "Налаштування"]
 ];
 
+const OSINT_SUBTABS = [
+  ["mentions", "Останні згадки"],
+  ["risks", "Виявлені ризики"],
+  ["registries", "Зміни в реєстрах"],
+  ["people", "Пов'язані особи"],
+  ["events", "Ключові події"]
+];
+
 const OSINT_METRICS = [
   { label: "Зібрано даних", value: "32 540", trend: "+18%", icon: "briefcase", tone: "blue" },
   { label: "Нові згадки", value: "1 245", trend: "+12%", icon: "file", tone: "green" },
@@ -90,8 +98,16 @@ function filteredChecks(state) {
 
 function filteredMentions(state) {
   const query = (state.osintQuery || "").trim().toLowerCase();
-  if (!query) return OSINT_MENTIONS;
-  return OSINT_MENTIONS.filter((item) => [item.source, item.title, item.text, item.caseId, item.status]
+  const subtab = state.osintSubtab || "mentions";
+  const bySubtab = OSINT_MENTIONS.filter((item) => {
+    if (subtab === "risks") return item.tone === "red" || item.tone === "amber";
+    if (subtab === "registries") return item.source === "Opendatabot" || item.source === "Судовий реєстр";
+    if (subtab === "people") return item.text.includes("Петренко") || item.text.includes("бенефіціара");
+    if (subtab === "events") return item.source === "Telegram" || item.source === "Новини" || item.status === "Важлива";
+    return true;
+  });
+  if (!query) return bySubtab;
+  return bySubtab.filter((item) => [item.source, item.title, item.text, item.caseId, item.status]
     .some((value) => String(value).toLowerCase().includes(query)));
 }
 
@@ -291,6 +307,7 @@ function quickActions(icon) {
 }
 
 function overviewWorkspace(state, badge, icon) {
+  state.osintSubtab = state.osintSubtab || "mentions";
   return `
     <section class="osint-overview-layout">
       <article class="panel osint-chart-card osint-line-panel">
@@ -314,8 +331,8 @@ function overviewWorkspace(state, badge, icon) {
 
       <section class="panel osint-lower-composite">
         <nav class="osint-subtabs">
-          ${["Останні згадки", "Виявлені ризики", "Зміни в реєстрах", "Пов'язані особи", "Ключові події"].map((label, index) => `
-            <button class="${index === 0 ? "active" : ""}" type="button" data-osint-subtab>${label}</button>
+          ${OSINT_SUBTABS.map(([key, label]) => `
+            <button class="${state.osintSubtab === key ? "active" : ""}" type="button" data-osint-subtab="${key}">${label}</button>
           `).join("")}
         </nav>
         <div class="osint-lower-columns">
@@ -342,18 +359,20 @@ function overviewWorkspace(state, badge, icon) {
         </div>
       </section>
 
-      <article class="panel osint-right-card osint-active-panel">
-        <div class="analytics-card-head">
-          <h2>Активні справи OSINT</h2>
-          <button class="ghost compact" type="button" data-osint-show-all>Переглянути всі</button>
-        </div>
-        ${activeCasesList(badge)}
-      </article>
+      <aside class="osint-side-stack">
+        <article class="panel osint-right-card">
+          <div class="analytics-card-head">
+            <h2>Активні справи OSINT</h2>
+            <button class="ghost compact" type="button" data-osint-show-all>Переглянути всі</button>
+          </div>
+          ${activeCasesList(badge)}
+        </article>
 
-      <article class="panel osint-right-card osint-quick-panel">
-        <h2>Швидкі дії</h2>
-        ${quickActions(icon)}
-      </article>
+        <article class="panel osint-right-card">
+          <h2>Швидкі дії</h2>
+          ${quickActions(icon)}
+        </article>
+      </aside>
 
       <article class="panel osint-wide-card osint-sources-panel">
         <h2>Джерела даних</h2>
@@ -543,7 +562,12 @@ export function renderOSINTScreen(ctx) {
     state.osintTab = "cases";
     renderOSINTScreen(ctx);
   }));
-  document.querySelectorAll("[data-osint-sync], [data-osint-date], [data-osint-chart-scale], [data-osint-subtab]").forEach((control) => {
+  document.querySelectorAll("[data-osint-subtab]").forEach((button) => button.addEventListener("click", () => {
+    state.osintSubtab = button.dataset.osintSubtab;
+    showToast(`OSINT: ${button.textContent.trim()}.`);
+    renderOSINTScreen(ctx);
+  }));
+  document.querySelectorAll("[data-osint-sync], [data-osint-date], [data-osint-chart-scale]").forEach((control) => {
     control.addEventListener("click", () => showToast("OSINT дані оновлено."));
     control.addEventListener("change", () => showToast("Параметри OSINT оновлено."));
   });
