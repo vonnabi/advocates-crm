@@ -167,13 +167,24 @@ function sourceDonut() {
   `;
 }
 
+function mentionIconMeta(source) {
+  if (source === "Facebook") return { tone: "facebook", label: "f" };
+  if (source === "Opendatabot") return { tone: "opendata", label: "OD" };
+  if (source === "Telegram") return { tone: "blue", iconName: "telegram" };
+  if (source === "Судовий реєстр") return { tone: "amber", iconName: "building" };
+  if (source === "Новини") return { tone: "blue", iconName: "file" };
+  return { tone: "blue", iconName: "search" };
+}
+
 function mentionList(badge, icon, state) {
   const mentions = filteredMentions(state);
   return `
     <div class="osint-mentions-list">
-      ${mentions.map((item) => `
+      ${mentions.map((item) => {
+        const meta = mentionIconMeta(item.source);
+        return `
         <button class="osint-mention-row" type="button" data-open-osint-case="${item.caseId}">
-          <span class="source-icon ${item.tone}">${icon(item.source === "Telegram" ? "telegram" : item.source === "Судовий реєстр" ? "building" : item.source === "Новини" ? "file" : "search")}</span>
+          <span class="source-icon ${meta.tone}">${meta.label ? `<b>${meta.label}</b>` : icon(meta.iconName)}</span>
           <span>
             <strong>${item.title}</strong>
             <small>${item.text}</small>
@@ -182,7 +193,8 @@ function mentionList(badge, icon, state) {
           <time>${item.time}</time>
           ${badge(item.status, item.tone)}
         </button>
-      `).join("") || `<div class="finance-operation-empty">Згадок за пошуком не знайдено.</div>`}
+      `;
+      }).join("") || `<div class="finance-operation-empty">Згадок за пошуком не знайдено.</div>`}
     </div>
   `;
 }
@@ -235,20 +247,24 @@ function activeCasesList(badge) {
   `;
 }
 
-function sourceIconName(title) {
-  if (title.includes("Telegram")) return "telegram";
-  if (title.includes("Судові")) return "building";
-  if (title.includes("Новини")) return "file";
-  if (title.includes("Соц")) return "user";
-  return "search";
+function sourceIconMeta(title) {
+  if (title.includes("YouControl")) return { iconName: "briefcase", tone: "green" };
+  if (title.includes("Opendatabot")) return { iconName: "search", tone: "blue" };
+  if (title.includes("Telegram")) return { iconName: "telegram", tone: "blue" };
+  if (title.includes("Судові")) return { iconName: "building", tone: "amber" };
+  if (title.includes("Новини")) return { iconName: "file", tone: "blue" };
+  if (title.includes("Соц")) return { iconName: "user", tone: "blue" };
+  return { iconName: "search", tone: "blue" };
 }
 
 function sourcesGrid(badge, icon) {
   return `
     <div class="osint-source-grid">
-      ${OSINT_SOURCES.map(([title, subtitle, updated, status]) => `
+      ${OSINT_SOURCES.map(([title, subtitle, updated, status]) => {
+        const meta = sourceIconMeta(title);
+        return `
         <article>
-          <div class="source-card-icon">${icon(sourceIconName(title))}</div>
+          <div class="source-card-icon ${meta.tone}">${icon(meta.iconName)}</div>
           <div>
             <strong>${title}</strong>
             <span>${subtitle}</span>
@@ -256,8 +272,99 @@ function sourcesGrid(badge, icon) {
           </div>
           ${badge(status, "green")}
         </article>
-      `).join("")}
+      `;
+      }).join("")}
     </div>
+  `;
+}
+
+function quickActions(icon) {
+  return `
+    <div class="osint-quick-actions">
+      <button type="button" data-osint-quick="person">${icon("user")} Пошук по людині</button>
+      <button type="button" data-osint-quick="company">${icon("building")} Пошук по компанії</button>
+      <button type="button" data-osint-monitor>${icon("refresh")} Моніторинг справи</button>
+      <button type="button" data-create-osint>${icon("file")} Створити звіт</button>
+      <button type="button" data-osint-export>${icon("file")} Експорт даних</button>
+    </div>
+  `;
+}
+
+function overviewWorkspace(state, badge, icon) {
+  return `
+    <section class="osint-overview-layout">
+      <div class="osint-overview-main">
+        <section class="osint-dashboard-grid">
+          <article class="panel osint-chart-card osint-line-panel">
+            <div class="analytics-card-head">
+              <h2>Динаміка згадок</h2>
+              <select data-osint-chart-scale><option>По днях</option><option>По тижнях</option></select>
+            </div>
+            <div class="analytics-legend">
+              <span><i class="blue"></i>Всі згадки</span>
+              <span><i class="red"></i>Негативні</span>
+              <span><i class="green"></i>Позитивні</span>
+              <span><i class="muted-dot"></i>Нейтральні</span>
+            </div>
+            ${osintLineChart()}
+          </article>
+
+          <article class="panel osint-chart-card">
+            <h2>Розподіл згадок за джерелами</h2>
+            ${sourceDonut()}
+          </article>
+        </section>
+
+        <section class="osint-lower-grid">
+          <article class="panel osint-wide-card">
+            <nav class="osint-subtabs">
+              ${["Останні згадки", "Виявлені ризики", "Зміни в реєстрах", "Пов'язані особи", "Ключові події"].map((label, index) => `
+                <button class="${index === 0 ? "active" : ""}" type="button" data-osint-subtab>${label}</button>
+              `).join("")}
+            </nav>
+            ${mentionList(badge, icon, state)}
+            <button class="ghost osint-list-more" type="button" data-osint-sync>Переглянути всі згадки</button>
+          </article>
+
+          <article class="panel osint-small-card">
+            <h2>Граф зв'язків у справах</h2>
+            ${relationshipGraph()}
+            <div class="osint-graph-legend">
+              <span><i class="person"></i>Фізична особа</span>
+              <span><i class="company"></i>Компанія</span>
+              <span><i class="line"></i>Зв'язок</span>
+              <span><i class="dash"></i>Опосередкований зв'язок</span>
+            </div>
+          </article>
+
+          <article class="panel osint-small-card">
+            <h2>Розподіл за типами даних</h2>
+            ${dataTypeBars()}
+          </article>
+        </section>
+
+        <article class="panel osint-wide-card osint-sources-panel">
+          <h2>Джерела даних</h2>
+          ${sourcesGrid(badge, icon)}
+          <button class="ghost osint-manage" type="button" data-osint-sync>Керування джерелами</button>
+        </article>
+      </div>
+
+      <aside class="osint-overview-side">
+        <article class="panel osint-right-card">
+          <div class="analytics-card-head">
+            <h2>Активні справи OSINT</h2>
+            <button class="ghost compact" type="button" data-osint-show-all>Переглянути всі</button>
+          </div>
+          ${activeCasesList(badge)}
+        </article>
+
+        <article class="panel osint-right-card">
+          <h2>Швидкі дії</h2>
+          ${quickActions(icon)}
+        </article>
+      </aside>
+    </section>
   `;
 }
 
@@ -276,12 +383,7 @@ function secondaryWorkspace(state, badge, icon) {
         </article>
         <aside class="panel osint-right-card">
           <h2>Швидкі дії</h2>
-          <div class="osint-quick-actions">
-            <button type="button" data-osint-quick="person">${icon("user")} Пошук по людині</button>
-            <button type="button" data-osint-quick="company">${icon("building")} Пошук по компанії</button>
-            <button type="button" data-create-osint>${icon("file")} Створити звіт</button>
-            <button type="button" data-osint-export>${icon("file")} Експорт даних</button>
-          </div>
+          ${quickActions(icon)}
         </aside>
       </section>
     `;
@@ -344,7 +446,7 @@ function secondaryWorkspace(state, badge, icon) {
     `;
   }
   return `
-      <section class="panel osint-wide-card osint-tab-workspace">
+    <section class="panel osint-wide-card osint-tab-workspace">
       <div class="analytics-card-head">
         <h2>${OSINT_TABS.find(([key]) => key === tab)?.[1] || "OSINT"}</h2>
         <button class="secondary compact" type="button" data-osint-monitor>${icon("refresh")} Додати моніторинг</button>
@@ -397,76 +499,7 @@ export function renderOSINTScreen(ctx) {
         ${OSINT_METRICS.map((item) => metricCard(item, icon)).join("")}
       </section>
 
-      ${state.osintTab === "overview" ? `
-      <section class="osint-dashboard-grid">
-        <article class="panel osint-chart-card osint-line-panel">
-          <div class="analytics-card-head">
-            <h2>Динаміка згадок</h2>
-            <select data-osint-chart-scale><option>По днях</option><option>По тижнях</option></select>
-          </div>
-          <div class="analytics-legend">
-            <span><i class="blue"></i>Всі згадки</span>
-            <span><i class="red"></i>Негативні</span>
-            <span><i class="green"></i>Позитивні</span>
-            <span><i class="muted-dot"></i>Нейтральні</span>
-          </div>
-          ${osintLineChart()}
-        </article>
-
-        <article class="panel osint-chart-card">
-          <h2>Розподіл згадок за джерелами</h2>
-          ${sourceDonut()}
-        </article>
-
-        <aside class="panel osint-right-card">
-          <div class="analytics-card-head">
-            <h2>Активні справи OSINT</h2>
-            <button class="ghost compact" type="button" data-osint-show-all>Переглянути всі</button>
-          </div>
-          ${activeCasesList(badge)}
-        </aside>
-      </section>
-
-      <section class="osint-lower-grid">
-        <article class="panel osint-wide-card">
-          <nav class="osint-subtabs">
-            ${["Останні згадки", "Виявлені ризики", "Зміни в реєстрах", "Пов'язані особи", "Ключові події"].map((label, index) => `
-              <button class="${index === 0 ? "active" : ""}" type="button" data-osint-subtab>${label}</button>
-            `).join("")}
-          </nav>
-          ${mentionList(badge, icon, state)}
-        </article>
-
-        <article class="panel osint-small-card">
-          <h2>Граф зв'язків у справах</h2>
-          ${relationshipGraph()}
-        </article>
-
-        <article class="panel osint-small-card">
-          <h2>Розподіл за типами даних</h2>
-          ${dataTypeBars()}
-        </article>
-      </section>
-
-      <section class="osint-bottom-layout">
-        <article class="panel osint-wide-card">
-          <h2>Джерела даних</h2>
-          ${sourcesGrid(badge, icon)}
-          <button class="ghost osint-manage" type="button" data-osint-sync>Керування джерелами</button>
-        </article>
-
-        <aside class="panel osint-right-card">
-          <h2>Швидкі дії</h2>
-          <div class="osint-quick-actions">
-            <button type="button" data-osint-quick="person">${icon("user")} Пошук по людині</button>
-            <button type="button" data-osint-quick="company">${icon("building")} Пошук по компанії</button>
-            <button type="button" data-osint-monitor>${icon("refresh")} Моніторинг справи</button>
-            <button type="button" data-create-osint>${icon("file")} Створити звіт</button>
-            <button type="button" data-osint-export>${icon("file")} Експорт даних</button>
-          </div>
-        </aside>
-      </section>
-      ` : secondaryWorkspace(state, badge, icon)}
+      ${state.osintTab === "overview" ? overviewWorkspace(state, badge, icon) : secondaryWorkspace(state, badge, icon)}
     </div>
   `;
 
