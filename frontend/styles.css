@@ -796,6 +796,10 @@ h3 {
   text-align: left;
 }
 
+.notification-row[hidden] {
+  display: none;
+}
+
 .notification-row:hover,
 .profile-panel button:hover {
   background: #f7f9fc;
@@ -824,6 +828,21 @@ h3 {
   color: var(--blue);
   font-size: 12px;
   font-weight: 900;
+}
+
+.notifications-empty {
+  margin: 4px 0 0;
+  border-radius: 8px;
+  background: #f7f9fc;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: var(--weight-semibold);
+  padding: 12px;
+  text-align: center;
+}
+
+.notifications-empty[hidden] {
+  display: none;
 }
 
 .event-dot.danger {

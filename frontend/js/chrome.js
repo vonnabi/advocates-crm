@@ -31,12 +31,30 @@ function toggleTopbarPanel($, toggleSelector, panelSelector) {
   toggle.setAttribute("aria-expanded", String(willOpen));
 }
 
-function markNotificationRead($) {
+export function syncTopbarNotifications($, state) {
+  const settings = state.settingsNotifications || {};
+  const readKeys = new Set(state.notificationReadKeys || []);
+  let unreadCount = 0;
+  document.querySelectorAll("[data-notification-key]").forEach((row) => {
+    const key = row.dataset.notificationKey;
+    const visible = settings[key] !== false && !readKeys.has(key);
+    row.hidden = !visible;
+    if (visible) unreadCount += 1;
+  });
+  const empty = document.querySelector("[data-notifications-empty]");
+  if (empty) empty.hidden = unreadCount > 0;
   const badge = $("#notifications-count");
-  if (!badge) return;
-  const nextCount = Math.max(Number(badge.textContent) - 1, 0);
-  badge.textContent = String(nextCount);
-  badge.classList.toggle("empty", nextCount === 0);
+  if (badge) {
+    badge.textContent = String(unreadCount);
+    badge.classList.toggle("empty", unreadCount === 0);
+  }
+}
+
+function markNotificationRead($, state, key) {
+  const badge = $("#notifications-count");
+  if (!badge || !key) return;
+  state.notificationReadKeys = [...new Set([...(state.notificationReadKeys || []), key])];
+  syncTopbarNotifications($, state);
 }
 
 function toggleSidebar({ saveNavigationState, showToast }) {
@@ -97,7 +115,9 @@ async function copyDemoLink(showToast) {
   }
 }
 
-export function setupTopbarControls({ $, switchView, saveNavigationState, showToast }) {
+export function setupTopbarControls({ $, state, switchView, saveNavigationState, showToast }) {
+  syncTopbarNotifications($, state);
+
   document.addEventListener("click", (event) => {
     if (event.target.closest("#notifications-toggle")) {
       event.preventDefault();
@@ -116,7 +136,8 @@ export function setupTopbarControls({ $, switchView, saveNavigationState, showTo
 
   document.querySelectorAll("[data-notification-view]").forEach((button) => {
     button.addEventListener("click", () => {
-      markNotificationRead($);
+      markNotificationRead($, state, button.dataset.notificationKey);
+      saveNavigationState();
       closeTopbarPanels($);
       switchView(button.dataset.notificationView);
       showToast("Відкрито розділ зі сповіщення.");
@@ -124,11 +145,11 @@ export function setupTopbarControls({ $, switchView, saveNavigationState, showTo
   });
 
   $("[data-clear-notifications]")?.addEventListener("click", () => {
-    const badge = $("#notifications-count");
-    if (badge) {
-      badge.textContent = "0";
-      badge.classList.add("empty");
-    }
+    state.notificationReadKeys = [...document.querySelectorAll("[data-notification-key]")]
+      .filter((row) => state.settingsNotifications?.[row.dataset.notificationKey] !== false)
+      .map((row) => row.dataset.notificationKey);
+    syncTopbarNotifications($, state);
+    saveNavigationState();
     closeTopbarPanels($);
     showToast("Сповіщення позначено як прочитані.");
   });

@@ -19,9 +19,13 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => window.localStorage.clear());
 });
 
-test("main menu screens render content", async ({ page }) => {
+async function openApp(page) {
   await page.goto("/");
+  await expect(page.locator("#dashboard")).toContainText("Активних справ");
+}
 
+test("main menu screens render content", async ({ page }) => {
+  await openApp(page);
   for (const [view, expectedText] of views) {
     await page.locator(`.nav-item[data-view="${view}"]`).click();
     await expect(page.locator(`#${view}`)).toHaveClass(/active/);
@@ -32,7 +36,7 @@ test("main menu screens render content", async ({ page }) => {
 });
 
 test("primary create dialogs open", async ({ page }) => {
-  await page.goto("/");
+  await openApp(page);
 
   await page.locator('.nav-item[data-view="clients"]').click();
   await expect(page.locator("#add-client")).toBeVisible();
@@ -53,7 +57,7 @@ test("primary create dialogs open", async ({ page }) => {
 });
 
 test("global documents screen exposes document actions", async ({ page }) => {
-  await page.goto("/");
+  await openApp(page);
 
   await page.locator('.nav-item[data-view="documents"]').click();
   await expect(page.locator("#documents")).toHaveClass(/active/);

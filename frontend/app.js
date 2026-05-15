@@ -2,7 +2,8 @@ import { createInitialState } from "./js/state.js";
 import {
   closeTopbarPanels as closeTopbarPanelsInChrome,
   isTopbarPanelOpen,
-  setupTopbarControls
+  setupTopbarControls,
+  syncTopbarNotifications
 } from "./js/chrome.js";
 import { createDialogOpeners } from "./js/dialog-openers.js";
 import { setupDialogControls } from "./js/dialogs.js";
@@ -202,7 +203,8 @@ function screenContext() {
     bindViewLinks,
     showToast,
     saveNavigationState,
-    syncNavigationState
+    syncNavigationState,
+    syncTopbarNotifications: () => syncTopbarNotifications($, state)
   };
 }
 
@@ -462,7 +464,7 @@ navNodes.forEach((button) => {
 
 $("#topbar-back")?.addEventListener("click", goBack);
 
-setupTopbarControls({ $, switchView, saveNavigationState, showToast });
+setupTopbarControls({ $, state, switchView, saveNavigationState, showToast });
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;

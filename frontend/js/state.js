@@ -153,6 +153,7 @@ export async function createInitialState() {
     bureauSettings: demoData.settings.bureau,
     settingsIntegrations: demoData.settings.integrations,
     settingsNotifications: demoData.settings.notifications,
+    notificationReadKeys: [],
     mailingStatusNotice: demoData.mailing.statusNotice || ""
   };
 }

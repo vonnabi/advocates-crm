@@ -61,6 +61,7 @@ for (const view of ["tasks", "planner"]) {
 test("notifications menu navigates, closes, and clears the badge", async ({ page }) => {
   await page.goto("/");
   await waitForAppReady(page);
+  await expect(page.locator("#notifications-count")).toHaveText("3");
   await page.locator("#notifications-toggle").click();
 
   await expect(page.locator("#notifications-menu")).toBeVisible();
@@ -70,7 +71,7 @@ test("notifications menu navigates, closes, and clears the badge", async ({ page
 
   await expect(page.locator("#tasks")).toHaveClass(/active/);
   await expect(page.locator("#notifications-menu")).toBeHidden();
-  await expect(page.locator("#notifications-count")).toHaveText("4");
+  await expect(page.locator("#notifications-count")).toHaveText("2");
 
   await page.locator("#notifications-toggle").click();
   await page.locator("[data-clear-notifications]").click();
@@ -78,6 +79,21 @@ test("notifications menu navigates, closes, and clears the badge", async ({ page
   await expect(page.locator("#notifications-menu")).toBeHidden();
   await expect(page.locator("#notifications-count")).toHaveText("0");
   await expect(page.locator("#notifications-count")).toHaveClass(/empty/);
+});
+
+test("notification settings control topbar notification rows", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+  await page.locator('.nav-item[data-view="settings"]').click();
+  await page.locator('[data-settings-notification="court"]').uncheck();
+
+  await expect(page.locator("#notifications-count")).toHaveText("2");
+  await page.locator("#notifications-toggle").click();
+  await expect(page.locator('[data-notification-key="court"]')).toBeHidden();
+
+  await page.locator("#notifications-toggle").click();
+  await page.locator('[data-settings-notification="court"]').check();
+  await expect(page.locator("#notifications-count")).toHaveText("3");
 });
 
 test("sidebar collapse and restore controls keep the navigation usable", async ({ page }) => {

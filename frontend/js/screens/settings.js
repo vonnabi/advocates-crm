@@ -78,7 +78,7 @@ function ensureInviteDialog(ctx) {
 }
 
 export function renderSettingsScreen(ctx) {
-  const { state, $, icon, badge, saveNavigationState, showToast } = ctx;
+  const { state, $, icon, badge, saveNavigationState, syncTopbarNotifications, showToast } = ctx;
   const users = state.settingsUsers;
   const integrations = [
     { key: "Telegram", description: "Повідомлення клієнтам, тестові відправки, нагадування" },
@@ -203,7 +203,12 @@ export function renderSettingsScreen(ctx) {
     showToast(`${key}: ${input.checked ? "увімкнено" : "вимкнено"}.`, input.checked ? "success" : "warning");
   }));
   document.querySelectorAll("[data-settings-notification]").forEach((input) => input.addEventListener("change", () => {
-    state.settingsNotifications[input.dataset.settingsNotification] = input.checked;
+    const key = input.dataset.settingsNotification;
+    state.settingsNotifications[key] = input.checked;
+    if (input.checked) {
+      state.notificationReadKeys = (state.notificationReadKeys || []).filter((item) => item !== key);
+    }
+    syncTopbarNotifications?.();
     saveNavigationState();
     showToast(input.checked ? "Сповіщення увімкнено." : "Сповіщення вимкнено.", input.checked ? "success" : "warning");
   }));

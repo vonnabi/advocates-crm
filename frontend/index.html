@@ -64,18 +64,19 @@
                 <strong>Сповіщення</strong>
                 <button type="button" data-clear-notifications>Прочитано</button>
               </div>
-              <button type="button" class="notification-row" data-notification-view="tasks">
+              <button type="button" class="notification-row" data-notification-key="deadlines" data-notification-view="tasks">
                 <span class="event-dot danger"></span>
                 <span><strong>3 задачі прострочено</strong><em>Перевірте дедлайни на сьогодні</em><small>Відкрити задачі</small></span>
               </button>
-              <button type="button" class="notification-row" data-notification-view="calendar">
+              <button type="button" class="notification-row" data-notification-key="court" data-notification-view="calendar">
                 <span class="event-dot court"></span>
                 <span><strong>Судове засідання о 10:00</strong><em>Справа №2024/1111</em><small>Відкрити календар</small></span>
               </button>
-              <button type="button" class="notification-row" data-notification-view="mailings">
+              <button type="button" class="notification-row" data-notification-key="mailings" data-notification-view="mailings">
                 <span class="event-dot meeting"></span>
                 <span><strong>Розсилка готова</strong><em>386 одержувачів у сегменті</em><small>Відкрити розсилку</small></span>
               </button>
+              <p class="notifications-empty" data-notifications-empty hidden>Активних сповіщень немає.</p>
             </div>
           </div>
           <div class="topbar-menu-wrap">

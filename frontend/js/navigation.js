@@ -14,6 +14,7 @@ export function saveNavigationState({ state }) {
       bureauSettings: state.bureauSettings,
       settingsIntegrations: state.settingsIntegrations,
       settingsNotifications: state.settingsNotifications,
+      notificationReadKeys: state.notificationReadKeys,
       sidebarCollapsed: document.body.classList.contains("sidebar-collapsed")
     };
     localStorage.setItem(NAV_STORAGE_KEY, JSON.stringify(payload));
@@ -38,6 +39,7 @@ export function restoreNavigationState({ state, caseById }) {
     state.bureauSettings = { ...state.bureauSettings, ...(saved.bureauSettings || {}) };
     state.settingsIntegrations = { ...state.settingsIntegrations, ...(saved.settingsIntegrations || {}) };
     state.settingsNotifications = { ...state.settingsNotifications, ...(saved.settingsNotifications || {}) };
+    state.notificationReadKeys = Array.isArray(saved.notificationReadKeys) ? saved.notificationReadKeys : [];
     document.body.classList.toggle("sidebar-collapsed", Boolean(saved.sidebarCollapsed));
   } catch (error) {
     localStorage.removeItem(NAV_STORAGE_KEY);
