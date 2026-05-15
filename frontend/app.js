@@ -55,8 +55,10 @@ import {
 } from "./js/screens/tasks.js";
 import {
   addDays,
+  actionMenu,
   advocatePhoto,
   badge,
+  bindActionMenus,
   calendarTimeTone,
   calendarTitle,
   calendarToday,
@@ -152,6 +154,8 @@ function screenContext() {
     state,
     $,
     icon,
+    actionMenu,
+    bindActionMenus,
     badge,
     riskTone,
     statusTone,

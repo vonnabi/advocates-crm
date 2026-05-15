@@ -1,6 +1,8 @@
 let state;
 let $;
 let icon;
+let actionMenu;
+let bindActionMenus;
 let badge;
 let riskTone;
 let taskTone;
@@ -24,6 +26,8 @@ function applyContext(ctx) {
     state,
     $,
     icon,
+    actionMenu,
+    bindActionMenus,
     badge,
     riskTone,
     taskTone,
@@ -400,8 +404,10 @@ function renderTasks() {
                   <td>${badge(task.overdue ? "Просрочено" : task.status, task.overdue ? "red" : taskTone(task.status))}</td>
                   <td>
                     <div class="case-row-actions task-list-actions">
-                      <button type="button" data-edit-task-global="${task.key}" title="Редагувати">${icon("edit")}</button>
-                      <button type="button" class="danger-icon" data-delete-task-global="${task.key}" title="Видалити">${icon("trash")}</button>
+                      ${actionMenu([
+                        { label: "Редагувати", icon: "edit", attrs: { "data-edit-task-global": task.key } },
+                        { label: "Видалити", icon: "trash", danger: true, attrs: { "data-delete-task-global": task.key } }
+                      ], { label: "Дії задачі" })}
                     </div>
                   </td>
                 </tr>
@@ -659,6 +665,7 @@ function renderTasks() {
       switchView("cases");
     });
   });
+  bindActionMenus?.($("#tasks"));
   bindViewLinks();
   syncNavigationState();
 }

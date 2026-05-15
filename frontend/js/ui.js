@@ -119,6 +119,96 @@ export function documentActionButtons(source, firstIndex, secondIndex = "") {
   `;
 }
 
+function attributeString(attrs = {}) {
+  return Object.entries(attrs)
+    .filter(([, value]) => value !== false && value !== null && value !== undefined)
+    .map(([key, value]) => {
+      if (value === true) return key;
+      return `${key}="${String(value).replaceAll("&", "&amp;").replaceAll("\"", "&quot;")}"`;
+    })
+    .join(" ");
+}
+
+export function actionMenu(items = [], options = {}) {
+  const label = options.label || "Дії";
+  const className = options.className ? ` ${options.className}` : "";
+  return `
+    <div class="row-action-menu-wrap${className}">
+      <button type="button" class="icon-button compact row-action-trigger" data-action-menu-trigger aria-label="${label}" aria-expanded="false">⋮</button>
+      <div class="row-action-menu" hidden>
+        ${items.map((item) => {
+          const tone = item.danger ? " danger" : "";
+          const attrs = attributeString(item.attrs || {});
+          return `<button type="button" class="${tone.trim()}" ${attrs}>${item.icon ? icon(item.icon) : ""}<span>${item.label}</span></button>`;
+        }).join("")}
+      </div>
+    </div>
+  `;
+}
+
+export function bindActionMenus(root = document) {
+  if (!document.body.dataset.actionMenusGlobalBound) {
+    document.body.dataset.actionMenusGlobalBound = "true";
+    document.addEventListener("click", (event) => {
+      if (event.target.closest(".row-action-menu-wrap")) return;
+      document.querySelectorAll(".row-action-menu").forEach((menu) => {
+        menu.hidden = true;
+        menu.style.position = "";
+        menu.style.top = "";
+        menu.style.right = "";
+        menu.style.bottom = "";
+      });
+      document.querySelectorAll("[data-action-menu-trigger]").forEach((button) => {
+        button.setAttribute("aria-expanded", "false");
+      });
+    });
+  }
+
+  root.querySelectorAll("[data-action-menu-trigger]").forEach((button) => {
+    if (button.dataset.actionMenuBound === "true") return;
+    button.dataset.actionMenuBound = "true";
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const wrapper = button.closest(".row-action-menu-wrap");
+      const menu = wrapper?.querySelector(".row-action-menu");
+      const shouldOpen = menu?.hidden;
+      document.querySelectorAll(".row-action-menu").forEach((item) => {
+        if (item !== menu) {
+          item.hidden = true;
+          item.style.position = "";
+          item.style.top = "";
+          item.style.right = "";
+          item.style.bottom = "";
+        }
+      });
+      document.querySelectorAll("[data-action-menu-trigger]").forEach((item) => {
+        if (item !== button) item.setAttribute("aria-expanded", "false");
+      });
+      if (menu) {
+        menu.hidden = !shouldOpen;
+        menu.style.position = "";
+        menu.style.top = "";
+        menu.style.right = "";
+        menu.style.bottom = "";
+        if (shouldOpen) {
+          const triggerBox = button.getBoundingClientRect();
+          menu.style.position = "fixed";
+          menu.style.right = `${Math.max(8, window.innerWidth - triggerBox.right)}px`;
+          menu.style.top = `${triggerBox.bottom + 8}px`;
+          requestAnimationFrame(() => {
+            const menuBox = menu.getBoundingClientRect();
+            if (menuBox.bottom > window.innerHeight - 8) {
+              menu.style.top = `${Math.max(8, triggerBox.top - menuBox.height - 8)}px`;
+            }
+          });
+        }
+      }
+      button.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+    });
+  });
+}
+
 export function icon(name) {
   const icons = {
     search: `<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>`,

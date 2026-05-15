@@ -64,7 +64,9 @@ test("global documents screen exposes document actions", async ({ page }) => {
   await expect(page.locator("#documents [data-document-row]").first()).toBeVisible();
 
   await page.locator("#documents [data-document-row]").first().click();
-  await page.locator("#documents [data-edit-global-document]").first().click();
+  const documentMenu = page.locator("#documents .documents-row-actions .row-action-menu-wrap").first();
+  await documentMenu.locator("[data-action-menu-trigger]").click();
+  await documentMenu.locator("[data-edit-global-document]").click();
   await expect(page.locator("#document-dialog")).toHaveJSProperty("open", true);
   await page.locator("#document-dialog-close").click();
 

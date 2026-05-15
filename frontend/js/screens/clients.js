@@ -68,7 +68,7 @@ export function renderClientsScreen(ctx) {
 }
 
 export function renderClientRows(ctx) {
-  const { state, $, icon, openClientDialog } = ctx;
+  const { state, $, icon, actionMenu, bindActionMenus, openClientDialog } = ctx;
   const query = ($("#client-filter")?.value || "").toLowerCase();
   const rows = state.clients
     .filter((client) => !query || `${client.name} ${client.phone} ${client.email} ${client.request} ${client.telegramUsername} ${client.manager}`.toLowerCase().includes(query))
@@ -78,12 +78,10 @@ export function renderClientRows(ctx) {
         <td>
           <div class="client-name-cell">
             <a href="#" data-client="${client.id}">${client.name}</a>
-            <button class="edit-icon-button" data-edit-client-row="${client.id}" title="Редагувати клієнта" aria-label="Редагувати ${client.name}">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M16.9 3.7a2.1 2.1 0 0 1 3 3L8.4 18.2l-4.1 1.2 1.2-4.1L16.9 3.7Z"></path>
-                <path d="m15.5 5.1 3.4 3.4"></path>
-              </svg>
-            </button>
+            ${actionMenu([
+              { label: "Відкрити профіль", icon: "eye", attrs: { "data-client": client.id } },
+              { label: "Редагувати", icon: "edit", attrs: { "data-edit-client-row": client.id, "aria-label": `Редагувати ${client.name}` } }
+            ], { label: "Дії клієнта" })}
           </div>
         </td>
         <td>${client.phone}</td>
@@ -95,6 +93,7 @@ export function renderClientRows(ctx) {
     `)
     .join("");
   $("#clients-table").innerHTML = rows || `<tr><td colspan="7">Клієнтів не знайдено</td></tr>`;
+  bindActionMenus?.($("#clients-table"));
   document.querySelectorAll("[data-client]").forEach((link) => {
     link.addEventListener("click", (event) => {
       event.preventDefault();

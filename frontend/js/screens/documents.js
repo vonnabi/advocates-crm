@@ -77,6 +77,8 @@ export function renderDocumentsScreen(ctx) {
     $,
     icon,
     badge,
+    actionMenu,
+    bindActionMenus,
     documentStatusTone,
     caseFolders,
     getDocumentPayload,
@@ -150,9 +152,11 @@ export function renderDocumentsScreen(ctx) {
                   <td>${doc.sourceLabel}</td>
                   <td>
                     <div class="documents-row-actions">
-                      <button type="button" data-view-global-document="${doc.key}" title="Відкрити документ" aria-label="Відкрити документ">${icon("eye")}</button>
-                      <button type="button" data-edit-global-document="${doc.key}" title="Редагувати документ" aria-label="Редагувати документ">${icon("edit")}</button>
-                      <button class="danger-icon" type="button" data-delete-global-document="${doc.key}" title="Видалити документ" aria-label="Видалити документ">${icon("trash")}</button>
+                      ${actionMenu([
+                        { label: "Відкрити", icon: "eye", attrs: { "data-view-global-document": doc.key, "aria-label": "Відкрити документ" } },
+                        { label: "Редагувати", icon: "edit", attrs: { "data-edit-global-document": doc.key, "aria-label": "Редагувати документ" } },
+                        { label: "Видалити", icon: "trash", danger: true, attrs: { "data-delete-global-document": doc.key, "aria-label": "Видалити документ" } }
+                      ], { label: "Дії документа" })}
                     </div>
                   </td>
                 </tr>
@@ -199,6 +203,8 @@ export function renderDocumentsScreen(ctx) {
       </div>
     </div>
   `;
+
+  bindActionMenus?.(documentsNode);
 
   documentsNode.querySelector("[data-documents-add]")?.addEventListener("click", () => {
     if (!selectedCase) return;

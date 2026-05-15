@@ -52,6 +52,120 @@
   --main-side-grid: minmax(0, 4fr) minmax(280px, 1fr);
 }
 
+.row-action-menu-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.row-action-menu-wrap > .row-action-trigger {
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: white;
+  color: var(--action-dark);
+  padding: 0;
+  font-size: 18px;
+  font-weight: var(--weight-bold);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.row-action-menu-wrap > .row-action-trigger:hover,
+.row-action-menu-wrap > .row-action-trigger[aria-expanded="true"] {
+  border-color: var(--action-dark);
+  background: var(--action-dark);
+  color: white;
+}
+
+.row-action-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 80;
+  width: 190px;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  padding: 6px;
+  box-shadow: var(--shadow);
+}
+
+.row-action-menu[hidden] {
+  display: none;
+}
+
+.row-action-menu-wrap .row-action-menu button {
+  width: 100%;
+  height: auto;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  padding: 0 9px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.row-action-menu-wrap .row-action-menu button:hover {
+  background: var(--action-hover);
+  color: white;
+}
+
+.row-action-menu-wrap .row-action-menu button.danger {
+  color: var(--semantic-red);
+}
+
+.row-action-menu-wrap .row-action-menu button.danger:hover {
+  background: var(--semantic-red);
+  color: white;
+}
+
+.row-action-menu-wrap .row-action-menu .ui-icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  color: currentColor;
+}
+
+.documents-row-actions .row-action-menu-wrap,
+.case-row-actions .row-action-menu-wrap,
+.folder-actions .row-action-menu-wrap,
+.hover-row-actions .row-action-menu-wrap,
+.procedural-actions .row-action-menu-wrap,
+.folder-row-actions .row-action-menu-wrap,
+.mailing-row-actions .row-action-menu-wrap,
+.task-list-actions .row-action-menu-wrap {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.documents-row-actions,
+.case-row-actions,
+.folder-actions,
+.hover-row-actions,
+.procedural-actions,
+.folder-row-actions,
+.mailing-row-actions,
+.task-list-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -13672,4 +13786,79 @@ dialog::backdrop {
   .case-finance-note {
     grid-template-columns: 1fr;
   }
+}
+
+body .row-action-menu-wrap > .row-action-trigger {
+  width: 26px;
+  height: 26px;
+  min-height: 26px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: white;
+  color: var(--action-dark);
+  padding: 0;
+  font-size: 18px;
+  font-weight: var(--weight-bold);
+  line-height: 1;
+}
+
+body .row-action-menu-wrap > .row-action-trigger:hover,
+body .row-action-menu-wrap > .row-action-trigger[aria-expanded="true"] {
+  border-color: var(--action-dark);
+  background: var(--action-dark);
+  color: white;
+}
+
+body .row-action-menu-wrap .row-action-menu button {
+  width: 100%;
+  height: auto;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  padding: 0 9px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  line-height: 1.2;
+}
+
+body .row-action-menu-wrap .row-action-menu button:hover {
+  background: var(--action-hover);
+  color: white;
+}
+
+body .row-action-menu-wrap .row-action-menu button.danger {
+  color: var(--semantic-red);
+}
+
+body .row-action-menu-wrap .row-action-menu button.danger:hover {
+  background: var(--semantic-red);
+  color: white;
+}
+
+body .documents-row-actions,
+body .case-row-actions,
+body .folder-actions,
+body .hover-row-actions,
+body .procedural-actions,
+body .folder-row-actions,
+body .mailing-row-actions,
+body .task-list-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+body .row-action-menu {
+  z-index: 10000;
+}
+
+body .tasks-list-card {
+  overflow: visible;
 }

@@ -1,6 +1,8 @@
 let state;
 let $;
 let icon;
+let actionMenu;
+let bindActionMenus;
 let badge;
 let statusTone;
 let semanticTone;
@@ -32,6 +34,8 @@ function applyContext(ctx) {
     state,
     $,
     icon,
+    actionMenu,
+    bindActionMenus,
     badge,
     statusTone,
     semanticTone,
@@ -131,7 +135,7 @@ function caseFinanceBlock(item) {
     <article class="case-card case-finance-card">
       <div class="case-card-title">
         <span>8. ФІНАНСИ СПРАВИ</span>
-        <button class="case-row-icon" data-edit-finance="${item.id}" title="Редагувати фінанси">${icon("edit")}</button>
+        ${editOnlyMenu("data-edit-finance", item.id, "Редагувати фінанси")}
       </div>
       <div class="case-finance-grid">
         <div class="case-finance-metric">
@@ -170,6 +174,16 @@ function priorityTone(priority) {
   return semanticTone(priority);
 }
 
+function editOnlyMenu(dataAttr, value, label = "Редагувати") {
+  return actionMenu([
+    { label, icon: "edit", attrs: { [dataAttr]: value } }
+  ], { label: "Дії" });
+}
+
+function documentMenu(items, label = "Дії документа") {
+  return actionMenu(items, { label });
+}
+
 function caseMaterialBadges(item) {
   const documents = caseDocumentsCount(item);
   const events = caseProceduralItems(item).length;
@@ -192,9 +206,11 @@ function casePreviewDocuments(item) {
         <span class="preview-document-meta">${folder.name} ${badge(file.status || "Без статусу", documentStatusTone(file.status))}</span>
       </div>
       <div class="folder-actions preview-row-actions">
-        <button type="button" data-preview-view-document="${item.id}|folder:${folderIndex}:${fileIndex}" title="Посмотреть">${icon("eye")}</button>
-        <button type="button" data-preview-edit-document="${item.id}|folder:${folderIndex}:${fileIndex}" title="Редактировать">${icon("edit")}</button>
-        <button type="button" class="danger-icon" data-preview-delete-document="${item.id}|${folderIndex}:${fileIndex}" title="Удалить">${icon("trash")}</button>
+        ${documentMenu([
+          { label: "Відкрити", icon: "eye", attrs: { "data-preview-view-document": `${item.id}|folder:${folderIndex}:${fileIndex}` } },
+          { label: "Редагувати", icon: "edit", attrs: { "data-preview-edit-document": `${item.id}|folder:${folderIndex}:${fileIndex}` } },
+          { label: "Видалити", icon: "trash", danger: true, attrs: { "data-preview-delete-document": `${item.id}|${folderIndex}:${fileIndex}` } }
+        ])}
       </div>
     </div>
   `).join("");
@@ -253,7 +269,7 @@ function casePreviewFinance(item) {
       <div class="preview-finance-progress"><span style="width:${percent}%"></span></div>
       <div class="preview-finance-footer">
         <small>Оплачено ${percent}%</small>
-        <button type="button" class="preview-finance-edit" data-preview-finance="${item.id}" title="Редагувати фінанси">${icon("edit")}</button>
+        ${editOnlyMenu("data-preview-finance", item.id, "Редагувати фінанси")}
       </div>
     </div>
   `;
@@ -348,9 +364,11 @@ function renderCaseList() {
           <div class="case-number-cell">
             <a href="#" data-open-case="${item.id}">№${item.id}</a>
             <span class="case-row-actions">
-              <button type="button" data-open-case="${item.id}" title="Посмотреть" aria-label="Посмотреть справу">${icon("eye")}</button>
-              <button type="button" data-edit-case-row="${item.id}" title="Редактировать" aria-label="Редактировать справу">${icon("edit")}</button>
-              <button type="button" class="danger-icon" data-delete-case="${item.id}" title="Удалить" aria-label="Удалить справу">${icon("trash")}</button>
+              ${actionMenu([
+                { label: "Відкрити", icon: "eye", attrs: { "data-open-case": item.id, "aria-label": "Відкрити справу" } },
+                { label: "Редагувати", icon: "edit", attrs: { "data-edit-case-row": item.id, "aria-label": "Редагувати справу" } },
+                { label: "Видалити", icon: "trash", danger: true, attrs: { "data-delete-case": item.id, "aria-label": "Видалити справу" } }
+              ], { label: "Дії справи" })}
             </span>
           </div>
           <span>${item.opened}</span>
@@ -437,6 +455,7 @@ function renderCaseList() {
       </div>
     </div>
   `;
+  bindActionMenus?.($("#case-detail"));
   $("#create-case-from-list")?.addEventListener("click", () => openCaseDialog());
   $("#case-list-search-secondary")?.addEventListener("input", (event) => {
     $("#case-search").value = event.currentTarget.value;
@@ -528,8 +547,10 @@ function caseActionRows(item) {
       <span class="row-title-with-actions">
         <span class="row-title-text">${task.title}</span>
         <span class="hover-row-actions">
-          <button class="case-row-icon" data-edit-task="${index}" title="Редагувати задачу">${icon("edit")}</button>
-          <button class="case-row-icon danger-icon" data-delete-task="${index}" title="Видалити задачу">${icon("trash")}</button>
+          ${actionMenu([
+            { label: "Редагувати", icon: "edit", attrs: { "data-edit-task": index } },
+            { label: "Видалити", icon: "trash", danger: true, attrs: { "data-delete-task": index } }
+          ], { label: "Дії задачі" })}
         </span>
       </span>
       ${task.reminder ? `<span class="task-reminder-note">нагадування увімкнено</span>` : ""}
@@ -573,8 +594,10 @@ function caseProceduralRows(item) {
       <span class="row-title-with-actions">
         <span class="row-title-text">${action}</span>
         <span class="hover-row-actions procedural-row-actions">
-          <button class="case-row-icon" data-edit-procedural-action="${index}" title="Редагувати процесуальну дію">${icon("edit")}</button>
-          <button class="case-row-icon danger-icon" data-delete-procedural-action="${index}" title="Видалити процесуальну дію">${icon("trash")}</button>
+          ${actionMenu([
+            { label: "Редагувати", icon: "edit", attrs: { "data-edit-procedural-action": index } },
+            { label: "Видалити", icon: "trash", danger: true, attrs: { "data-delete-procedural-action": index } }
+          ], { label: "Дії процесуальної дії" })}
         </span>
       </span>
     </td>
@@ -595,8 +618,11 @@ function caseDocumentRows(item) {
       <span class="procedural-doc-name">
         <span class="procedural-doc-title">${doc.name}</span>
         <span class="procedural-actions">
-          ${documentActionButtons("procedural", docIndex)}
-          <button type="button" class="danger-icon" data-delete-procedural-doc="${docIndex}" title="Удалить" aria-label="Удалить документ">${icon("trash")}</button>
+          ${documentMenu([
+            { label: "Відкрити", icon: "eye", attrs: { "data-view-document": `procedural:${docIndex}` } },
+            { label: "Редагувати", icon: "edit", attrs: { "data-edit-document": `procedural:${docIndex}` } },
+            { label: "Видалити", icon: "trash", danger: true, attrs: { "data-delete-procedural-doc": docIndex } }
+          ])}
         </span>
       </span>
     </td>
@@ -671,8 +697,10 @@ function caseFolderRows(item) {
             <span class="folder-caret">${isOpen ? "⌄" : "›"}</span><span class="folder-icon"></span><span class="folder-title-text">${folder.name}</span>
           </button>
           <span class="folder-row-actions">
-            <button type="button" data-edit-folder="${index}" title="Редактировать папку" aria-label="Редактировать папку">${icon("edit")}</button>
-            <button type="button" class="danger-icon" data-delete-folder="${index}" title="Удалить папку" aria-label="Удалить папку">${icon("trash")}</button>
+            ${actionMenu([
+              { label: "Редагувати", icon: "edit", attrs: { "data-edit-folder": index } },
+              { label: "Видалити", icon: "trash", danger: true, attrs: { "data-delete-folder": index } }
+            ], { label: "Дії папки" })}
           </span>
         </div>
       </td>
@@ -688,8 +716,11 @@ function caseFolderRows(item) {
               <span>${file.name}</span>
             </div>
             <div class="folder-actions">
-              ${documentActionButtons("folder", index, fileIndex)}
-              <button type="button" class="danger-icon" data-delete-folder-file="${index}:${fileIndex}" title="Удалить" aria-label="Удалить документ">${icon("trash")}</button>
+              ${documentMenu([
+                { label: "Відкрити", icon: "eye", attrs: { "data-view-document": `folder:${index}:${fileIndex}` } },
+                { label: "Редагувати", icon: "edit", attrs: { "data-edit-document": `folder:${index}:${fileIndex}` } },
+                { label: "Видалити", icon: "trash", danger: true, attrs: { "data-delete-folder-file": `${index}:${fileIndex}` } }
+              ])}
             </div>
           </div>
           <div class="folder-status-cell">${documentStatusControl(file.status)}</div>
@@ -727,7 +758,7 @@ function renderCaseProfile(id) {
     <div class="case-detail-grid">
       <section class="case-stack">
         <article class="case-card">
-          <div class="case-card-title"><span>1. КЛІЄНТ</span><button class="case-row-icon" data-edit-client-row="${client.id}" title="Редагувати клієнта">${icon("edit")}</button></div>
+          <div class="case-card-title"><span>1. КЛІЄНТ</span>${editOnlyMenu("data-edit-client-row", client.id, "Редагувати клієнта")}</div>
           <div class="case-client-box">
             ${advocatePhoto(client.name, "case-profile-photo")}
             <strong>${client.name}</strong>
@@ -739,11 +770,11 @@ function renderCaseProfile(id) {
           </div>
         </article>
         <article class="case-card">
-          <div class="case-card-title"><span>2. СУТЬ СПРАВИ</span><button class="case-row-icon" data-edit-case-section="${item.id}" title="Редагувати суть справи">${icon("edit")}</button></div>
+          <div class="case-card-title"><span>2. СУТЬ СПРАВИ</span>${editOnlyMenu("data-edit-case-section", item.id, "Редагувати суть справи")}</div>
           <p>${item.description}</p>
         </article>
         <article class="case-card">
-          <div class="case-card-title"><span>3. ОРГАН, ДО ЯКОГО ЗВЕРНЕННЯ</span><button class="case-row-icon" data-edit-authority="${item.id}" title="Редагувати орган">${icon("edit")}</button></div>
+          <div class="case-card-title"><span>3. ОРГАН, ДО ЯКОГО ЗВЕРНЕННЯ</span>${editOnlyMenu("data-edit-authority", item.id, "Редагувати орган")}</div>
           <div class="authority-box">
             <div class="authority-icon">▥</div>
             <strong>${item.court}</strong>
@@ -807,6 +838,7 @@ function renderCaseProfile(id) {
       </div>
     </article>
   `;
+  bindActionMenus?.($("#case-detail"));
   $("#back-to-case-list")?.addEventListener("click", () => {
     state.caseScreen = "list";
     renderCaseList();

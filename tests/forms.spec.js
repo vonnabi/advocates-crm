@@ -82,6 +82,7 @@ test("task form creates, edits, and deletes a task", async ({ page }) => {
   const createdRow = page.locator("#tasks [data-task-key]").filter({ hasText: taskTitle });
   await expect(createdRow).toBeVisible();
 
+  await createdRow.locator("[data-action-menu-trigger]").click();
   await createdRow.locator("[data-edit-task-global]").click();
   await expect(page.locator("#task-dialog-title")).toHaveText("Редагувати задачу");
   await page.locator('#task-form [name="title"]').fill(updatedTitle);
@@ -93,6 +94,7 @@ test("task form creates, edits, and deletes a task", async ({ page }) => {
   await expect(updatedRow).toBeVisible();
   await expect(updatedRow).toContainText("Виконано");
 
+  await updatedRow.locator("[data-action-menu-trigger]").click();
   await updatedRow.locator("[data-delete-task-global]").click();
   await expect(page.locator("#delete-document-dialog")).toHaveJSProperty("open", true);
   await expect(page.locator("#delete-document-text")).toContainText(updatedTitle);

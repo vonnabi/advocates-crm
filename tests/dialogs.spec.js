@@ -16,6 +16,12 @@ async function openAndCloseDialog(page, clickSelector, dialogSelector, label) {
   await expect(page.locator(dialogSelector), `${label} closes`).toHaveJSProperty("open", false);
 }
 
+async function openMenuAction(page, scopeSelector, actionSelector) {
+  const wrapper = page.locator(`${scopeSelector} .row-action-menu-wrap`, { has: page.locator(actionSelector) }).first();
+  await wrapper.locator("[data-action-menu-trigger]").click();
+  await wrapper.locator(actionSelector).click();
+}
+
 test("core dialogs and topbar panels open and close cleanly", async ({ page }) => {
   const consoleErrors = [];
   page.on("console", (message) => {
@@ -26,7 +32,7 @@ test("core dialogs and topbar panels open and close cleanly", async ({ page }) =
 
   await page.locator('.nav-item[data-view="clients"]').click();
   await openAndCloseDialog(page, "#add-client", "#client-dialog", "client dialog");
-  await page.locator("#clients [data-edit-client-row]").first().click();
+  await openMenuAction(page, "#clients", "[data-edit-client-row]");
   await expect(page.locator("#client-dialog")).toHaveJSProperty("open", true);
   await page.locator("#client-dialog-close").click();
   await expect(page.locator("#client-dialog")).toHaveJSProperty("open", false);
@@ -35,9 +41,15 @@ test("core dialogs and topbar panels open and close cleanly", async ({ page }) =
   await openAndCloseDialog(page, "#create-case-from-list", "#case-dialog", "case dialog");
   await page.locator("[data-open-case]").first().click();
   await expect(page.locator("#case-detail")).toContainText("Справа №");
-  await openAndCloseDialog(page, "[data-edit-case-section]", "#essence-dialog", "essence dialog");
-  await openAndCloseDialog(page, "[data-edit-authority]", "#authority-dialog", "authority dialog");
-  await openAndCloseDialog(page, "[data-edit-finance]", "#finance-dialog", "finance dialog");
+  await openMenuAction(page, "#case-detail", "[data-edit-case-section]");
+  await expect(page.locator("#essence-dialog"), "essence dialog").toHaveJSProperty("open", true);
+  await page.keyboard.press("Escape");
+  await openMenuAction(page, "#case-detail", "[data-edit-authority]");
+  await expect(page.locator("#authority-dialog"), "authority dialog").toHaveJSProperty("open", true);
+  await page.keyboard.press("Escape");
+  await openMenuAction(page, "#case-detail", "[data-edit-finance]");
+  await expect(page.locator("#finance-dialog"), "finance dialog").toHaveJSProperty("open", true);
+  await page.keyboard.press("Escape");
   await openAndCloseDialog(page, "[data-add-document]", "#document-dialog", "document dialog");
   await openAndCloseDialog(page, "[data-add-folder]", "#folder-dialog", "folder dialog");
   await openAndCloseDialog(page, "[data-add-task]", "#task-dialog", "task dialog from case");
@@ -50,7 +62,7 @@ test("core dialogs and topbar panels open and close cleanly", async ({ page }) =
   await openAndCloseDialog(page, "#task-create-from-section", "#task-dialog", "global task dialog");
   await page.locator("#tasks [data-task-key]").first().click();
   await expect(page.locator("#tasks .task-side-card:not(.empty)")).toBeVisible();
-  await page.locator("#tasks [data-delete-task-global]").first().click();
+  await openMenuAction(page, "#tasks", "[data-delete-task-global]");
   await expect(page.locator("#delete-document-dialog")).toHaveJSProperty("open", true);
   await page.locator("#delete-document-cancel").click();
   await expect(page.locator("#delete-document-dialog")).toHaveJSProperty("open", false);
