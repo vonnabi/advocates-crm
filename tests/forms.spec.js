@@ -158,4 +158,5 @@ test("settings invite form adds a bureau user", async ({ page }) => {
   await expect(page.locator("#settings-invite-dialog")).toHaveJSProperty("open", false);
   await expect(page.locator("#settings")).toContainText(userName);
   await expect(page.locator("#settings")).toContainText("Бухгалтер");
+  await expect(page.locator("#settings")).toContainText(`Запрошено користувача ${userName}`);
 });

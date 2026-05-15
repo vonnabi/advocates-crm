@@ -18,6 +18,23 @@ function userInitials(name) {
   return initials || "К";
 }
 
+function formatAuditTime() {
+  return new Date().toLocaleString("uk-UA", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function addSettingsAudit(state, text, tone = "blue") {
+  state.settingsAudit = [
+    { date: formatAuditTime(), text, tone },
+    ...(state.settingsAudit || [])
+  ].slice(0, 8);
+}
+
 function ensureInviteDialog(ctx) {
   let dialog = document.querySelector("#settings-invite-dialog");
   if (dialog) return dialog;
@@ -67,6 +84,7 @@ function ensureInviteDialog(ctx) {
       access,
       photo: userInitials(name)
     });
+    addSettingsAudit(state, `Запрошено користувача ${name} з роллю ${role}.`, "green");
     form.reset();
     form.elements.access.value = roleAccessMap["Адвокат"];
     dialog.close();
@@ -81,14 +99,41 @@ export function renderSettingsScreen(ctx) {
   const { state, $, icon, badge, saveNavigationState, syncTopbarNotifications, showToast } = ctx;
   const users = state.settingsUsers;
   const integrations = [
-    { key: "Telegram", description: "Повідомлення клієнтам, тестові відправки, нагадування" },
-    { key: "SMS", description: "Короткі сповіщення про події та дедлайни" },
-    { key: "Email", description: "Листи, шаблони та службові повідомлення" },
-    { key: "AI", description: "AI помічники, аналіз справ і чернетки документів" }
+    { key: "Telegram", iconName: "telegram", description: "Повідомлення клієнтам, тестові відправки, нагадування", modules: "Розсилка, календар" },
+    { key: "SMS", iconName: "message", description: "Короткі сповіщення про події та дедлайни", modules: "Події, дедлайни" },
+    { key: "Email", iconName: "mail", description: "Листи, шаблони та службові повідомлення", modules: "Документи, звіти" },
+    { key: "AI", iconName: "search", description: "AI помічники, аналіз справ і чернетки документів", modules: "AI, OSINT, документи" }
+  ];
+  const activeIntegrations = integrations.filter((item) => state.settingsIntegrations[item.key]).length;
+  const enabledNotifications = Object.values(state.settingsNotifications || {}).filter(Boolean).length;
+  const activeUsers = users.filter((user) => user.role !== "Видалений").length;
+  state.settingsAudit ||= [
+    { date: "16.05.2024 09:30", text: "Синхронізовано канали Telegram та SMS.", tone: "green" },
+    { date: "15.05.2024 18:10", text: "Оновлено профіль бюро для документів.", tone: "blue" },
+    { date: "15.05.2024 12:40", text: "Перевірено правила сповіщень по дедлайнах.", tone: "amber" }
   ];
 
   $("#settings").innerHTML = `
     <div class="settings-screen">
+      <section class="settings-summary-grid">
+        <article class="panel settings-summary-card">
+          <span>${icon("user")}</span>
+          <div><strong>${activeUsers}</strong><em>користувачів</em></div>
+        </article>
+        <article class="panel settings-summary-card">
+          <span>${icon("refresh")}</span>
+          <div><strong>${activeIntegrations}/${integrations.length}</strong><em>інтеграцій активні</em></div>
+        </article>
+        <article class="panel settings-summary-card">
+          <span>${icon("bell")}</span>
+          <div><strong>${enabledNotifications}</strong><em>типи сповіщень</em></div>
+        </article>
+        <article class="panel settings-summary-card">
+          <span>${icon("check")}</span>
+          <div><strong>Готово</strong><em>стан системи</em></div>
+        </article>
+      </section>
+
       <section class="panel settings-profile-card" data-settings-section="profile">
         <div class="settings-section-head">
           <div>
@@ -136,8 +181,9 @@ export function renderSettingsScreen(ctx) {
         </div>
         <div class="settings-toggle-list">
           ${integrations.map((item) => `<label class="settings-toggle-row">
-            <span>${icon(item.key === "Email" ? "mail" : item.key === "AI" ? "search" : item.key === "SMS" ? "message" : item.key.toLowerCase())}</span>
-            <strong>${item.key}<em>${item.description}</em></strong>
+            <span>${icon(item.iconName)}</span>
+            <strong>${item.key}<em>${item.description}</em><small>Використовується: ${item.modules}</small></strong>
+            ${badge(state.settingsIntegrations[item.key] ? "Підключено" : "Вимкнено", state.settingsIntegrations[item.key] ? "green" : "red")}
             <input type="checkbox" data-settings-integration="${item.key}" ${state.settingsIntegrations[item.key] ? "checked" : ""} />
           </label>`).join("")}
         </div>
@@ -161,6 +207,23 @@ export function renderSettingsScreen(ctx) {
           </label>`).join("")}
         </div>
       </section>
+
+      <section class="panel settings-audit-card" data-settings-section="audit">
+        <div class="settings-section-head">
+          <div>
+            <h2>Журнал змін</h2>
+            <p class="muted">Останні системні дії по користувачах, інтеграціях і сповіщеннях.</p>
+          </div>
+          <button type="button" class="secondary" data-settings-clear-audit>${icon("trash")} Очистити</button>
+        </div>
+        <div class="settings-audit-list">
+          ${state.settingsAudit.map((item) => `<article>
+            ${badge(item.tone === "green" ? "OK" : item.tone === "red" ? "Увага" : "Info", item.tone)}
+            <strong>${item.text}</strong>
+            <span>${item.date}</span>
+          </article>`).join("")}
+        </div>
+      </section>
     </div>
   `;
 
@@ -168,7 +231,9 @@ export function renderSettingsScreen(ctx) {
     document.querySelectorAll("[data-bureau-field]").forEach((input) => {
       state.bureauSettings[input.dataset.bureauField] = input.value.trim();
     });
+    addSettingsAudit(state, "Збережено основні дані профілю бюро.", "blue");
     saveNavigationState();
+    renderSettingsScreen(ctx);
     showToast("Налаштування бюро збережено.");
   });
   document.querySelector("[data-settings-action='invite']")?.addEventListener("click", () => {
@@ -186,12 +251,14 @@ export function renderSettingsScreen(ctx) {
     if (!user || user.role === "Адміністратор") return;
     user.role = user.role === "Адвокат" ? "Помічник" : "Адвокат";
     user.access = user.role === "Адвокат" ? "Справи, клієнти, календар" : "Задачі та документи";
+    addSettingsAudit(state, `Змінено роль користувача ${user.name}: ${user.role}.`, "amber");
     saveNavigationState();
     renderSettingsScreen(ctx);
     showToast(`Роль користувача змінено: ${user.role}.`);
   }));
   document.querySelectorAll("[data-settings-user-delete]").forEach((button) => button.addEventListener("click", () => {
     const [removed] = state.settingsUsers.splice(Number(button.dataset.settingsUserDelete), 1);
+    addSettingsAudit(state, `Видалено користувача ${removed.name}.`, "red");
     saveNavigationState();
     renderSettingsScreen(ctx);
     showToast(`Користувача ${removed.name} видалено.`, "danger");
@@ -199,7 +266,9 @@ export function renderSettingsScreen(ctx) {
   document.querySelectorAll("[data-settings-integration]").forEach((input) => input.addEventListener("change", () => {
     const key = input.dataset.settingsIntegration;
     state.settingsIntegrations[key] = input.checked;
+    addSettingsAudit(state, `${key}: ${input.checked ? "інтеграцію увімкнено" : "інтеграцію вимкнено"}.`, input.checked ? "green" : "amber");
     saveNavigationState();
+    renderSettingsScreen(ctx);
     showToast(`${key}: ${input.checked ? "увімкнено" : "вимкнено"}.`, input.checked ? "success" : "warning");
   }));
   document.querySelectorAll("[data-settings-notification]").forEach((input) => input.addEventListener("change", () => {
@@ -208,8 +277,16 @@ export function renderSettingsScreen(ctx) {
     if (input.checked) {
       state.notificationReadKeys = (state.notificationReadKeys || []).filter((item) => item !== key);
     }
+    addSettingsAudit(state, `Сповіщення «${key}» ${input.checked ? "увімкнено" : "вимкнено"}.`, input.checked ? "green" : "amber");
     syncTopbarNotifications?.();
     saveNavigationState();
+    renderSettingsScreen(ctx);
     showToast(input.checked ? "Сповіщення увімкнено." : "Сповіщення вимкнено.", input.checked ? "success" : "warning");
   }));
+  document.querySelector("[data-settings-clear-audit]")?.addEventListener("click", () => {
+    state.settingsAudit = [{ date: formatAuditTime(), text: "Журнал змін очищено адміністратором.", tone: "blue" }];
+    saveNavigationState();
+    renderSettingsScreen(ctx);
+    showToast("Журнал змін очищено.");
+  });
 }

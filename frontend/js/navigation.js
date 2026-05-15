@@ -14,6 +14,7 @@ export function saveNavigationState({ state }) {
       bureauSettings: state.bureauSettings,
       settingsIntegrations: state.settingsIntegrations,
       settingsNotifications: state.settingsNotifications,
+      settingsAudit: state.settingsAudit,
       notificationReadKeys: state.notificationReadKeys,
       aiSelectedHelper: state.aiSelectedHelper,
       aiSelectedCaseId: state.aiSelectedCaseId,
@@ -47,6 +48,7 @@ export function restoreNavigationState({ state, caseById }) {
     state.bureauSettings = { ...state.bureauSettings, ...(saved.bureauSettings || {}) };
     state.settingsIntegrations = { ...state.settingsIntegrations, ...(saved.settingsIntegrations || {}) };
     state.settingsNotifications = { ...state.settingsNotifications, ...(saved.settingsNotifications || {}) };
+    state.settingsAudit = Array.isArray(saved.settingsAudit) ? saved.settingsAudit : state.settingsAudit;
     state.notificationReadKeys = Array.isArray(saved.notificationReadKeys) ? saved.notificationReadKeys : [];
     state.aiSelectedHelper = saved.aiSelectedHelper || state.aiSelectedHelper;
     state.aiSelectedCaseId = caseById(saved.aiSelectedCaseId) ? saved.aiSelectedCaseId : state.aiSelectedCaseId;

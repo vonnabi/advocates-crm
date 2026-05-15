@@ -1007,10 +1007,55 @@ h3 {
   gap: 18px;
 }
 
+.settings-summary-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.settings-summary-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 92px;
+}
+
+.settings-summary-card > span {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--blue-soft);
+  color: var(--action-dark);
+}
+
+.settings-summary-card strong,
+.settings-summary-card em {
+  display: block;
+}
+
+.settings-summary-card strong {
+  color: var(--text);
+  font-size: var(--text-xl);
+  line-height: 1.1;
+}
+
+.settings-summary-card em {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+}
+
 .settings-profile-card,
 .settings-users-card,
 .settings-integrations-card,
-.settings-notifications-card {
+.settings-notifications-card,
+.settings-audit-card {
   min-width: 0;
 }
 
@@ -1100,7 +1145,7 @@ h3 {
 }
 
 .settings-toggle-row {
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   cursor: pointer;
 }
 
@@ -1128,6 +1173,14 @@ h3 {
   line-height: 1.35;
 }
 
+.settings-toggle-row small {
+  display: block;
+  margin-top: 6px;
+  color: var(--action-dark);
+  font-size: 11px;
+  font-weight: 900;
+}
+
 .settings-toggle-row input {
   width: 18px;
   height: 18px;
@@ -1138,6 +1191,37 @@ h3 {
 
 .settings-toggle-list.compact .settings-toggle-row {
   grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.settings-audit-card {
+  grid-column: 1 / -1;
+}
+
+.settings-audit-list {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-audit-list article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 12px;
+}
+
+.settings-audit-list strong {
+  color: var(--text);
+  font-size: var(--text-base);
+}
+
+.settings-audit-list span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 input,
@@ -12297,6 +12381,7 @@ dialog::backdrop {
 
   .case-kpi-grid,
   .tasks-kpi-grid,
+  .settings-summary-grid,
   .ai-law-grid,
   .ai-how-card,
   .mailing-stats,
@@ -13067,6 +13152,7 @@ dialog::backdrop {
   .clients-layout,
   .profile-screenshot-grid,
   .split,
+  .settings-summary-grid,
   .ai-layout,
   .ai-law-grid,
   .ai-case-filters,
@@ -13294,6 +13380,7 @@ dialog::backdrop {
   .event-card-actions,
   .settings-user-row,
   .settings-toggle-row,
+  .settings-audit-list article,
   .coverage-row span {
     grid-template-columns: 1fr;
   }

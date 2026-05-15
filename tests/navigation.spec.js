@@ -96,6 +96,20 @@ test("notification settings control topbar notification rows", async ({ page }) 
   await expect(page.locator("#notifications-count")).toHaveText("3");
 });
 
+test("settings integrations update summary and audit trail", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+  await page.locator('.nav-item[data-view="settings"]').click();
+
+  await expect(page.locator(".settings-summary-grid")).toContainText("3/4");
+  await page.locator('[data-settings-integration="Email"]').check();
+  await expect(page.locator(".settings-summary-grid")).toContainText("4/4");
+  await expect(page.locator(".settings-audit-card")).toContainText("Email: інтеграцію увімкнено");
+
+  await page.locator("[data-settings-clear-audit]").click();
+  await expect(page.locator(".settings-audit-card")).toContainText("Журнал змін очищено");
+});
+
 test("sidebar collapse and restore controls keep the navigation usable", async ({ page }) => {
   await page.goto("/");
   await waitForAppReady(page);
