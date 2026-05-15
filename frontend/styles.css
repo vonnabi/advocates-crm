@@ -927,6 +927,61 @@ h3 {
   color: white;
 }
 
+.logout-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  background: rgba(10, 29, 49, 0.72);
+  padding: 20px;
+}
+
+.logout-overlay[hidden] {
+  display: none;
+}
+
+.logout-card {
+  width: min(420px, 100%);
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 10px;
+  background: white;
+  box-shadow: 0 28px 80px rgba(2, 12, 27, 0.28);
+  padding: 28px;
+  text-align: center;
+}
+
+.logout-mark {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--navy);
+  color: white;
+  font-weight: var(--weight-black);
+  margin: 0 auto 16px;
+}
+
+.logout-card h2 {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: var(--text-xl);
+}
+
+.logout-card p {
+  margin: 0 auto 20px;
+  max-width: 330px;
+  color: var(--muted);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  line-height: 1.55;
+}
+
+.logout-card .primary {
+  min-width: 210px;
+}
+
 .settings-screen {
   display: grid;
   grid-template-columns: var(--main-side-grid);

@@ -58,6 +58,36 @@ function focusSettingsSection(sectionKey) {
   });
 }
 
+function ensureLogoutOverlay() {
+  let overlay = document.querySelector("#logout-overlay");
+  if (overlay) return overlay;
+  overlay = document.createElement("div");
+  overlay.id = "logout-overlay";
+  overlay.className = "logout-overlay";
+  overlay.hidden = true;
+  overlay.innerHTML = `
+    <section class="logout-card" role="dialog" aria-modal="true" aria-labelledby="logout-title">
+      <div class="logout-mark">AB</div>
+      <h2 id="logout-title">Сеанс завершено</h2>
+      <p>Ви вийшли з демо-кабінету Advocates Bureau. Для прототипу можна одразу повернутися назад.</p>
+      <button class="primary" type="button" data-login-return>Повернутися в демо</button>
+    </section>
+  `;
+  document.body.append(overlay);
+  overlay.querySelector("[data-login-return]")?.addEventListener("click", () => {
+    overlay.hidden = true;
+    document.body.classList.remove("session-ended");
+  });
+  return overlay;
+}
+
+function openLogoutOverlay() {
+  const overlay = ensureLogoutOverlay();
+  document.body.classList.add("session-ended");
+  overlay.hidden = false;
+  overlay.querySelector("[data-login-return]")?.focus();
+}
+
 async function copyDemoLink(showToast) {
   try {
     await navigator.clipboard.writeText(DEMO_URL);
@@ -129,7 +159,7 @@ export function setupTopbarControls({ $, switchView, saveNavigationState, showTo
         toggleSidebar({ saveNavigationState, showToast });
         return;
       }
-      showToast("Вихід з акаунта показано як прототипну дію.", "warning");
+      openLogoutOverlay();
     });
   });
 

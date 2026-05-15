@@ -124,3 +124,16 @@ test("mobile profile demo buttons stay inside the dropdown", async ({ page }) =>
 
   expect(buttonsFit).toBe(true);
 });
+
+test("profile logout opens a visible demo session screen", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+  await page.locator("#admin-profile-toggle").click();
+  await page.locator('[data-profile-action="logout"]').click();
+
+  await expect(page.locator("#logout-overlay")).toBeVisible();
+  await expect(page.locator("#logout-overlay")).toContainText("Сеанс завершено");
+
+  await page.locator("[data-login-return]").click();
+  await expect(page.locator("#logout-overlay")).toBeHidden();
+});
