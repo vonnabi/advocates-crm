@@ -10,7 +10,7 @@ export function renderSettingsScreen(ctx) {
 
   $("#settings").innerHTML = `
     <div class="settings-screen">
-      <section class="panel settings-profile-card">
+      <section class="panel settings-profile-card" data-settings-section="profile">
         <div class="settings-section-head">
           <div>
             <h2>Профіль бюро</h2>
@@ -26,7 +26,7 @@ export function renderSettingsScreen(ctx) {
         </div>
       </section>
 
-      <section class="panel settings-users-card">
+      <section class="panel settings-users-card" data-settings-section="users">
         <div class="settings-section-head">
           <div>
             <h2>Користувачі</h2>
@@ -48,7 +48,7 @@ export function renderSettingsScreen(ctx) {
         </div>
       </section>
 
-      <section class="panel settings-integrations-card">
+      <section class="panel settings-integrations-card" data-settings-section="integrations">
         <div class="settings-section-head">
           <div>
             <h2>Інтеграції</h2>
@@ -64,7 +64,7 @@ export function renderSettingsScreen(ctx) {
         </div>
       </section>
 
-      <section class="panel settings-notifications-card">
+      <section class="panel settings-notifications-card" data-settings-section="notifications">
         <div class="settings-section-head">
           <div>
             <h2>Сповіщення</h2>

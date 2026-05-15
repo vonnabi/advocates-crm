@@ -944,6 +944,17 @@ h3 {
   grid-column: 1 / -1;
 }
 
+[data-settings-section] {
+  scroll-margin-top: 18px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+[data-settings-section].is-focused {
+  border-color: rgba(37, 99, 235, 0.35);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08), var(--shadow);
+}
+
 .settings-section-head {
   display: flex;
   align-items: flex-start;

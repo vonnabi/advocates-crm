@@ -45,6 +45,19 @@ function toggleSidebar({ saveNavigationState, showToast }) {
   showToast(collapsed ? "Бокове меню згорнуто." : "Бокове меню розгорнуто.");
 }
 
+function focusSettingsSection(sectionKey) {
+  requestAnimationFrame(() => {
+    const section = document.querySelector(`[data-settings-section="${sectionKey}"]`);
+    if (!section) return;
+    document.querySelectorAll("[data-settings-section].is-focused").forEach((node) => {
+      node.classList.remove("is-focused");
+    });
+    section.classList.add("is-focused");
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.setTimeout(() => section.classList.remove("is-focused"), 1600);
+  });
+}
+
 async function copyDemoLink(showToast) {
   try {
     await navigator.clipboard.writeText(DEMO_URL);
@@ -96,11 +109,12 @@ export function setupTopbarControls({ $, switchView, saveNavigationState, showTo
       closeTopbarPanels($);
       if (action === "settings") {
         switchView("settings");
+        focusSettingsSection("profile");
         return;
       }
       if (action === "team") {
         switchView("settings");
-        showToast("Розділ користувачів відкривається в налаштуваннях.");
+        focusSettingsSection("users");
         return;
       }
       if (action === "demo-link") {
