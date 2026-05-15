@@ -3043,12 +3043,28 @@ button {
   color: #1f7ae0;
 }
 
+.analytics-legend span.blue {
+  color: #1f7ae0;
+}
+
+.analytics-legend span.red {
+  color: #ef4444;
+}
+
 .analytics-legend .green {
+  color: #27ae6f;
+}
+
+.analytics-legend span.green {
   color: #27ae6f;
 }
 
 .analytics-legend .amber {
   color: #f59e0b;
+}
+
+.analytics-legend span.neutral {
+  color: #94a3b8;
 }
 
 .analytics-line-chart {
@@ -3642,7 +3658,7 @@ button {
 
 .osint-overview-layout {
   display: grid;
-  grid-template-columns: minmax(320px, 1.08fr) minmax(190px, 0.66fr) minmax(250px, 0.82fr) minmax(240px, 0.76fr);
+  grid-template-columns: minmax(320px, 1.08fr) minmax(190px, 0.62fr) minmax(250px, 0.76fr) minmax(260px, 0.88fr);
   grid-template-areas:
     "line line sources side"
     "lower lower lower side"
@@ -3915,9 +3931,9 @@ button {
 .osint-active-list button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 4px 7px;
+  gap: 4px 6px;
   text-align: left;
-  padding: 8px 0;
+  padding: 7px 0;
   border-width: 0 0 1px;
   border-radius: 0;
 }
@@ -3931,15 +3947,16 @@ button {
 .osint-focus-card strong {
   display: block;
   color: var(--action-dark);
-  font-size: var(--text-sm);
+  font-size: 11px;
 }
 
 .osint-active-list b,
 .osint-focus-card strong {
   color: var(--text);
   margin-top: 2px;
-  font-size: 11px;
-  line-height: 1.2;
+  font-size: 10.5px;
+  line-height: 1.16;
+  text-wrap: balance;
 }
 
 .osint-active-list small {
@@ -3953,8 +3970,8 @@ button {
   align-self: start;
   white-space: nowrap;
   min-height: 22px;
-  padding: 3px 8px;
-  font-size: 10px;
+  padding: 3px 7px;
+  font-size: 9.5px;
 }
 
 .osint-active-list em {

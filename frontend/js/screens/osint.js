@@ -316,10 +316,10 @@ function overviewWorkspace(state, badge, icon) {
           <select data-osint-chart-scale><option>По днях</option><option>По тижнях</option></select>
         </div>
         <div class="analytics-legend">
-          <span><i class="blue"></i>Всі згадки</span>
-          <span><i class="red"></i>Негативні</span>
-          <span><i class="green"></i>Позитивні</span>
-          <span><i class="muted-dot"></i>Нейтральні</span>
+          <span class="blue">Всі згадки</span>
+          <span class="red">Негативні</span>
+          <span class="green">Позитивні</span>
+          <span class="neutral">Нейтральні</span>
         </div>
         ${osintLineChart()}
       </article>
