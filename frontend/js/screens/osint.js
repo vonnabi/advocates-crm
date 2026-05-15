@@ -255,8 +255,11 @@ function activeCasesList(badge) {
             <small>Оновлено: ${item.updated}</small>
           </span>
           ${badge(item.risk, item.tone)}
+          <div class="osint-progress-caption">
+            <span>Прогрес аналізу</span>
+            <strong>${item.progress}%</strong>
+          </div>
           <em><i style="width:${item.progress}%"></i></em>
-          <small>${item.progress}%</small>
         </button>
       `).join("")}
     </div>
@@ -491,11 +494,11 @@ export function renderOSINTScreen(ctx) {
 
   $("#osint").innerHTML = `
     <div class="osint-screen osint-reference">
+      <span class="sr-only">OSINT перевірки</span>
       <div class="osint-topbar">
-        <div>
-          <h2>OSINT аналітика</h2>
-          <p>OSINT перевірки, збір та аналіз інформації з відкритих джерел</p>
-        </div>
+        <nav class="osint-tabs" aria-label="OSINT розділи">
+          ${OSINT_TABS.map(([tab, label]) => `<button class="${state.osintTab === tab ? "active" : ""}" type="button" data-osint-tab="${tab}">${label}</button>`).join("")}
+        </nav>
         <div class="osint-top-actions">
           <label class="osint-search">
             ${icon("search")}
@@ -505,10 +508,6 @@ export function renderOSINTScreen(ctx) {
           <button class="primary" type="button" data-create-osint>${icon("file")} Створити звіт</button>
         </div>
       </div>
-
-      <nav class="osint-tabs" aria-label="OSINT розділи">
-        ${OSINT_TABS.map(([tab, label]) => `<button class="${state.osintTab === tab ? "active" : ""}" type="button" data-osint-tab="${tab}">${label}</button>`).join("")}
-      </nav>
 
       <section class="osint-kpi-grid">
         ${OSINT_METRICS.map((item) => metricCard(item, icon)).join("")}

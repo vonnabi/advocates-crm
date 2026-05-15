@@ -1663,6 +1663,18 @@ button {
   color: var(--blue);
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .finance-screen,
 .analytics-screen,
 .ai-screen,
@@ -3502,27 +3514,14 @@ button {
 }
 
 .osint-reference {
-  gap: 14px;
+  gap: 12px;
 }
 
 .osint-topbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(520px, auto);
-  gap: 14px;
-  align-items: center;
-}
-
-.osint-topbar h2 {
-  margin: 0;
-  color: var(--text);
-  font-size: var(--text-2xl);
-  line-height: 1.1;
-}
-
-.osint-topbar p {
-  margin: 5px 0 0;
-  color: var(--muted);
-  font-size: var(--text-base);
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
 }
 
 .osint-top-actions {
@@ -3931,9 +3930,9 @@ button {
 .osint-active-list button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 4px 6px;
+  gap: 7px 8px;
   text-align: left;
-  padding: 7px 0;
+  padding: 10px 0 12px;
   border-width: 0 0 1px;
   border-radius: 0;
 }
@@ -3974,6 +3973,23 @@ button {
   font-size: 9.5px;
 }
 
+.osint-progress-caption {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: var(--weight-semibold);
+}
+
+.osint-progress-caption strong {
+  color: var(--text);
+  font-size: 11px;
+}
+
 .osint-active-list em {
   grid-column: 1 / -1;
   height: 5px;
@@ -3986,7 +4002,7 @@ button {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: var(--blue);
+  background: #1f7ae0;
 }
 
 .osint-subtabs {
