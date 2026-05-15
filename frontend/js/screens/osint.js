@@ -293,40 +293,38 @@ function quickActions(icon) {
 function overviewWorkspace(state, badge, icon) {
   return `
     <section class="osint-overview-layout">
-      <div class="osint-overview-main">
-        <section class="osint-dashboard-grid">
-          <article class="panel osint-chart-card osint-line-panel">
-            <div class="analytics-card-head">
-              <h2>Динаміка згадок</h2>
-              <select data-osint-chart-scale><option>По днях</option><option>По тижнях</option></select>
-            </div>
-            <div class="analytics-legend">
-              <span><i class="blue"></i>Всі згадки</span>
-              <span><i class="red"></i>Негативні</span>
-              <span><i class="green"></i>Позитивні</span>
-              <span><i class="muted-dot"></i>Нейтральні</span>
-            </div>
-            ${osintLineChart()}
-          </article>
+      <article class="panel osint-chart-card osint-line-panel">
+        <div class="analytics-card-head">
+          <h2>Динаміка згадок</h2>
+          <select data-osint-chart-scale><option>По днях</option><option>По тижнях</option></select>
+        </div>
+        <div class="analytics-legend">
+          <span><i class="blue"></i>Всі згадки</span>
+          <span><i class="red"></i>Негативні</span>
+          <span><i class="green"></i>Позитивні</span>
+          <span><i class="muted-dot"></i>Нейтральні</span>
+        </div>
+        ${osintLineChart()}
+      </article>
 
-          <article class="panel osint-chart-card">
-            <h2>Розподіл згадок за джерелами</h2>
-            ${sourceDonut()}
-          </article>
-        </section>
+      <article class="panel osint-chart-card osint-source-panel">
+        <h2>Розподіл згадок за джерелами</h2>
+        ${sourceDonut()}
+      </article>
 
-        <section class="osint-lower-grid">
-          <article class="panel osint-wide-card">
-            <nav class="osint-subtabs">
-              ${["Останні згадки", "Виявлені ризики", "Зміни в реєстрах", "Пов'язані особи", "Ключові події"].map((label, index) => `
-                <button class="${index === 0 ? "active" : ""}" type="button" data-osint-subtab>${label}</button>
-              `).join("")}
-            </nav>
+      <section class="panel osint-lower-composite">
+        <nav class="osint-subtabs">
+          ${["Останні згадки", "Виявлені ризики", "Зміни в реєстрах", "Пов'язані особи", "Ключові події"].map((label, index) => `
+            <button class="${index === 0 ? "active" : ""}" type="button" data-osint-subtab>${label}</button>
+          `).join("")}
+        </nav>
+        <div class="osint-lower-columns">
+          <article class="osint-mentions-column">
             ${mentionList(badge, icon, state)}
             <button class="ghost osint-list-more" type="button" data-osint-sync>Переглянути всі згадки</button>
           </article>
 
-          <article class="panel osint-small-card">
+          <article class="osint-graph-column">
             <h2>Граф зв'язків у справах</h2>
             ${relationshipGraph()}
             <div class="osint-graph-legend">
@@ -337,33 +335,31 @@ function overviewWorkspace(state, badge, icon) {
             </div>
           </article>
 
-          <article class="panel osint-small-card">
+          <article class="osint-types-column">
             <h2>Розподіл за типами даних</h2>
             ${dataTypeBars()}
           </article>
-        </section>
+        </div>
+      </section>
 
-        <article class="panel osint-wide-card osint-sources-panel">
-          <h2>Джерела даних</h2>
-          ${sourcesGrid(badge, icon)}
-          <button class="ghost osint-manage" type="button" data-osint-sync>Керування джерелами</button>
-        </article>
-      </div>
+      <article class="panel osint-right-card osint-active-panel">
+        <div class="analytics-card-head">
+          <h2>Активні справи OSINT</h2>
+          <button class="ghost compact" type="button" data-osint-show-all>Переглянути всі</button>
+        </div>
+        ${activeCasesList(badge)}
+      </article>
 
-      <aside class="osint-overview-side">
-        <article class="panel osint-right-card">
-          <div class="analytics-card-head">
-            <h2>Активні справи OSINT</h2>
-            <button class="ghost compact" type="button" data-osint-show-all>Переглянути всі</button>
-          </div>
-          ${activeCasesList(badge)}
-        </article>
+      <article class="panel osint-right-card osint-quick-panel">
+        <h2>Швидкі дії</h2>
+        ${quickActions(icon)}
+      </article>
 
-        <article class="panel osint-right-card">
-          <h2>Швидкі дії</h2>
-          ${quickActions(icon)}
-        </article>
-      </aside>
+      <article class="panel osint-wide-card osint-sources-panel">
+        <h2>Джерела даних</h2>
+        ${sourcesGrid(badge, icon)}
+        <button class="ghost osint-manage" type="button" data-osint-sync>Керування джерелами</button>
+      </article>
     </section>
   `;
 }
