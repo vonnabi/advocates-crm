@@ -62,13 +62,13 @@ const OSINT_DATA_TYPES = [
   ["Інше", 156, "#64748b"]
 ];
 
-const OSINT_SOURCES = [
-  ["YouControl", "Бізнес-дані та реєстри", "16.05.2024 09:00", "Активне"],
-  ["Opendatabot", "Відкриті дані", "16.05.2024 09:15", "Активне"],
-  ["Судові рішення", "Єдиний держреєстр", "16.05.2024 09:20", "Активне"],
-  ["Соцмережі", "Facebook, Instagram, LinkedIn", "16.05.2024 08:10", "Активне"],
-  ["Telegram", "Канали та групи", "16.05.2024 09:05", "Активне"],
-  ["Новини", "ЗМІ та новинні сайти", "16.05.2024 08:50", "Активне"]
+const OSINT_SOURCE_DEFAULTS = [
+  { id: "youcontrol", title: "YouControl", subtitle: "Бізнес-дані та реєстри", updated: "16.05.2024 09:00", status: "Активне", enabled: true, cadence: "кожні 60 хв" },
+  { id: "opendatabot", title: "Opendatabot", subtitle: "Відкриті дані", updated: "16.05.2024 09:15", status: "Активне", enabled: true, cadence: "кожні 30 хв" },
+  { id: "court", title: "Судові рішення", subtitle: "Єдиний держреєстр", updated: "16.05.2024 09:20", status: "Активне", enabled: true, cadence: "кожні 2 год" },
+  { id: "social", title: "Соцмережі", subtitle: "Facebook, Instagram, LinkedIn", updated: "16.05.2024 08:10", status: "Активне", enabled: true, cadence: "кожні 4 год" },
+  { id: "telegram", title: "Telegram", subtitle: "Канали та групи", updated: "16.05.2024 09:05", status: "Активне", enabled: true, cadence: "кожні 20 хв" },
+  { id: "news", title: "Новини", subtitle: "ЗМІ та новинні сайти", updated: "16.05.2024 08:50", status: "Активне", enabled: true, cadence: "кожні 45 хв" }
 ];
 
 const OSINT_REGISTRY_ROWS = [
@@ -282,23 +282,78 @@ function sourceIconMeta(title) {
   return { iconName: "search", tone: "blue" };
 }
 
-function sourcesGrid(badge, icon) {
+function ensureOsintSources(state) {
+  state.osintSources = state.osintSources || OSINT_SOURCE_DEFAULTS.map((source) => ({ ...source }));
+  return state.osintSources;
+}
+
+function currentOsintStamp() {
+  return new Date().toLocaleString("uk-UA", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function sourceStatusLabel(source) {
+  return source.enabled ? source.status || "Активне" : "Вимкнено";
+}
+
+function sourceStatusTone(source) {
+  return source.enabled ? "green" : "gray";
+}
+
+function sourcesGrid(badge, icon, sources) {
   return `
     <div class="osint-source-grid">
-      ${OSINT_SOURCES.map(([title, subtitle, updated, status]) => {
-        const meta = sourceIconMeta(title);
+      ${sources.map((source) => {
+        const meta = sourceIconMeta(source.title);
         return `
-        <article>
+        <article class="${source.enabled ? "" : "is-disabled"}">
           <div class="source-card-icon ${meta.tone}">${icon(meta.iconName)}</div>
           <div>
-            <strong>${title}</strong>
-            <span>${subtitle}</span>
-            <small>Оновлено: ${updated}</small>
+            <strong>${source.title}</strong>
+            <span>${source.subtitle}</span>
+            <small>Оновлено: ${source.updated}</small>
           </div>
-          ${badge(status, "green")}
+          ${badge(sourceStatusLabel(source), sourceStatusTone(source))}
         </article>
       `;
       }).join("")}
+    </div>
+  `;
+}
+
+function sourceManagerPanel(badge, icon, sources) {
+  return `
+    <div class="osint-source-manager">
+      <div class="analytics-card-head">
+        <div>
+          <h3>Керування джерелами</h3>
+          <p>Налаштуйте, які відкриті джерела використовуються для OSINT-перевірок.</p>
+        </div>
+        <button class="ghost compact" type="button" data-osint-manage-close>Закрити</button>
+      </div>
+      <div class="osint-source-manager-grid">
+        ${sources.map((source) => `
+          <article class="${source.enabled ? "" : "is-disabled"}">
+            <label class="osint-source-toggle">
+              <input type="checkbox" data-osint-source-toggle="${source.id}" ${source.enabled ? "checked" : ""}>
+              <span></span>
+              <strong>${source.title}</strong>
+            </label>
+            <p>${source.subtitle}</p>
+            <dl>
+              <div><dt>Синхронізація</dt><dd>${source.cadence}</dd></div>
+              <div><dt>Оновлено</dt><dd>${source.updated}</dd></div>
+              <div><dt>Статус</dt><dd>${badge(sourceStatusLabel(source), sourceStatusTone(source))}</dd></div>
+            </dl>
+            <button class="secondary compact" type="button" data-osint-source-refresh="${source.id}" ${source.enabled ? "" : "disabled"}>${icon("refresh")} Оновити</button>
+          </article>
+        `).join("")}
+      </div>
     </div>
   `;
 }
@@ -317,6 +372,7 @@ function quickActions(icon) {
 
 function overviewWorkspace(state, badge, icon) {
   state.osintSubtab = state.osintSubtab || "mentions";
+  const sources = ensureOsintSources(state);
   return `
     <section class="osint-overview-layout">
       <article class="panel osint-chart-card osint-line-panel">
@@ -385,8 +441,9 @@ function overviewWorkspace(state, badge, icon) {
 
       <article class="panel osint-wide-card osint-sources-panel">
         <h2>Джерела даних</h2>
-        ${sourcesGrid(badge, icon)}
-        <button class="ghost osint-manage" type="button" data-osint-sync>Керування джерелами</button>
+        ${sourcesGrid(badge, icon, sources)}
+        <button class="ghost osint-manage" type="button" data-osint-manage>${state.osintSourceManagerOpen ? "Сховати налаштування" : "Керування джерелами"}</button>
+        ${state.osintSourceManagerOpen ? sourceManagerPanel(badge, icon, sources) : ""}
       </article>
     </section>
   `;
@@ -506,6 +563,7 @@ function secondaryWorkspace(state, badge, icon) {
 export function renderOSINTScreen(ctx) {
   const { state, $, badge, icon, showToast } = ctx;
   state.osintTab = state.osintTab || "overview";
+  ensureOsintSources(state);
   state.osintReports = state.osintReports || [
     { title: "Звіт по ризиках", description: "Негативні згадки, ризики по справам та рекомендовані дії.", created: "16.05.2024 10:20" },
     { title: "Звіт по згадках", description: "Публічні згадки з Facebook, Telegram, ЗМІ та реєстрів.", created: "16.05.2024 09:45" },
@@ -595,6 +653,28 @@ export function renderOSINTScreen(ctx) {
   document.querySelectorAll("[data-osint-subtab]").forEach((button) => button.addEventListener("click", () => {
     state.osintSubtab = button.dataset.osintSubtab;
     showToast(`OSINT: ${button.textContent.trim()}.`);
+    renderOSINTScreen(ctx);
+  }));
+  document.querySelector("[data-osint-manage]")?.addEventListener("click", () => {
+    state.osintSourceManagerOpen = !state.osintSourceManagerOpen;
+    renderOSINTScreen(ctx);
+  });
+  document.querySelector("[data-osint-manage-close]")?.addEventListener("click", () => {
+    state.osintSourceManagerOpen = false;
+    renderOSINTScreen(ctx);
+  });
+  document.querySelectorAll("[data-osint-source-toggle]").forEach((input) => input.addEventListener("change", () => {
+    const source = state.osintSources.find((item) => item.id === input.dataset.osintSourceToggle);
+    if (!source) return;
+    source.enabled = input.checked;
+    source.status = input.checked ? "Активне" : "Вимкнено";
+    renderOSINTScreen(ctx);
+  }));
+  document.querySelectorAll("[data-osint-source-refresh]").forEach((button) => button.addEventListener("click", () => {
+    const source = state.osintSources.find((item) => item.id === button.dataset.osintSourceRefresh);
+    if (!source || !source.enabled) return;
+    source.updated = currentOsintStamp();
+    source.status = "Активне";
     renderOSINTScreen(ctx);
   }));
   document.querySelectorAll("[data-osint-sync], [data-osint-date], [data-osint-chart-scale]").forEach((control) => {
