@@ -4135,12 +4135,31 @@ button {
 }
 
 .osint-graph {
-  min-height: 230px;
+  width: min(100%, 330px);
+  min-height: 245px;
+  margin: 0 auto;
   position: relative;
 }
 
 .osint-graph-column .osint-graph {
   min-height: 285px;
+}
+
+.osint-graph svg {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+}
+
+.osint-graph .edge-line {
+  stroke: #c8d5e6;
+  stroke-width: 1.35;
+}
+
+.osint-graph .edge-line.dashed {
+  stroke-dasharray: 5 5;
 }
 
 .osint-graph .node {
@@ -4175,23 +4194,6 @@ button {
 .osint-graph .n3 { right: 6%; bottom: 14%; }
 .osint-graph .n4 { left: 4%; bottom: 15%; }
 .osint-graph .n5 { left: 3%; top: 32%; }
-
-.osint-graph .edge {
-  position: absolute;
-  z-index: 1;
-  left: 50%;
-  top: 50%;
-  width: 102px;
-  height: 1px;
-  background: #cbd5e1;
-  transform-origin: left center;
-}
-
-.osint-graph .e1 { transform: rotate(-78deg); }
-.osint-graph .e2 { transform: rotate(-20deg); }
-.osint-graph .e3 { transform: rotate(42deg); }
-.osint-graph .e4 { transform: rotate(138deg); }
-.osint-graph .e5 { transform: rotate(200deg); }
 
 .osint-graph-legend {
   display: flex;
@@ -4389,9 +4391,22 @@ button {
 
 .osint-tab-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.35fr);
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.42fr);
   gap: 14px;
   align-items: start;
+}
+
+.osint-graph-card {
+  overflow: hidden;
+}
+
+.osint-graph-card .osint-graph {
+  min-height: 255px;
+}
+
+.osint-graph-card .osint-graph-legend {
+  justify-content: center;
+  margin-top: 4px;
 }
 
 .osint-tab-workspace {

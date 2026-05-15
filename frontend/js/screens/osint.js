@@ -218,13 +218,19 @@ function mentionList(badge, icon, state) {
 function relationshipGraph() {
   return `
     <div class="osint-graph">
+      <svg viewBox="0 0 320 230" aria-hidden="true">
+        <line class="edge-line" x1="160" y1="116" x2="160" y2="34"></line>
+        <line class="edge-line" x1="160" y1="116" x2="270" y2="74"></line>
+        <line class="edge-line" x1="160" y1="116" x2="246" y2="178"></line>
+        <line class="edge-line dashed" x1="160" y1="116" x2="65" y2="176"></line>
+        <line class="edge-line dashed" x1="160" y1="116" x2="56" y2="78"></line>
+      </svg>
       <span class="node center">Петренко<br>Олександр</span>
       <span class="node n1">ТОВ "Альфа"</span>
       <span class="node n2">ТОВ "Бета"</span>
       <span class="node n3">ТОВ "Гамма"</span>
       <span class="node n4">Сидоренко<br>Марія</span>
       <span class="node n5">Іванов<br>Сергій</span>
-      <i class="edge e1"></i><i class="edge e2"></i><i class="edge e3"></i><i class="edge e4"></i><i class="edge e5"></i>
     </div>
   `;
 }
@@ -407,6 +413,7 @@ function secondaryWorkspace(state, badge, icon) {
     `;
   }
   if (tab === "people" || tab === "events") {
+    const tabState = { ...state, osintSubtab: tab === "people" ? "people" : "events" };
     return `
       <section class="osint-tab-layout">
         <article class="panel osint-wide-card">
@@ -414,11 +421,19 @@ function secondaryWorkspace(state, badge, icon) {
             <h2>${tab === "people" ? "OSINT за людьми" : "OSINT за подіями"}</h2>
             <button class="secondary compact" type="button" data-osint-sync>${icon("refresh")} Оновити</button>
           </div>
-          ${mentionList(badge, icon, state)}
+          ${mentionList(badge, icon, tabState)}
         </article>
-        <article class="panel osint-small-card">
+        <article class="panel osint-small-card osint-graph-card">
           <h2>${tab === "people" ? "Граф зв'язків" : "Типи подій"}</h2>
           ${tab === "people" ? relationshipGraph() : dataTypeBars()}
+          ${tab === "people" ? `
+            <div class="osint-graph-legend">
+              <span><i class="person"></i>Фізична особа</span>
+              <span><i class="company"></i>Компанія</span>
+              <span><i class="line"></i>Зв'язок</span>
+              <span><i class="dash"></i>Опосередкований зв'язок</span>
+            </div>
+          ` : ""}
         </article>
       </section>
     `;
@@ -444,6 +459,11 @@ function secondaryWorkspace(state, badge, icon) {
     `;
   }
   if (tab === "reports") {
+    const reports = state.osintReports || [
+      { title: "Звіт по ризиках", description: "Негативні згадки, ризики по справам та рекомендовані дії.", created: "16.05.2024 10:20" },
+      { title: "Звіт по згадках", description: "Публічні згадки з Facebook, Telegram, ЗМІ та реєстрів.", created: "16.05.2024 09:45" },
+      { title: "Звіт по реєстрах", description: "Зміни по компаніях, судових рішеннях і відкритих базах.", created: "15.05.2024 18:30" }
+    ];
     return `
       <section class="panel osint-wide-card osint-tab-workspace">
         <div class="analytics-card-head">
@@ -451,11 +471,12 @@ function secondaryWorkspace(state, badge, icon) {
           <button class="primary compact" type="button" data-osint-export>${icon("file")} Експорт</button>
         </div>
         <div class="finance-report-grid">
-          ${["Звіт по ризиках", "Звіт по згадках", "Звіт по реєстрах"].map((title) => `
+          ${reports.map((report) => `
             <article class="finance-report-card">
               <span>${icon("file")}</span>
-              <strong>${title}</strong>
-              <p>Автоматично сформований документ для передачі адвокату або клієнту.</p>
+              <strong>${report.title}</strong>
+              <p>${report.description}</p>
+              <small>Створено: ${report.created}</small>
               <button class="secondary compact" type="button" data-osint-export>CSV</button>
             </article>
           `).join("")}
@@ -485,6 +506,11 @@ function secondaryWorkspace(state, badge, icon) {
 export function renderOSINTScreen(ctx) {
   const { state, $, badge, icon, showToast } = ctx;
   state.osintTab = state.osintTab || "overview";
+  state.osintReports = state.osintReports || [
+    { title: "Звіт по ризиках", description: "Негативні згадки, ризики по справам та рекомендовані дії.", created: "16.05.2024 10:20" },
+    { title: "Звіт по згадках", description: "Публічні згадки з Facebook, Telegram, ЗМІ та реєстрів.", created: "16.05.2024 09:45" },
+    { title: "Звіт по реєстрах", description: "Зміни по компаніях, судових рішеннях і відкритих базах.", created: "15.05.2024 18:30" }
+  ];
   state.osintDateStart = state.osintDateStart || "2024-05-01";
   state.osintDateEnd = state.osintDateEnd || "2024-05-16";
   const filtered = filteredChecks(state);
@@ -538,6 +564,11 @@ export function renderOSINTScreen(ctx) {
       status: "Звіт готовий"
     };
     state.osintChecks.unshift(next);
+    state.osintReports.unshift({
+      title: `OSINT звіт №${caseId || "новий"}`,
+      description: "Автоматично сформований звіт з відкритих джерел, ризиків, згадок і реєстрів.",
+      created: new Date().toLocaleString("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
+    });
     state.selectedOsintId = next.id;
     state.osintTab = "reports";
     showToast("OSINT звіт створено.");
