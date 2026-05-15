@@ -1189,6 +1189,115 @@ h3 {
   accent-color: var(--blue);
 }
 
+.settings-integration-row {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 13px;
+}
+
+.settings-integration-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.settings-integration-copy {
+  min-width: 0;
+}
+
+.settings-integration-copy strong,
+.settings-integration-copy em,
+.settings-integration-copy small {
+  display: block;
+}
+
+.settings-integration-copy strong {
+  color: #172033;
+  font-size: 14px;
+}
+
+.settings-integration-copy em {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.settings-integration-copy small {
+  margin-top: 6px;
+  color: var(--action-dark);
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.settings-integration-control {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.settings-switch {
+  position: relative;
+  display: inline-flex;
+  width: 42px;
+  height: 24px;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.settings-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+}
+
+.settings-switch span {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  border: 1px solid #cbd8e8;
+  border-radius: 999px;
+  background: #e7edf5;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.settings-switch span::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18);
+  transition: transform 0.18s ease;
+}
+
+.settings-switch input:checked + span {
+  border-color: var(--action-dark);
+  background: var(--action-dark);
+}
+
+.settings-switch input:checked + span::after {
+  transform: translateX(18px);
+}
+
 .settings-toggle-list.compact .settings-toggle-row {
   grid-template-columns: minmax(0, 1fr) auto;
 }
@@ -5092,10 +5201,63 @@ button {
   gap: 6px;
 }
 
-.settings-user-actions .case-row-icon {
+.settings-user-menu-wrap {
+  position: relative;
+}
+
+.settings-user-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  width: 190px;
+  display: grid;
+  gap: 4px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   background: white;
+  padding: 6px;
+  box-shadow: var(--shadow);
+}
+
+.settings-user-menu[hidden] {
+  display: none;
+}
+
+.settings-user-menu button {
+  width: 100%;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  padding: 0 9px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+}
+
+.settings-user-menu button:hover {
+  background: var(--action-hover);
+  color: white;
+}
+
+.settings-user-menu button.danger {
+  color: var(--semantic-red);
+}
+
+.settings-user-menu button.danger:hover {
+  background: var(--semantic-red);
+  color: white;
+}
+
+.settings-user-menu .ui-icon {
+  width: 15px;
+  height: 15px;
 }
 
 @media (max-width: 1100px) {
@@ -13380,13 +13542,20 @@ dialog::backdrop {
   .event-card-actions,
   .settings-user-row,
   .settings-toggle-row,
+  .settings-integration-row,
   .settings-audit-list article,
   .coverage-row span {
     grid-template-columns: 1fr;
   }
 
-  .settings-toggle-row {
+  .settings-toggle-row,
+  .settings-integration-row {
     justify-items: start;
+  }
+
+  .settings-integration-control {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .telegram-preview {

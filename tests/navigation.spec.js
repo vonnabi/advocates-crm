@@ -110,6 +110,20 @@ test("settings integrations update summary and audit trail", async ({ page }) =>
   await expect(page.locator(".settings-audit-card")).toContainText("Журнал змін очищено");
 });
 
+test("settings user actions open from the three dot menu", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+  await page.locator('.nav-item[data-view="settings"]').click();
+
+  const assistantRow = page.locator(".settings-user-row").filter({ hasText: "Кравчук А.В." });
+  await assistantRow.locator("[data-settings-user-menu]").click();
+  await expect(assistantRow.locator(".settings-user-menu")).toBeVisible();
+
+  await assistantRow.locator("[data-settings-user-role]").click();
+  await expect(page.locator(".settings-user-row").filter({ hasText: "Кравчук А.В." })).toContainText("Адвокат");
+  await expect(page.locator(".settings-audit-card")).toContainText("Змінено роль користувача Кравчук А.В.");
+});
+
 test("sidebar collapse and restore controls keep the navigation usable", async ({ page }) => {
   await page.goto("/");
   await waitForAppReady(page);

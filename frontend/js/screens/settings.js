@@ -98,6 +98,7 @@ function ensureInviteDialog(ctx) {
 export function renderSettingsScreen(ctx) {
   const { state, $, icon, badge, saveNavigationState, syncTopbarNotifications, showToast } = ctx;
   const users = state.settingsUsers;
+  state.settingsOpenUserMenu ||= "";
   const integrations = [
     { key: "Telegram", iconName: "telegram", description: "Повідомлення клієнтам, тестові відправки, нагадування", modules: "Розсилка, календар" },
     { key: "SMS", iconName: "message", description: "Короткі сповіщення про події та дедлайни", modules: "Події, дедлайни" },
@@ -165,8 +166,14 @@ export function renderSettingsScreen(ctx) {
             <em>${user.access}</em>
             <div class="settings-user-actions">
               ${badge(user.role === "Адміністратор" ? "Owner" : "Active", user.role === "Адміністратор" ? "blue" : "green")}
-              <button type="button" class="case-row-icon" data-settings-user-role="${index}" title="Змінити роль">${icon("edit")}</button>
-              ${user.role === "Адміністратор" ? "" : `<button type="button" class="case-row-icon danger-icon" data-settings-user-delete="${index}" title="Видалити користувача">${icon("trash")}</button>`}
+              <div class="settings-user-menu-wrap">
+                <button type="button" class="icon-button compact" data-settings-user-menu="${index}" aria-label="Дії користувача" aria-expanded="${state.settingsOpenUserMenu === String(index) ? "true" : "false"}">⋮</button>
+                <div class="settings-user-menu" data-settings-user-menu-panel="${index}" ${state.settingsOpenUserMenu === String(index) ? "" : "hidden"}>
+                  ${user.role === "Адміністратор" ? "" : `<button type="button" data-settings-user-role="${index}">${icon("edit")} Змінити роль</button>`}
+                  <button type="button" data-settings-user-access="${index}">${icon("check")} Оновити доступ</button>
+                  ${user.role === "Адміністратор" ? "" : `<button type="button" class="danger" data-settings-user-delete="${index}">${icon("trash")} Видалити</button>`}
+                </div>
+              </div>
             </div>
           </article>`).join("")}
         </div>
@@ -180,12 +187,21 @@ export function renderSettingsScreen(ctx) {
           </div>
         </div>
         <div class="settings-toggle-list">
-          ${integrations.map((item) => `<label class="settings-toggle-row">
-            <span>${icon(item.iconName)}</span>
-            <strong>${item.key}<em>${item.description}</em><small>Використовується: ${item.modules}</small></strong>
-            ${badge(state.settingsIntegrations[item.key] ? "Підключено" : "Вимкнено", state.settingsIntegrations[item.key] ? "green" : "red")}
-            <input type="checkbox" data-settings-integration="${item.key}" ${state.settingsIntegrations[item.key] ? "checked" : ""} />
-          </label>`).join("")}
+          ${integrations.map((item) => `<article class="settings-integration-row">
+            <span class="settings-integration-icon">${icon(item.iconName)}</span>
+            <div class="settings-integration-copy">
+              <strong>${item.key}</strong>
+              <em>${item.description}</em>
+              <small>Використовується: ${item.modules}</small>
+            </div>
+            <div class="settings-integration-control">
+              ${badge(state.settingsIntegrations[item.key] ? "Підключено" : "Вимкнено", state.settingsIntegrations[item.key] ? "green" : "red")}
+              <label class="settings-switch" aria-label="${item.key}">
+                <input type="checkbox" data-settings-integration="${item.key}" ${state.settingsIntegrations[item.key] ? "checked" : ""} />
+                <span></span>
+              </label>
+            </div>
+          </article>`).join("")}
         </div>
       </section>
 
@@ -246,11 +262,27 @@ export function renderSettingsScreen(ctx) {
     dialog.showModal();
     form?.elements.name?.focus();
   });
+  document.querySelectorAll("[data-settings-user-menu]").forEach((button) => button.addEventListener("click", () => {
+    const key = button.dataset.settingsUserMenu;
+    state.settingsOpenUserMenu = state.settingsOpenUserMenu === key ? "" : key;
+    renderSettingsScreen(ctx);
+  }));
+  document.querySelectorAll("[data-settings-user-access]").forEach((button) => button.addEventListener("click", () => {
+    const user = state.settingsUsers[Number(button.dataset.settingsUserAccess)];
+    if (!user) return;
+    user.access = roleAccessMap[user.role] || user.access;
+    state.settingsOpenUserMenu = "";
+    addSettingsAudit(state, `Оновлено доступ користувача ${user.name}: ${user.access}.`, "blue");
+    saveNavigationState();
+    renderSettingsScreen(ctx);
+    showToast(`Доступ користувача ${user.name} оновлено.`);
+  }));
   document.querySelectorAll("[data-settings-user-role]").forEach((button) => button.addEventListener("click", () => {
     const user = state.settingsUsers[Number(button.dataset.settingsUserRole)];
     if (!user || user.role === "Адміністратор") return;
     user.role = user.role === "Адвокат" ? "Помічник" : "Адвокат";
     user.access = user.role === "Адвокат" ? "Справи, клієнти, календар" : "Задачі та документи";
+    state.settingsOpenUserMenu = "";
     addSettingsAudit(state, `Змінено роль користувача ${user.name}: ${user.role}.`, "amber");
     saveNavigationState();
     renderSettingsScreen(ctx);
@@ -258,6 +290,7 @@ export function renderSettingsScreen(ctx) {
   }));
   document.querySelectorAll("[data-settings-user-delete]").forEach((button) => button.addEventListener("click", () => {
     const [removed] = state.settingsUsers.splice(Number(button.dataset.settingsUserDelete), 1);
+    state.settingsOpenUserMenu = "";
     addSettingsAudit(state, `Видалено користувача ${removed.name}.`, "red");
     saveNavigationState();
     renderSettingsScreen(ctx);
