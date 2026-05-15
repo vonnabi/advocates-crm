@@ -153,3 +153,19 @@ test("profile logout opens a visible demo session screen", async ({ page }) => {
   await page.locator("[data-login-return]").click();
   await expect(page.locator("#logout-overlay")).toBeHidden();
 });
+
+test("AI assistants search, open chat, and answer quick questions", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+  await page.locator('.nav-item[data-view="ai"]').click();
+
+  await expect(page.locator("#ai")).toContainText("Помічники по галузях права");
+  await page.locator("[data-ai-case-search]").fill("ТЦК");
+  await expect(page.locator("[data-ai-assistant-row]").first()).toContainText(/тцк/i);
+
+  await page.locator("[data-ai-open-chat]").first().click();
+  await expect(page.locator(".ai-chat-card")).toContainText("Чат по справі");
+
+  await page.locator("[data-ai-question]").first().click();
+  await expect(page.locator(".ai-chat .bubble.user").last()).toContainText("Які підстави");
+});

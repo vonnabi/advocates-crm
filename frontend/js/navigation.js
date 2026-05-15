@@ -15,6 +15,14 @@ export function saveNavigationState({ state }) {
       settingsIntegrations: state.settingsIntegrations,
       settingsNotifications: state.settingsNotifications,
       notificationReadKeys: state.notificationReadKeys,
+      aiSelectedHelper: state.aiSelectedHelper,
+      aiSelectedCaseId: state.aiSelectedCaseId,
+      aiSearchQuery: state.aiSearchQuery,
+      aiCaseStatusFilter: state.aiCaseStatusFilter,
+      aiCaseResponsibleFilter: state.aiCaseResponsibleFilter,
+      aiSelectedAssistantId: state.aiSelectedAssistantId,
+      aiCustomAssistants: state.aiCustomAssistants,
+      aiHiddenAssistantIds: state.aiHiddenAssistantIds,
       sidebarCollapsed: document.body.classList.contains("sidebar-collapsed")
     };
     localStorage.setItem(NAV_STORAGE_KEY, JSON.stringify(payload));
@@ -40,6 +48,14 @@ export function restoreNavigationState({ state, caseById }) {
     state.settingsIntegrations = { ...state.settingsIntegrations, ...(saved.settingsIntegrations || {}) };
     state.settingsNotifications = { ...state.settingsNotifications, ...(saved.settingsNotifications || {}) };
     state.notificationReadKeys = Array.isArray(saved.notificationReadKeys) ? saved.notificationReadKeys : [];
+    state.aiSelectedHelper = saved.aiSelectedHelper || state.aiSelectedHelper;
+    state.aiSelectedCaseId = caseById(saved.aiSelectedCaseId) ? saved.aiSelectedCaseId : state.aiSelectedCaseId;
+    state.aiSearchQuery = saved.aiSearchQuery || "";
+    state.aiCaseStatusFilter = saved.aiCaseStatusFilter || state.aiCaseStatusFilter;
+    state.aiCaseResponsibleFilter = saved.aiCaseResponsibleFilter || state.aiCaseResponsibleFilter;
+    state.aiSelectedAssistantId = saved.aiSelectedAssistantId || "";
+    state.aiCustomAssistants = Array.isArray(saved.aiCustomAssistants) ? saved.aiCustomAssistants : [];
+    state.aiHiddenAssistantIds = Array.isArray(saved.aiHiddenAssistantIds) ? saved.aiHiddenAssistantIds : [];
     document.body.classList.toggle("sidebar-collapsed", Boolean(saved.sidebarCollapsed));
   } catch (error) {
     localStorage.removeItem(NAV_STORAGE_KEY);
