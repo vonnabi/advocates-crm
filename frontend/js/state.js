@@ -81,6 +81,9 @@ export async function createInitialState() {
     aiMessages: [],
     osintQuery: "",
     osintStatusFilter: "all",
+    osintTab: "overview",
+    osintDateStart: "2024-05-01",
+    osintDateEnd: "2024-05-16",
     selectedOsintId: "osint-1",
     osintChecks: [
       {
