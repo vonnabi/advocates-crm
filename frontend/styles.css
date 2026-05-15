@@ -3550,7 +3550,7 @@ button {
 
 .osint-tabs button,
 .osint-subtabs button {
-  min-height: 38px;
+  min-height: 36px;
   border: 0;
   border-bottom: 2px solid transparent;
   background: transparent;
@@ -3562,7 +3562,7 @@ button {
 
 .osint-tabs button.active,
 .osint-subtabs button.active {
-  border-color: var(--action-dark);
+  border-color: var(--blue);
   color: var(--action-dark);
 }
 
@@ -3637,6 +3637,7 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1.1fr) minmax(300px, 0.95fr);
   gap: 14px;
+  align-items: start;
 }
 
 .osint-lower-grid,
@@ -3644,6 +3645,7 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1.55fr) minmax(260px, 0.8fr) minmax(260px, 0.8fr);
   gap: 14px;
+  align-items: start;
 }
 
 .osint-bottom-layout {
@@ -3655,6 +3657,7 @@ button {
 .osint-small-card,
 .osint-right-card {
   padding: 16px;
+  align-self: start;
 }
 
 .osint-chart-card h2,
@@ -3668,7 +3671,7 @@ button {
 
 .osint-line-chart {
   width: 100%;
-  height: 250px;
+  height: 220px;
   margin-top: 8px;
 }
 
@@ -3715,7 +3718,7 @@ button {
   grid-template-columns: 180px minmax(0, 1fr);
   gap: 18px;
   align-items: center;
-  min-height: 245px;
+  min-height: 214px;
 }
 
 .osint-donut {
@@ -3782,9 +3785,9 @@ button {
 .osint-active-list button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 7px;
   text-align: left;
-  padding: 12px 0;
+  padding: 9px 0;
   border-width: 0 0 1px;
   border-radius: 0;
 }
@@ -3882,7 +3885,7 @@ button {
 }
 
 .osint-graph {
-  min-height: 260px;
+  min-height: 230px;
   position: relative;
 }
 
@@ -3976,16 +3979,34 @@ button {
 
 .osint-source-grid article {
   display: grid;
-  gap: 6px;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 9px;
   align-content: start;
+  align-items: start;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fbfdff;
   padding: 12px;
 }
 
+.source-card-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: #eaf4ff;
+  color: var(--action-dark);
+}
+
+.source-card-icon .ui-icon {
+  width: 18px;
+  height: 18px;
+}
+
 .osint-source-grid strong,
 .osint-registry-table strong {
+  display: block;
   color: var(--text);
 }
 
@@ -3997,6 +4018,11 @@ button {
   color: var(--muted);
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
+}
+
+.osint-source-grid .badge {
+  grid-column: 2;
+  justify-self: start;
 }
 
 .osint-manage {
@@ -4052,6 +4078,17 @@ button {
   text-align: left;
 }
 
+.osint-tab-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.35fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.osint-tab-workspace {
+  align-self: start;
+}
+
 .settings-user-actions {
   display: inline-flex;
   align-items: center;
@@ -4079,6 +4116,7 @@ button {
   .osint-dashboard-grid,
   .osint-lower-grid,
   .osint-bottom-layout,
+  .osint-tab-layout,
   .osint-layout,
   .ai-workspace,
   .analytics-grid {

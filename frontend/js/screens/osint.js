@@ -235,14 +235,25 @@ function activeCasesList(badge) {
   `;
 }
 
-function sourcesGrid(badge) {
+function sourceIconName(title) {
+  if (title.includes("Telegram")) return "telegram";
+  if (title.includes("Судові")) return "building";
+  if (title.includes("Новини")) return "file";
+  if (title.includes("Соц")) return "user";
+  return "search";
+}
+
+function sourcesGrid(badge, icon) {
   return `
     <div class="osint-source-grid">
       ${OSINT_SOURCES.map(([title, subtitle, updated, status]) => `
         <article>
-          <strong>${title}</strong>
-          <span>${subtitle}</span>
-          <small>Оновлено: ${updated}</small>
+          <div class="source-card-icon">${icon(sourceIconName(title))}</div>
+          <div>
+            <strong>${title}</strong>
+            <span>${subtitle}</span>
+            <small>Оновлено: ${updated}</small>
+          </div>
           ${badge(status, "green")}
         </article>
       `).join("")}
@@ -253,9 +264,48 @@ function sourcesGrid(badge) {
 function secondaryWorkspace(state, badge, icon) {
   const tab = state.osintTab || "overview";
   if (tab === "overview") return "";
+  if (tab === "cases" || tab === "monitoring") {
+    return `
+      <section class="osint-tab-layout">
+        <article class="panel osint-wide-card">
+          <div class="analytics-card-head">
+            <h2>${tab === "monitoring" ? "Активний моніторинг" : "OSINT за справами"}</h2>
+            <button class="secondary compact" type="button" data-osint-monitor>${icon("refresh")} Додати моніторинг</button>
+          </div>
+          ${activeCasesList(badge)}
+        </article>
+        <aside class="panel osint-right-card">
+          <h2>Швидкі дії</h2>
+          <div class="osint-quick-actions">
+            <button type="button" data-osint-quick="person">${icon("user")} Пошук по людині</button>
+            <button type="button" data-osint-quick="company">${icon("building")} Пошук по компанії</button>
+            <button type="button" data-create-osint>${icon("file")} Створити звіт</button>
+            <button type="button" data-osint-export>${icon("file")} Експорт даних</button>
+          </div>
+        </aside>
+      </section>
+    `;
+  }
+  if (tab === "people" || tab === "events") {
+    return `
+      <section class="osint-tab-layout">
+        <article class="panel osint-wide-card">
+          <div class="analytics-card-head">
+            <h2>${tab === "people" ? "OSINT за людьми" : "OSINT за подіями"}</h2>
+            <button class="secondary compact" type="button" data-osint-sync>${icon("refresh")} Оновити</button>
+          </div>
+          ${mentionList(badge, icon, state)}
+        </article>
+        <article class="panel osint-small-card">
+          <h2>${tab === "people" ? "Граф зв'язків" : "Типи подій"}</h2>
+          ${tab === "people" ? relationshipGraph() : dataTypeBars()}
+        </article>
+      </section>
+    `;
+  }
   if (tab === "registries" || tab === "settings") {
     return `
-      <section class="panel osint-wide-card">
+      <section class="panel osint-wide-card osint-tab-workspace">
         <div class="analytics-card-head">
           <h2>${tab === "settings" ? "Налаштування джерел" : "Підключені реєстри"}</h2>
           <button class="secondary compact" type="button" data-osint-sync>${icon("refresh")} Оновити</button>
@@ -275,7 +325,7 @@ function secondaryWorkspace(state, badge, icon) {
   }
   if (tab === "reports") {
     return `
-      <section class="panel osint-wide-card">
+      <section class="panel osint-wide-card osint-tab-workspace">
         <div class="analytics-card-head">
           <h2>Готові OSINT звіти</h2>
           <button class="primary compact" type="button" data-osint-export>${icon("file")} Експорт</button>
@@ -294,7 +344,7 @@ function secondaryWorkspace(state, badge, icon) {
     `;
   }
   return `
-    <section class="panel osint-wide-card">
+      <section class="panel osint-wide-card osint-tab-workspace">
       <div class="analytics-card-head">
         <h2>${OSINT_TABS.find(([key]) => key === tab)?.[1] || "OSINT"}</h2>
         <button class="secondary compact" type="button" data-osint-monitor>${icon("refresh")} Додати моніторинг</button>
@@ -347,6 +397,7 @@ export function renderOSINTScreen(ctx) {
         ${OSINT_METRICS.map((item) => metricCard(item, icon)).join("")}
       </section>
 
+      ${state.osintTab === "overview" ? `
       <section class="osint-dashboard-grid">
         <article class="panel osint-chart-card osint-line-panel">
           <div class="analytics-card-head">
@@ -400,7 +451,7 @@ export function renderOSINTScreen(ctx) {
       <section class="osint-bottom-layout">
         <article class="panel osint-wide-card">
           <h2>Джерела даних</h2>
-          ${sourcesGrid(badge)}
+          ${sourcesGrid(badge, icon)}
           <button class="ghost osint-manage" type="button" data-osint-sync>Керування джерелами</button>
         </article>
 
@@ -415,8 +466,7 @@ export function renderOSINTScreen(ctx) {
           </div>
         </aside>
       </section>
-
-      ${secondaryWorkspace(state, badge, icon)}
+      ` : secondaryWorkspace(state, badge, icon)}
     </div>
   `;
 
@@ -426,6 +476,7 @@ export function renderOSINTScreen(ctx) {
   });
   document.querySelectorAll("[data-osint-tab]").forEach((button) => button.addEventListener("click", () => {
     state.osintTab = button.dataset.osintTab;
+    showToast(`Відкрито розділ: ${button.textContent.trim()}.`);
     renderOSINTScreen(ctx);
   }));
   document.querySelectorAll("[data-create-osint]").forEach((button) => button.addEventListener("click", () => {
@@ -459,7 +510,11 @@ export function renderOSINTScreen(ctx) {
     showToast("Моніторинг OSINT додано до активних перевірок.");
     renderOSINTScreen(ctx);
   }));
-  document.querySelectorAll("[data-osint-sync], [data-osint-date], [data-osint-chart-scale], [data-osint-subtab], [data-osint-show-all]").forEach((control) => {
+  document.querySelectorAll("[data-osint-show-all]").forEach((button) => button.addEventListener("click", () => {
+    state.osintTab = "cases";
+    renderOSINTScreen(ctx);
+  }));
+  document.querySelectorAll("[data-osint-sync], [data-osint-date], [data-osint-chart-scale], [data-osint-subtab]").forEach((control) => {
     control.addEventListener("click", () => showToast("OSINT дані оновлено."));
     control.addEventListener("change", () => showToast("Параметри OSINT оновлено."));
   });
