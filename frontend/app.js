@@ -103,17 +103,7 @@ const navNodes = [...document.querySelectorAll(".nav-item")];
 
 function showToast(message, type = "success") {
   const stack = $("#toast-stack");
-  if (!stack || !message) return;
-  const node = document.createElement("div");
-  node.className = `toast ${type}`;
-  node.textContent = message;
-  stack.append(node);
-  [...stack.children].slice(0, -3).forEach((item) => item.remove());
-  requestAnimationFrame(() => node.classList.add("visible"));
-  window.setTimeout(() => {
-    node.classList.remove("visible");
-    node.addEventListener("transitionend", () => node.remove(), { once: true });
-  }, 2800);
+  if (stack) stack.replaceChildren();
 }
 
 function closeTopbarPanels() {
