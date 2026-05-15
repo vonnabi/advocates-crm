@@ -146,18 +146,25 @@ export function actionMenu(items = [], options = {}) {
   `;
 }
 
+function resetActionMenu(menu) {
+  menu.hidden = true;
+  menu.style.position = "";
+  menu.style.top = "";
+  menu.style.left = "";
+  menu.style.right = "";
+  menu.style.bottom = "";
+  menu.style.zIndex = "";
+  if (menu.__actionMenuOwner && menu.parentElement !== menu.__actionMenuOwner) {
+    menu.__actionMenuOwner.append(menu);
+  }
+}
+
 export function bindActionMenus(root = document) {
   if (!document.body.dataset.actionMenusGlobalBound) {
     document.body.dataset.actionMenusGlobalBound = "true";
     document.addEventListener("click", (event) => {
       if (event.target.closest(".row-action-menu-wrap")) return;
-      document.querySelectorAll(".row-action-menu").forEach((menu) => {
-        menu.hidden = true;
-        menu.style.position = "";
-        menu.style.top = "";
-        menu.style.right = "";
-        menu.style.bottom = "";
-      });
+      document.querySelectorAll(".row-action-menu").forEach(resetActionMenu);
       document.querySelectorAll("[data-action-menu-trigger]").forEach((button) => {
         button.setAttribute("aria-expanded", "false");
       });
@@ -171,15 +178,15 @@ export function bindActionMenus(root = document) {
       event.preventDefault();
       event.stopPropagation();
       const wrapper = button.closest(".row-action-menu-wrap");
-      const menu = wrapper?.querySelector(".row-action-menu");
+      const menu = wrapper?.__actionMenuEl || wrapper?.querySelector(".row-action-menu");
+      if (wrapper && menu) {
+        wrapper.__actionMenuEl = menu;
+        menu.__actionMenuOwner = wrapper;
+      }
       const shouldOpen = menu?.hidden;
       document.querySelectorAll(".row-action-menu").forEach((item) => {
         if (item !== menu) {
-          item.hidden = true;
-          item.style.position = "";
-          item.style.top = "";
-          item.style.right = "";
-          item.style.bottom = "";
+          resetActionMenu(item);
         }
       });
       document.querySelectorAll("[data-action-menu-trigger]").forEach((item) => {
@@ -187,20 +194,47 @@ export function bindActionMenus(root = document) {
       });
       if (menu) {
         menu.hidden = !shouldOpen;
-        menu.style.position = "";
-        menu.style.top = "";
-        menu.style.right = "";
-        menu.style.bottom = "";
+        resetActionMenu(menu);
         if (shouldOpen) {
           const triggerBox = button.getBoundingClientRect();
+          const preferredLeft = Math.max(8, triggerBox.left);
+          const preferredTop = triggerBox.bottom + 8;
+          document.body.append(menu);
+          menu.hidden = false;
           menu.style.position = "fixed";
-          menu.style.right = `${Math.max(8, window.innerWidth - triggerBox.right)}px`;
-          menu.style.top = `${triggerBox.bottom + 8}px`;
+          menu.style.zIndex = "100000";
+          menu.style.left = `${preferredLeft}px`;
+          menu.style.top = `${preferredTop}px`;
           requestAnimationFrame(() => {
-            const menuBox = menu.getBoundingClientRect();
-            if (menuBox.bottom > window.innerHeight - 8) {
-              menu.style.top = `${Math.max(8, triggerBox.top - menuBox.height - 8)}px`;
+            let menuBox = menu.getBoundingClientRect();
+            const offsetX = menuBox.left - preferredLeft;
+            const offsetY = menuBox.top - preferredTop;
+            if (Math.abs(offsetX) > 1) {
+              menu.style.left = `${preferredLeft - offsetX}px`;
             }
+            if (Math.abs(offsetY) > 1) {
+              menu.style.top = `${preferredTop - offsetY}px`;
+            }
+            requestAnimationFrame(() => {
+              menuBox = menu.getBoundingClientRect();
+              if (menuBox.right > window.innerWidth - 8) {
+                const alignedLeft = Math.max(8, triggerBox.right - menuBox.width);
+                menu.style.left = `${alignedLeft - offsetX}px`;
+              }
+              const blocker = Array.from(document.querySelectorAll(".tasks-pagination, .case-pagination"))
+                .map((item) => item.getBoundingClientRect())
+                .find((box) => (
+                  box.width > 0 &&
+                  box.height > 0 &&
+                  triggerBox.bottom <= box.bottom &&
+                  menuBox.bottom > box.top - 4 &&
+                  menuBox.top < box.bottom
+                ));
+              const topAbove = triggerBox.top - menuBox.height - 8;
+              if ((menuBox.bottom > window.innerHeight - 8 || blocker) && topAbove >= 8) {
+                menu.style.top = `${topAbove - offsetY}px`;
+              }
+            });
           });
         }
       }

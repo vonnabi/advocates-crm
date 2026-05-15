@@ -88,7 +88,9 @@
   top: calc(100% + 8px);
   right: 0;
   z-index: 80;
-  width: 190px;
+  width: max-content;
+  min-width: 168px;
+  max-width: min(220px, calc(100vw - 16px));
   display: grid;
   gap: 4px;
   border: 1px solid var(--line);
@@ -102,7 +104,7 @@
   display: none;
 }
 
-.row-action-menu-wrap .row-action-menu button {
+.row-action-menu button {
   width: 100%;
   height: auto;
   min-height: 34px;
@@ -118,24 +120,25 @@
   font-size: var(--text-sm);
   font-weight: var(--weight-bold);
   line-height: 1.2;
+  white-space: nowrap;
   cursor: pointer;
 }
 
-.row-action-menu-wrap .row-action-menu button:hover {
+.row-action-menu button:hover {
   background: var(--action-hover);
   color: white;
 }
 
-.row-action-menu-wrap .row-action-menu button.danger {
+.row-action-menu button.danger {
   color: var(--semantic-red);
 }
 
-.row-action-menu-wrap .row-action-menu button.danger:hover {
+.row-action-menu button.danger:hover {
   background: var(--semantic-red);
   color: white;
 }
 
-.row-action-menu-wrap .row-action-menu .ui-icon {
+.row-action-menu .ui-icon {
   width: 15px;
   height: 15px;
   flex: 0 0 auto;
@@ -13811,7 +13814,7 @@ body .row-action-menu-wrap > .row-action-trigger[aria-expanded="true"] {
   color: white;
 }
 
-body .row-action-menu-wrap .row-action-menu button {
+body .row-action-menu button {
   width: 100%;
   height: auto;
   min-height: 34px;
@@ -13829,16 +13832,16 @@ body .row-action-menu-wrap .row-action-menu button {
   line-height: 1.2;
 }
 
-body .row-action-menu-wrap .row-action-menu button:hover {
+body .row-action-menu button:hover {
   background: var(--action-hover);
   color: white;
 }
 
-body .row-action-menu-wrap .row-action-menu button.danger {
+body .row-action-menu button.danger {
   color: var(--semantic-red);
 }
 
-body .row-action-menu-wrap .row-action-menu button.danger:hover {
+body .row-action-menu button.danger:hover {
   background: var(--semantic-red);
   color: white;
 }

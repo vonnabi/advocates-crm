@@ -19,7 +19,7 @@ async function openAndCloseDialog(page, clickSelector, dialogSelector, label) {
 async function openMenuAction(page, scopeSelector, actionSelector) {
   const wrapper = page.locator(`${scopeSelector} .row-action-menu-wrap`, { has: page.locator(actionSelector) }).first();
   await wrapper.locator("[data-action-menu-trigger]").click();
-  await wrapper.locator(actionSelector).click();
+  await page.locator(".row-action-menu:not([hidden])").locator(actionSelector).click();
 }
 
 test("core dialogs and topbar panels open and close cleanly", async ({ page }) => {
