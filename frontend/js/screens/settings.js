@@ -1,3 +1,82 @@
+const roleAccessMap = {
+  "Адвокат": "Справи, клієнти, календар",
+  "Помічник": "Задачі та документи",
+  "Бухгалтер": "Фінанси та звіти"
+};
+
+function cleanSettingValue(value) {
+  return String(value || "").trim().replace(/[<>]/g, "");
+}
+
+function userInitials(name) {
+  const initials = cleanSettingValue(name)
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+  return initials || "К";
+}
+
+function ensureInviteDialog(ctx) {
+  let dialog = document.querySelector("#settings-invite-dialog");
+  if (dialog) return dialog;
+  dialog = document.createElement("dialog");
+  dialog.id = "settings-invite-dialog";
+  dialog.innerHTML = `
+    <form method="dialog" class="modal-form settings-invite-form" id="settings-invite-form">
+      <div class="modal-head">
+        <h2>Запросити користувача</h2>
+        <button class="ghost" type="button" data-settings-invite-close>Закрити</button>
+      </div>
+      <label>Ім'я та прізвище<input name="name" required placeholder="Наприклад, Шевченко Марія Ігорівна"></label>
+      <label>Email<input name="email" type="email" required placeholder="user@example.com"></label>
+      <label>Роль
+        <select name="role">
+          <option>Адвокат</option>
+          <option>Помічник</option>
+          <option>Бухгалтер</option>
+        </select>
+      </label>
+      <label>Доступ
+        <select name="access">
+          ${Object.values(roleAccessMap).map((access) => `<option>${access}</option>`).join("")}
+        </select>
+      </label>
+      <button type="submit" class="primary">Надіслати запрошення</button>
+    </form>
+  `;
+  document.body.append(dialog);
+  const form = dialog.querySelector("#settings-invite-form");
+  form?.elements.role?.addEventListener("change", () => {
+    form.elements.access.value = roleAccessMap[form.elements.role.value] || roleAccessMap["Помічник"];
+  });
+  dialog.querySelector("[data-settings-invite-close]")?.addEventListener("click", () => dialog.close());
+  form?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const { state, saveNavigationState, showToast } = ctx;
+    const name = cleanSettingValue(form.elements.name.value);
+    const email = cleanSettingValue(form.elements.email.value).toLowerCase();
+    const role = cleanSettingValue(form.elements.role.value);
+    const access = cleanSettingValue(form.elements.access.value) || roleAccessMap[role] || roleAccessMap["Помічник"];
+    if (!name || !email) return;
+    state.settingsUsers.push({
+      name,
+      email,
+      role,
+      access,
+      photo: userInitials(name)
+    });
+    form.reset();
+    form.elements.access.value = roleAccessMap["Адвокат"];
+    dialog.close();
+    saveNavigationState();
+    renderSettingsScreen(ctx);
+    showToast(`Запрошення для ${name} підготовлено.`);
+  });
+  return dialog;
+}
+
 export function renderSettingsScreen(ctx) {
   const { state, $, icon, badge, saveNavigationState, showToast } = ctx;
   const users = state.settingsUsers;
@@ -93,15 +172,14 @@ export function renderSettingsScreen(ctx) {
     showToast("Налаштування бюро збережено.");
   });
   document.querySelector("[data-settings-action='invite']")?.addEventListener("click", () => {
-    state.settingsUsers.push({
-      name: "Новий користувач",
-      role: "Помічник",
-      access: "Задачі та документи",
-      photo: "Н"
-    });
-    saveNavigationState();
-    renderSettingsScreen(ctx);
-    showToast("Користувача додано до прототипу.");
+    const dialog = ensureInviteDialog(ctx);
+    const form = dialog.querySelector("#settings-invite-form");
+    if (form) {
+      form.reset();
+      form.elements.access.value = roleAccessMap["Адвокат"];
+    }
+    dialog.showModal();
+    form?.elements.name?.focus();
   });
   document.querySelectorAll("[data-settings-user-role]").forEach((button) => button.addEventListener("click", () => {
     const user = state.settingsUsers[Number(button.dataset.settingsUserRole)];

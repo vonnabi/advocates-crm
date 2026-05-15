@@ -139,3 +139,23 @@ test("task planner flags sync with the planner screen", async ({ page }) => {
   await expect(taskRow).toBeVisible();
   await expect(taskRow).toContainText("Виконано");
 });
+
+test("settings invite form adds a bureau user", async ({ page }) => {
+  const userName = "Автотестовий співробітник";
+
+  await openApp(page);
+  await page.locator('.nav-item[data-view="settings"]').click();
+  await expect(page.locator("#settings")).toHaveClass(/active/);
+
+  await page.locator('[data-settings-action="invite"]').click();
+  await expect(page.locator("#settings-invite-dialog")).toHaveJSProperty("open", true);
+  await page.locator('#settings-invite-form [name="name"]').fill(userName);
+  await page.locator('#settings-invite-form [name="email"]').fill("team.autotest@example.com");
+  await page.locator('#settings-invite-form [name="role"]').selectOption("Бухгалтер");
+  await expect(page.locator('#settings-invite-form [name="access"]')).toHaveValue("Фінанси та звіти");
+  await page.locator('#settings-invite-form button[type="submit"]').click();
+
+  await expect(page.locator("#settings-invite-dialog")).toHaveJSProperty("open", false);
+  await expect(page.locator("#settings")).toContainText(userName);
+  await expect(page.locator("#settings")).toContainText("Бухгалтер");
+});
