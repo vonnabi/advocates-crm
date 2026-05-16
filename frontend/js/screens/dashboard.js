@@ -211,6 +211,19 @@ export function renderDashboardScreen(ctx) {
             </div>
           </article>
 
+          <article class="panel dashboard-card dashboard-deadlines">
+            <div class="dashboard-card-head">
+              <div>
+                <h2>Найближчі дедлайни по справах</h2>
+                <p>Підтягується зі справ, задач і календаря</p>
+              </div>
+              <button class="secondary" type="button" data-view-link="planner">Відкрити планер</button>
+            </div>
+            <div class="dashboard-list">
+              ${taskRows(tasks.filter((task) => !isTaskDone(task)).sort((a, b) => (a.dueDate?.getTime() || 0) - (b.dueDate?.getTime() || 0)).slice(0, 6), badge)}
+            </div>
+          </article>
+
           <article class="panel dashboard-card">
             <div class="dashboard-card-head">
               <div>
@@ -298,19 +311,6 @@ export function renderDashboardScreen(ctx) {
             </div>
           </article>
         </aside>
-      </section>
-
-      <section class="panel dashboard-card dashboard-deadlines">
-        <div class="dashboard-card-head">
-          <div>
-            <h2>Найближчі дедлайни по справах</h2>
-            <p>Підтягується зі справ, задач і календаря</p>
-          </div>
-          <button class="secondary" type="button" data-view-link="planner">Відкрити планер</button>
-        </div>
-        <div class="dashboard-list">
-          ${taskRows(tasks.filter((task) => !isTaskDone(task)).sort((a, b) => (a.dueDate?.getTime() || 0) - (b.dueDate?.getTime() || 0)).slice(0, 6), badge)}
-        </div>
       </section>
     </div>
   `;
