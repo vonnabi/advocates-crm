@@ -665,7 +665,6 @@ function caseDocumentRows(item) {
         <span class="procedural-doc-title">${doc.name}</span>
         <span class="procedural-actions">
           ${documentMenu([
-            { label: "Відкрити", icon: "eye", attrs: { "data-view-document": `procedural:${docIndex}` } },
             { label: "Редагувати", icon: "edit", attrs: { "data-edit-document": `procedural:${docIndex}` } },
             { label: "Видалити", icon: "trash", danger: true, attrs: { "data-delete-procedural-doc": docIndex } }
           ])}
