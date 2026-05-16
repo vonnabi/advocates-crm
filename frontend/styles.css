@@ -9449,13 +9449,13 @@ td a,
 
 .case-documents-table th:first-child,
 .case-documents-table td:first-child {
-  width: 42%;
+  width: 40%;
   padding-left: 0;
 }
 
 .case-documents-table th:nth-child(2),
 .case-documents-table td:nth-child(2) {
-  width: 20%;
+  width: 18%;
   text-align: center;
 }
 
@@ -9467,12 +9467,12 @@ td a,
 
 .case-documents-table th:nth-child(4),
 .case-documents-table td:nth-child(4) {
-  width: 14%;
-  text-align: center;
+  width: 18%;
+  text-align: right;
 }
 
 .case-documents-table {
-  min-width: 520px;
+  min-width: 0;
 }
 
 .case-documents-table tbody tr,
@@ -9654,7 +9654,9 @@ td a,
 
 .procedural-doc-name {
   display: grid;
-  gap: 6px;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   min-width: 0;
 }
@@ -9663,23 +9665,20 @@ td a,
   display: block;
   max-width: 100%;
   overflow-wrap: anywhere;
+  line-height: 1.25;
 }
 
 .procedural-actions {
   display: inline-flex;
   gap: 5px;
-  justify-self: start;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.16s ease;
+  justify-self: end;
 }
 
-.procedural-doc-row:hover .procedural-actions {
-  opacity: 1;
-  pointer-events: auto;
+.procedural-actions .row-action-menu-wrap {
+  display: inline-flex;
 }
 
-.procedural-actions button {
+.procedural-actions > .row-action-menu-wrap > .row-action-trigger {
   width: 22px;
   height: 22px;
   min-height: 22px;
@@ -9694,12 +9693,12 @@ td a,
   cursor: pointer;
 }
 
-.procedural-actions button .ui-icon {
+.procedural-actions > .row-action-menu-wrap > .row-action-trigger .ui-icon {
   width: 12px;
   height: 12px;
 }
 
-.procedural-actions button:hover {
+.procedural-actions > .row-action-menu-wrap > .row-action-trigger:hover {
   border-color: var(--action-hover);
   color: white;
   background: var(--action-hover);

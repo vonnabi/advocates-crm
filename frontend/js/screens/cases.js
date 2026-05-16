@@ -588,12 +588,39 @@ function caseActionRows(item, filter = "all") {
 export function caseProceduralItems(item) {
   if (Array.isArray(item.proceduralActions)) return item.proceduralActions;
   if (!String(item.id).startsWith("2024/")) return [];
-  return [
-    ["Подано адміністративний позов", "Адвокат", "15.05.2024", "20.05.2024", "В процесі", "amber"],
-    ["Клопотання про забезпечення позову", "Адвокат", "16.05.2024", "19.05.2024", "Не розпочато", ""],
-    ["Отримання витребуваних документів", "Суд", "17.05.2024", "27.05.2024", "Не розпочато", ""],
-    ["Судове засідання", "Суд", "-", "10.06.2024", "Заплановано", "blue"]
+  item.proceduralActions = [
+    {
+      action: "Подано адміністративний позов",
+      initiator: "Адвокат",
+      initiated: "15.05.2024",
+      due: "20.05.2024",
+      status: "В процесі",
+      tone: "amber"
+    },
+    {
+      action: "Клопотання про забезпечення позову",
+      initiator: "Адвокат",
+      initiated: "16.05.2024",
+      due: "19.05.2024",
+      status: "Не розпочато"
+    },
+    {
+      action: "Отримання витребуваних документів",
+      initiator: "Суд",
+      initiated: "17.05.2024",
+      due: "27.05.2024",
+      status: "Не розпочато"
+    },
+    {
+      action: "Судове засідання",
+      initiator: "Суд",
+      initiated: "-",
+      due: "10.06.2024",
+      status: "Заплановано",
+      tone: "blue"
+    }
   ];
+  return item.proceduralActions;
 }
 
 function caseProceduralRows(item) {
