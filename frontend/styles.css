@@ -2023,7 +2023,9 @@ button {
 }
 
 .table-wrap {
+  max-width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .case-list-card .table-wrap {
@@ -3169,8 +3171,18 @@ button {
 
 .finance-line-chart {
   width: 100%;
+  max-width: 100%;
   height: 245px;
-  overflow: visible;
+  overflow: hidden;
+}
+
+.finance-line-chart svg,
+.analytics-line-chart svg,
+.osint-line-chart svg {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
 }
 
 .finance-line-chart .grid-lines line {
@@ -3853,8 +3865,9 @@ button {
 
 .analytics-line-chart {
   width: 100%;
+  max-width: 100%;
   height: 245px;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .analytics-line-chart .grid-lines line {
@@ -5755,6 +5768,21 @@ button {
 }
 
 @media (max-width: 1100px) {
+  .view {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .case-list-layout,
+  .clients-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .case-list-side,
+  .clients-side {
+    position: static;
+  }
+
   .documents-layout {
     grid-template-columns: 1fr;
   }
@@ -5798,6 +5826,13 @@ button {
   .finance-main-grid,
   .finance-bottom-grid {
     grid-template-columns: 1fr;
+  }
+
+  .finance-chart-card,
+  .finance-operations-card,
+  .analytics-card,
+  .osint-card {
+    min-width: 0;
   }
 
   .finance-workspace-cards,
@@ -13583,6 +13618,182 @@ dialog::backdrop {
     display: flex;
     justify-content: flex-end;
   }
+
+  .case-list-card,
+  .clients-table-card {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .case-list-card .table-wrap,
+  .clients-table-card .table-wrap {
+    overflow: visible;
+  }
+
+  .case-list-table,
+  .case-list-table thead,
+  .case-list-table tbody,
+  .case-list-table tr,
+  .case-list-table td,
+  .clients-table,
+  .clients-table thead,
+  .clients-table tbody,
+  .clients-table tr,
+  .clients-table td {
+    display: block;
+    width: 100% !important;
+    min-width: 0;
+  }
+
+  .case-list-table,
+  .clients-table {
+    min-width: 0;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .case-list-table thead,
+  .clients-table thead {
+    display: none;
+  }
+
+  .case-list-table tbody,
+  .clients-table tbody {
+    display: grid;
+    gap: 12px;
+  }
+
+  .case-list-table tbody tr,
+  .clients-table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 10px;
+    position: relative;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fbfcfe;
+    padding: 12px;
+    cursor: pointer;
+  }
+
+  .case-list-table td,
+  .clients-table td {
+    border: 0;
+    padding: 0;
+    white-space: normal;
+    overflow: visible;
+    text-align: left !important;
+  }
+
+  .case-list-table td:first-child,
+  .clients-table td:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .case-list-table td:not(:first-child),
+  .clients-table td:not(:first-child):not(:last-child) {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 4px;
+    min-height: 48px;
+    padding: 8px 10px;
+    border: 1px solid #edf1f7;
+    border-radius: 8px;
+    background: #f8fafc;
+  }
+
+  .case-list-table td:not(:first-child)::before,
+  .clients-table td:not(:first-child):not(:last-child)::before {
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 1.25;
+    text-transform: uppercase;
+  }
+
+  .case-list-table td:nth-child(2)::before {
+    content: "Клієнт";
+  }
+
+  .case-list-table td:nth-child(3)::before {
+    content: "Назва";
+  }
+
+  .case-list-table td:nth-child(4)::before {
+    content: "Етап";
+  }
+
+  .case-list-table td:nth-child(5)::before {
+    content: "Матеріали";
+  }
+
+  .case-list-table td:nth-child(6)::before {
+    content: "Дедлайн";
+  }
+
+  .case-list-table td:nth-child(7)::before {
+    content: "Пріоритет";
+  }
+
+  .case-list-table td:nth-child(8)::before {
+    content: "Статус";
+  }
+
+  .case-list-table td:nth-child(9)::before {
+    content: "Фінанси";
+  }
+
+  .clients-table td:nth-child(2)::before {
+    content: "Клієнт";
+  }
+
+  .clients-table td:nth-child(3)::before {
+    content: "Телефон";
+  }
+
+  .clients-table td:nth-child(4)::before {
+    content: "Email";
+  }
+
+  .clients-table td:nth-child(5)::before {
+    content: "Суть";
+  }
+
+  .clients-table td:nth-child(6)::before {
+    content: "Дата";
+  }
+
+  .clients-table td:nth-child(7)::before {
+    content: "Telegram";
+  }
+
+  .clients-table td.clients-row-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 2px;
+  }
+
+  .case-number-cell,
+  .client-name-cell a {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .case-list-table .badge,
+  .clients-table .badge {
+    width: fit-content;
+    max-width: 100%;
+    justify-self: start;
+  }
+
+  .case-row-actions,
+  .clients-row-actions .row-action-menu-wrap {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 @media (max-width: 720px) {
@@ -14140,7 +14351,61 @@ dialog::backdrop {
   }
 }
 
+@media (max-width: 900px) and (orientation: landscape) {
+  .topbar {
+    min-height: 58px;
+    padding: 8px 14px;
+  }
+
+  .topbar-back.visible {
+    width: 32px;
+    min-width: 32px;
+    flex-basis: 32px;
+    height: 32px;
+    min-height: 32px;
+  }
+
+  .topbar-back svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .topbar-title-wrap h1 {
+    font-size: 16px;
+    line-height: 1.15;
+  }
+
+  .topbar-title-wrap p {
+    max-width: 260px;
+    font-size: 10px;
+    line-height: 1.2;
+  }
+
+  .notification-button,
+  .admin-avatar {
+    width: 34px;
+    height: 34px;
+    min-height: 34px;
+  }
+
+  .topbar-panel {
+    top: 58px;
+    max-height: calc(100vh - 66px);
+    overflow-y: auto;
+  }
+
+  .view,
+  #cases.view {
+    padding-top: 10px;
+  }
+}
+
 @media (max-width: 520px) {
+  .case-list-table tbody tr,
+  .clients-table tbody tr {
+    grid-template-columns: 1fr;
+  }
+
   .topbar {
     min-height: 66px;
   }
