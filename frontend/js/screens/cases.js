@@ -180,6 +180,14 @@ function editOnlyMenu(dataAttr, value, label = "Редагувати") {
   ], { label: "Дії" });
 }
 
+function isUrgentTask(task = {}) {
+  return ["Терміново", "Срочно"].includes(task.status) || task.priority === "Високий";
+}
+
+function isNonUrgentTask(task = {}) {
+  return ["Не терміново", "Не срочно"].includes(task.status) || task.priority === "Низький";
+}
+
 function documentMenu(items, label = "Дії документа") {
   return actionMenu(items, { label });
 }
@@ -537,11 +545,22 @@ function renderCaseList() {
   }));
 }
 
-function caseActionRows(item) {
+function caseActionRows(item, filter = "all") {
   if (!item.tasks.length) {
     return `<tr><td colspan="6" class="empty-cell">Запланованих дій поки немає</td></tr>`;
   }
-  return item.tasks.map((task, index) => `<tr class="task-action-row ${task.status === "Виконано" ? "task-done-row" : ""}">
+  const filteredTasks = item.tasks
+    .map((task, index) => ({ task, index }))
+    .filter(({ task }) => {
+      if (filter === "urgent") return isUrgentTask(task);
+      if (filter === "not-urgent") return isNonUrgentTask(task);
+      return true;
+    });
+  if (!filteredTasks.length) {
+    const label = filter === "urgent" ? "термінових" : filter === "not-urgent" ? "нетермінових" : "запланованих";
+    return `<tr><td colspan="6" class="empty-cell">У цій справі немає ${label} дій</td></tr>`;
+  }
+  return filteredTasks.map(({ task, index }) => `<tr class="task-action-row ${task.status === "Виконано" ? "task-done-row" : ""}">
     <td><input type="checkbox" data-toggle-task-done="${index}" aria-label="${task.title}" ${task.status === "Виконано" ? "checked" : ""} /></td>
     <td>
       <span class="row-title-with-actions">
@@ -787,9 +806,13 @@ function renderCaseProfile(id) {
       <section class="case-main-column">
         <article class="case-card">
           <h3>4. ЗАПЛАНОВАНІ ДІЇ</h3>
-          <div class="case-tabs"><button class="active">Всі</button><button>Срочні</button><button>Не срочні</button></div>
+          <div class="case-tabs">
+            <button class="${(state.caseActionFilter || "all") === "all" ? "active" : ""}" data-case-action-filter="all">Всі</button>
+            <button class="${state.caseActionFilter === "urgent" ? "active" : ""}" data-case-action-filter="urgent">Термінові</button>
+            <button class="${state.caseActionFilter === "not-urgent" ? "active" : ""}" data-case-action-filter="not-urgent">Не термінові</button>
+          </div>
           <div class="case-table-wrap">
-            <table class="case-inner-table case-actions-table"><tbody>${caseActionRows(item)}</tbody></table>
+            <table class="case-inner-table case-actions-table"><tbody>${caseActionRows(item, state.caseActionFilter || "all")}</tbody></table>
           </div>
           <button class="case-link-button" data-add-task="${item.id}">+ Додати дію</button>
         </article>
@@ -849,6 +872,11 @@ function renderCaseProfile(id) {
     renderCaseList();
     syncNavigationState();
   });
+  document.querySelectorAll("[data-case-action-filter]").forEach((button) => button.addEventListener("click", (event) => {
+    event.preventDefault();
+    state.caseActionFilter = button.dataset.caseActionFilter || "all";
+    renderCaseProfile(item.id);
+  }));
   document.querySelectorAll(`[data-add-document="${item.id}"]`).forEach((button) => button.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();

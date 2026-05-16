@@ -51,7 +51,7 @@ function applyContext(ctx) {
 function deriveTaskPriority(task = {}) {
   if (task.priority) return task.priority;
   if (["Терміново", "Срочно"].includes(task.status)) return "Високий";
-  if (task.status === "Не срочно") return "Низький";
+  if (["Не терміново", "Не срочно"].includes(task.status)) return "Низький";
   return "Середній";
 }
 
@@ -367,7 +367,7 @@ function renderTasks() {
             </select>
             <select id="task-status-filter">
               <option value="all">Всі статуси</option>
-              ${["Очікує", "В роботі", "Терміново", "Срочно", "Не срочно", "Виконано"].map((status) => `<option value="${status}" ${state.taskStatusFilter === status ? "selected" : ""}>${status}</option>`).join("")}
+              ${["Очікує", "В роботі", "Терміново", "Не терміново", "Виконано"].map((status) => `<option value="${status}" ${state.taskStatusFilter === status ? "selected" : ""}>${status}</option>`).join("")}
             </select>
             <select id="task-case-filter">
               <option value="all">Всі справи</option>

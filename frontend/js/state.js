@@ -30,6 +30,7 @@ export async function createInitialState() {
     caseScreen: "list",
     casePage: 1,
     casePageSize: 6,
+    caseActionFilter: "all",
     taskTab: "all",
     taskStatusFilter: "all",
     taskPriorityFilter: "all",

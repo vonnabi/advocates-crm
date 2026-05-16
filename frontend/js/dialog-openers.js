@@ -205,7 +205,7 @@ export function createDialogOpeners({
   function taskPriority(task = {}) {
     if (task.priority) return task.priority;
     if (["Терміново", "Срочно"].includes(task.status)) return "Високий";
-    if (task.status === "Не срочно") return "Низький";
+    if (["Не терміново", "Не срочно"].includes(task.status)) return "Низький";
     return "Середній";
   }
 
