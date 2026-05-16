@@ -318,6 +318,19 @@ export function createDialogOpeners({
 
   function openDeleteDocumentConfirm(payload) {
     const item = caseById(payload.caseId);
+    if (payload.type === "client") {
+      const client = state.clients.find((clientItem) => clientItem.id === Number(payload.clientId));
+      if (!client) return;
+      const relatedCases = state.cases.filter((caseItem) => caseItem.clientId === client.id);
+      state.pendingDocumentDelete = payload;
+      $("#delete-document-title").textContent = "Видалити клієнта?";
+      $("#delete-document-text").textContent = relatedCases.length
+        ? `Клієнт «${client.name}» має ${relatedCases.length} пов'язані справи. Разом із клієнтом буде видалено ці демо-справи та події.`
+        : `Ви впевнені, що хочете видалити клієнта «${client.name}»?`;
+      $("#delete-document-confirm").textContent = "Так, видалити";
+      $("#delete-document-dialog").showModal();
+      return;
+    }
     if (payload.type === "case") {
       if (!item) return;
       state.pendingDocumentDelete = payload;

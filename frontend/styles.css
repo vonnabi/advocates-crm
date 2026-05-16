@@ -2064,7 +2064,7 @@ button {
 }
 
 .clients-table {
-  min-width: 760px;
+  min-width: 920px;
   table-layout: fixed;
   font-size: 12px;
 }
@@ -2104,9 +2104,34 @@ button {
   width: 88px;
 }
 
+.clients-table th:nth-child(8),
+.clients-table td:nth-child(8) {
+  width: 42px;
+  text-align: right;
+}
+
 .clients-table th,
 .clients-table td {
   padding: 9px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clients-table td.clients-row-actions {
+  overflow: visible;
+  padding-right: 4px;
+}
+
+.clients-row-actions .row-action-menu-wrap {
+  justify-content: flex-end;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.client-name-cell a {
+  display: block;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

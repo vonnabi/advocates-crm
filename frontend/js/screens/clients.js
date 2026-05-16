@@ -21,7 +21,7 @@ export function renderClientsScreen(ctx) {
           <h2>Клієнти (124)</h2>
           <table class="clients-table">
             <thead>
-              <tr><th><input type="checkbox" aria-label="Обрати всіх клієнтів" /></th><th>ПІБ клієнта</th><th>Телефон</th><th>Email</th><th>Суть звернення</th><th>Дата додавання</th><th>Telegram</th></tr>
+              <tr><th><input type="checkbox" aria-label="Обрати всіх клієнтів" /></th><th>ПІБ клієнта</th><th>Телефон</th><th>Email</th><th>Суть звернення</th><th>Дата додавання</th><th>Telegram</th><th>Дії</th></tr>
             </thead>
             <tbody id="clients-table"></tbody>
           </table>
@@ -57,7 +57,11 @@ export function renderClientsScreen(ctx) {
     </div>
   `;
   renderClientRows(ctx);
-  renderClientProfile(ctx, selected.id);
+  if (selected) {
+    renderClientProfile(ctx, selected.id);
+  } else {
+    $("#client-profile").innerHTML = `<h2 class="profile-section-title">${icon("telegram")} Профіль клієнта</h2><p class="muted">Клієнтів не знайдено.</p>`;
+  }
   bindClientMailingPreview(ctx);
   $("#add-client").addEventListener("click", () => openClientDialog());
   $("#client-filter").addEventListener("input", () => renderClientRows(ctx));
@@ -68,7 +72,7 @@ export function renderClientsScreen(ctx) {
 }
 
 export function renderClientRows(ctx) {
-  const { state, $, icon, actionMenu, bindActionMenus, openClientDialog } = ctx;
+  const { state, $, icon, actionMenu, bindActionMenus, openClientDialog, openDeleteDocumentConfirm } = ctx;
   const query = ($("#client-filter")?.value || "").toLowerCase();
   const rows = state.clients
     .filter((client) => !query || `${client.name} ${client.phone} ${client.email} ${client.request} ${client.telegramUsername} ${client.manager}`.toLowerCase().includes(query))
@@ -77,11 +81,7 @@ export function renderClientRows(ctx) {
         <td><input type="checkbox" aria-label="Обрати ${client.name}" /></td>
         <td>
           <div class="client-name-cell">
-            <a href="#" data-client="${client.id}">${client.name}</a>
-            ${actionMenu([
-              { label: "Відкрити профіль", icon: "eye", attrs: { "data-client": client.id } },
-              { label: "Редагувати", icon: "edit", attrs: { "data-edit-client-row": client.id, "aria-label": `Редагувати ${client.name}` } }
-            ], { label: "Дії клієнта" })}
+            <a href="#" data-open-client="${client.id}">${client.name}</a>
           </div>
         </td>
         <td>${client.phone}</td>
@@ -89,19 +89,31 @@ export function renderClientRows(ctx) {
         <td>${client.request.slice(0, 44)}...</td>
         <td>${client.added}</td>
         <td>${client.telegram ? `<span class="connected-text">Підключено</span>` : `<span class="telegram-icon">${icon("telegram")}</span>`}</td>
+        <td class="clients-row-actions">
+          ${actionMenu([
+            { label: "Відкрити", icon: "eye", attrs: { "data-open-client": client.id } },
+            { label: "Редагувати", icon: "edit", attrs: { "data-edit-client-row": client.id, "aria-label": `Редагувати ${client.name}` } },
+            { label: "Видалити клієнта", icon: "trash", danger: true, attrs: { "data-delete-client": client.id, "aria-label": `Видалити ${client.name}` } }
+          ], { label: "Дії клієнта", className: "clients-actions-menu" })}
+        </td>
       </tr>
     `)
     .join("");
-  $("#clients-table").innerHTML = rows || `<tr><td colspan="7">Клієнтів не знайдено</td></tr>`;
+  $("#clients-table").innerHTML = rows || `<tr><td colspan="8">Клієнтів не знайдено</td></tr>`;
   bindActionMenus?.($("#clients-table"));
-  document.querySelectorAll("[data-client]").forEach((link) => {
+  document.querySelectorAll("[data-open-client]").forEach((link) => {
     link.addEventListener("click", (event) => {
       event.preventDefault();
-      renderClientProfile(ctx, link.dataset.client);
+      renderClientProfile(ctx, link.dataset.openClient);
     });
   });
   document.querySelectorAll("[data-edit-client-row]").forEach((button) => {
     button.addEventListener("click", () => openClientDialog(button.dataset.editClientRow));
+  });
+  document.querySelectorAll("[data-delete-client]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openDeleteDocumentConfirm({ type: "client", clientId: Number(button.dataset.deleteClient), returnView: "clients" });
+    });
   });
 }
 
@@ -112,7 +124,7 @@ function bindClientMailingPreview(ctx) {
   const count = $("#client-mailing-count");
   const update = () => {
     state.mailingText = textarea.value;
-    preview.textContent = textarea.value.replaceAll("{{client_name}}", state.clients[0].name);
+    preview.textContent = textarea.value.replaceAll("{{client_name}}", state.clients[0]?.name || "Клієнт");
     count.textContent = textarea.value.length;
   };
   textarea.addEventListener("input", update);
@@ -141,6 +153,7 @@ function clientAvatar(client) {
 export function renderClientProfile(ctx, id) {
   const { state, $, icon, badge, statusTone, advocatePhoto, openClientDialog } = ctx;
   const client = clientById(ctx, id);
+  if (!client) return;
   state.selectedClientId = client.id;
   const relatedCases = state.cases.filter((item) => item.clientId === client.id);
   $("#client-profile").innerHTML = `

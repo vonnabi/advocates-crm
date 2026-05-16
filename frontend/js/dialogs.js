@@ -24,7 +24,20 @@ function confirmDelete(ctx) {
   const item = caseById(pending.caseId);
   const today = new Date().toLocaleDateString("uk-UA");
   let deleted;
-  if (pending.type === "case") {
+  if (pending.type === "client") {
+    const clientId = Number(pending.clientId);
+    const clientIndex = state.clients.findIndex((client) => client.id === clientId);
+    if (clientIndex < 0) return;
+    deleted = state.clients.splice(clientIndex, 1)[0];
+    const deletedCaseIds = new Set(state.cases.filter((caseItem) => caseItem.clientId === clientId).map((caseItem) => caseItem.id));
+    if (deletedCaseIds.size) {
+      state.cases = state.cases.filter((caseItem) => !deletedCaseIds.has(caseItem.id));
+      state.events = state.events.filter((event) => event.clientId !== clientId && !deletedCaseIds.has(event.caseId));
+    }
+    state.selectedClientId = state.clients[0]?.id || 0;
+    state.selectedCaseId = state.cases[0]?.id || "";
+    state.caseScreen = "list";
+  } else if (pending.type === "case") {
     const caseIndex = state.cases.findIndex((caseItem) => caseItem.id === pending.caseId);
     deleted = state.cases.splice(caseIndex, 1)[0];
     state.selectedCaseId = state.cases[0]?.id || "";
@@ -57,7 +70,7 @@ function confirmDelete(ctx) {
     deleted = folder.files.splice(pending.fileIndex, 1)[0];
     folder.updated = today;
   }
-  if (pending.type !== "case" && pending.type !== "calendarEvent") {
+  if (pending.type !== "case" && pending.type !== "calendarEvent" && pending.type !== "client") {
     item.history.unshift({
       date: today,
       text: pending.type === "folder"
@@ -74,7 +87,16 @@ function confirmDelete(ctx) {
   $("#delete-document-dialog").close();
   renderAll();
   switchView(returnView);
-  showToast(pending.type === "case" ? "Справу видалено." : pending.type === "calendarEvent" ? "Подію видалено з календаря." : "Елемент видалено.", "danger");
+  showToast(
+    pending.type === "case"
+      ? "Справу видалено."
+      : pending.type === "calendarEvent"
+        ? "Подію видалено з календаря."
+        : pending.type === "client"
+          ? `Клієнта ${deleted.name} видалено.`
+          : "Елемент видалено.",
+    "danger"
+  );
 }
 
 export function setupDialogControls(ctx) {
