@@ -4,6 +4,8 @@ export function setupClientForm({ state, $, clientById, renderAll, switchView, s
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const clientId = form.get("clientId");
+    const photoUrl = String(form.get("photoUrl") || "").trim();
+    const showPhoto = Boolean(form.get("showPhoto")) && Boolean(photoUrl);
 
     if (clientId) {
       const stayInCases = $("#cases")?.classList.contains("active") && state.caseScreen === "detail";
@@ -16,6 +18,8 @@ export function setupClientForm({ state, $, clientById, renderAll, switchView, s
       client.status = form.get("status");
       client.telegramUsername = form.get("telegramUsername");
       client.telegram = Boolean(form.get("telegramUsername"));
+      client.photoUrl = photoUrl;
+      client.showPhoto = showPhoto;
       client.consent = form.get("status") !== "Не турбувати";
       client.manager = form.get("manager");
       client.source = form.get("source");
@@ -48,6 +52,8 @@ export function setupClientForm({ state, $, clientById, renderAll, switchView, s
       status: form.get("status"),
       telegram: Boolean(form.get("telegramUsername")),
       telegramUsername: form.get("telegramUsername"),
+      photoUrl,
+      showPhoto,
       clientType: "Фізична особа",
       consent: form.get("status") !== "Не турбувати",
       manager: form.get("manager"),

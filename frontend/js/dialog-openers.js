@@ -14,6 +14,8 @@ export function createDialogOpeners({
     const form = $("#client-form");
     form.reset();
     form.elements.clientId.value = "";
+    form.elements.showPhoto.checked = false;
+    form.elements.photoUrl.value = "";
     $("#client-dialog-title").textContent = "Новий клієнт";
 
     if (clientId !== null && clientId !== undefined) {
@@ -28,6 +30,8 @@ export function createDialogOpeners({
       form.elements.email.value = client.email;
       form.elements.address.value = client.address || "";
       form.elements.telegramUsername.value = client.telegramUsername || "";
+      form.elements.showPhoto.checked = Boolean(client.showPhoto && client.photoUrl);
+      form.elements.photoUrl.value = client.photoUrl || "";
       form.elements.request.value = client.request;
       form.elements.status.value = client.status;
       form.elements.source.value = client.source;

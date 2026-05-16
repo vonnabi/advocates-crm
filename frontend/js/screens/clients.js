@@ -119,6 +119,25 @@ function bindClientMailingPreview(ctx) {
   update();
 }
 
+function escapeAttribute(value = "") {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function clientInitials(name = "") {
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  return `${parts[0]?.[0] || "К"}${parts[1]?.[0] || ""}`;
+}
+
+function clientAvatar(client) {
+  const hasPhoto = Boolean(client.showPhoto && client.photoUrl);
+  const photoStyle = hasPhoto ? ` style="--client-photo: url('${escapeAttribute(client.photoUrl)}')"` : "";
+  return `<div class="client-avatar large ${hasPhoto ? "has-client-photo" : ""}"${photoStyle}>${hasPhoto ? "" : clientInitials(client.name)}</div>`;
+}
+
 export function renderClientProfile(ctx, id) {
   const { state, $, icon, badge, statusTone, advocatePhoto, openClientDialog } = ctx;
   const client = clientById(ctx, id);
@@ -129,7 +148,7 @@ export function renderClientProfile(ctx, id) {
     <div class="profile-shell">
       <div class="profile-card-head">
         <div class="client-title">
-          <div class="avatar large">${icon("user")}</div>
+          ${clientAvatar(client)}
           <div>
             <strong>${client.name}</strong>
             ${badge(client.status, statusTone(client.status))}
@@ -139,9 +158,9 @@ export function renderClientProfile(ctx, id) {
       </div>
       <div class="profile-screenshot-grid">
         <div class="profile-contact-list">
-          <div class="contact-row">${icon("phone")}<strong>${client.phone}</strong><span class="contact-icons">${icon("phone")}${icon("telegram")}</span></div>
-          <div class="contact-row">${icon("mail")}<strong>${client.email}</strong><span class="contact-icons">${icon("mail")}</span></div>
-          <div class="contact-row">${icon("telegram")}<strong>${client.telegramUsername || "Telegram не вказано"}</strong><span class="contact-icons">${icon("telegram")}</span></div>
+          <div class="contact-row">${icon("phone")}<strong>${client.phone}</strong></div>
+          <div class="contact-row">${icon("mail")}<strong>${client.email}</strong></div>
+          <div class="contact-row">${icon("telegram")}<strong>${client.telegramUsername || "Telegram не вказано"}</strong></div>
           <div class="contact-row">${icon("calendar")}<strong>Дата додавання: ${client.added}</strong></div>
           <div class="contact-row">${icon("tag")}<strong>Джерело: ${client.source}</strong></div>
         </div>

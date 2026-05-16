@@ -139,6 +139,11 @@
         <label>Email<input name="email" type="email" /></label>
         <label>Місце проживання<input name="address" placeholder="Наприклад: м. Київ, вул. Хрещатик, 10" /></label>
         <label>Telegram username<input name="telegramUsername" placeholder="@username" /></label>
+        <div class="client-photo-settings">
+          <label class="checkbox-line"><input name="showPhoto" type="checkbox" /> Показувати фото клієнта</label>
+          <label>URL фото<input name="photoUrl" type="url" placeholder="https://..." /></label>
+          <p class="muted">Якщо фото вимкнено або URL порожній, у профілі будуть показані ініціали.</p>
+        </div>
         <label>Суть звернення<textarea name="request" rows="3"></textarea></label>
         <label>Статус
           <select name="status">
