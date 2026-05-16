@@ -1,3 +1,10 @@
+import {
+  buildFinanceOperations,
+  financeInsightsFromData,
+  financeRowsFromCases,
+  financeTotalsFromData
+} from "../derived-data.js";
+
 const DEFAULT_START = "2024-05-01";
 const DEFAULT_END = "2024-05-15";
 
@@ -221,20 +228,7 @@ function isoToday() {
 }
 
 function financeRows(ctx) {
-  const { state, clientById, caseFinance } = ctx;
-  return state.cases.map((item) => {
-    const finance = caseFinance(item);
-    const percent = finance.total ? Math.round((finance.paid / finance.total) * 100) : 0;
-    return {
-      ...item,
-      client: clientById(item.clientId)?.name || "Клієнт не вказаний",
-      total: finance.total,
-      paid: finance.paid,
-      debt: finance.debt,
-      percent,
-      financeStatus: finance.debt > 0 ? "Є борг" : finance.total > 0 ? "Оплачено" : "Не виставлено"
-    };
-  });
+  return financeRowsFromCases(ctx.state);
 }
 
 function openFinanceCase(ctx, caseId) {
@@ -282,7 +276,7 @@ function linePoints(values, max = 100, width = 560, height = 190) {
 
 function financeOperations(state) {
   state.financeOperations = state.financeOperations || [];
-  return [...state.financeOperations, ...FINANCE_OPERATIONS];
+  return buildFinanceOperations(state);
 }
 
 function salaryRows(state) {
@@ -348,32 +342,7 @@ function operationMatchesTab(operation, tab) {
 }
 
 function financeTotals(rows, operations, state) {
-  const isDefaultRange = (state.financeDateStart || DEFAULT_START) === DEFAULT_START
-    && (state.financeDateEnd || DEFAULT_END) === DEFAULT_END;
-  const dynamicIncome = operations.filter((item) => item.custom && item.type === "Надходження").reduce((sum, item) => sum + item.amount, 0);
-  const dynamicExpenses = Math.abs(operations.filter((item) => item.custom && item.type === "Витрата").reduce((sum, item) => sum + item.amount, 0));
-  const dynamicExpected = operations.filter((item) => item.custom && item.type === "Рахунок").reduce((sum, item) => sum + item.amount, 0);
-  if (isDefaultRange) {
-    const income = 1245000 + dynamicIncome;
-    const expenses = 320000 + dynamicExpenses;
-    return {
-      income,
-      expenses,
-      profit: Math.max(0, 925000 + dynamicIncome - dynamicExpenses),
-      expected: 340500 + dynamicExpected,
-      debt: Math.max(215300 + dynamicExpected - dynamicIncome, rows.reduce((sum, item) => sum + item.debt, 0))
-    };
-  }
-  const income = operations.filter((item) => item.type === "Надходження").reduce((sum, item) => sum + Math.max(item.amount, 0), 0);
-  const expenses = Math.abs(operations.filter((item) => item.type === "Витрата").reduce((sum, item) => sum + item.amount, 0));
-  const expected = operations.filter((item) => item.type === "Рахунок").reduce((sum, item) => sum + item.amount, 0);
-  return {
-    income,
-    expenses,
-    profit: Math.max(0, income - expenses),
-    expected,
-    debt: rows.reduce((sum, item) => sum + item.debt, 0)
-  };
+  return financeTotalsFromData(rows, operations, state);
 }
 
 function kpiCard({ title, value, trend, iconName, tone, trendTone = "" }, icon) {
@@ -1004,6 +973,7 @@ export function renderFinanceScreen(ctx) {
   const operationsInRange = financeOperations(state).filter((item) => inDateRange(item.date, state.financeDateStart, state.financeDateEnd));
   const visibleOperations = operationsInRange.filter((item) => operationMatchesTab(item, state.financeTab));
   const totals = financeTotals(rows, operationsInRange, state);
+  const insights = financeInsightsFromData(rows, operationsInRange);
   const debtRows = rows.filter((item) => item.debt > 0).slice(0, 4);
   const selectedCaseId = state.selectedFinanceCaseId || rows[0]?.id;
 
@@ -1078,10 +1048,10 @@ export function renderFinanceScreen(ctx) {
 
             <article class="panel finance-chart-card">
               <h2>Структура доходів</h2>
-              <div class="finance-donut-wrap">
+                <div class="finance-donut-wrap">
                 <div class="finance-income-donut"></div>
                 <div class="finance-donut-legend">
-                  ${INCOME_STRUCTURE.map(([label, amount, color]) => `
+                  ${insights.incomeStructure.map(([label, amount, color]) => `
                     <div><span style="--legend-color:${color}">${label}</span><strong>${amount}</strong></div>
                   `).join("")}
                 </div>
@@ -1104,11 +1074,11 @@ export function renderFinanceScreen(ctx) {
           <section class="finance-bottom-grid">
             <article class="panel finance-chart-card">
               <h2>Доходи по справах (топ 5)</h2>
-              <div class="finance-mini-bars">${barRows(INCOME_BY_CASE)}</div>
+              <div class="finance-mini-bars">${barRows(insights.incomeByCase)}</div>
             </article>
             <article class="panel finance-chart-card">
               <h2>Витрати по категоріях</h2>
-              <div class="finance-mini-bars">${expenseRows(EXPENSE_CATEGORIES)}</div>
+              <div class="finance-mini-bars">${expenseRows(insights.expenseCategories)}</div>
             </article>
             <article class="panel finance-chart-card">
               <h2>Прогноз грошового потоку</h2>

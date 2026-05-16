@@ -1,3 +1,15 @@
+import {
+  analyticsLineSeries,
+  analyticsSummaryFromCases,
+  buildFinanceOperations,
+  countBy,
+  financeRowsFromCases,
+  financeTotalsFromData,
+  rowsWithPercent
+} from "../derived-data.js";
+
+const typeColors = ["#1f7ae0", "#27ae6f", "#f59e0b", "#7c5ce8", "#64748b", "#9aa7b7"];
+
 const STATUS_ROWS = [
   ["В роботі", 96, 45, "#1f7ae0"],
   ["Підготовка", 28, 13, "#27ae6f"],
@@ -131,23 +143,7 @@ function scaledLine(values, ratio) {
 }
 
 function analyticsStats(state, cases) {
-  const ratio = state.cases.length ? cases.length / state.cases.length : 0;
-  const paid = cases.reduce((sum, item) => sum + (item.income || 0), 0);
-  const debt = cases.reduce((sum, item) => sum + (item.debt || 0), 0);
-  const active = cases.filter((item) => item.status !== "Завершено").length;
-  const high = cases.filter((item) => item.priority === "Високий").length;
-  return {
-    ratio,
-    totalCases: scaledValue(128, ratio),
-    newCases: scaledValue(31, ratio),
-    finishedCases: scaledValue(18, ratio),
-    inWork: scaledValue(96, ratio),
-    avgDays: cases.length ? 45 : 0,
-    success: cases.length ? Math.max(48, 72 - Math.max(0, 2 - active) * 4 + high) : 0,
-    paid,
-    debt,
-    profit: Math.max(0, paid - debt)
-  };
+  return analyticsSummaryFromCases(state, cases);
 }
 
 function exportAnalytics(ctx, stats) {
@@ -211,14 +207,22 @@ export function renderAnalyticsScreen(ctx) {
   state.analyticsDatePickerOpen = Boolean(state.analyticsDatePickerOpen);
   const filteredCases = filterCases(state);
   const stats = analyticsStats(state, filteredCases);
-  const statusRows = scaleRows(STATUS_ROWS, stats.ratio);
-  const typeRows = scaleBarRows(TYPE_ROWS, stats.ratio);
-  const practiceRows = scaleBarRows(PRACTICE_ROWS, stats.ratio);
-  const lines = {
-    newCases: scaledLine(LINE_SERIES.newCases, stats.ratio),
-    closedCases: scaledLine(LINE_SERIES.closedCases, stats.ratio),
-    inWork: scaledLine(LINE_SERIES.inWork, stats.ratio)
-  };
+  const statusRows = rowsWithPercent(countBy(filteredCases, (item) => item.status || "В роботі"));
+  const typeRows = countBy(filteredCases, (item) => item.type || "Інші").map(([label, value], index) => [label, value, typeColors[index % typeColors.length]]);
+  const practiceRows = countBy(filteredCases, (item) => `${item.type || "Інші"} право`).map(([label, value], index) => [label, value, typeColors[index % typeColors.length]]);
+  const lawyerRows = countBy(filteredCases, (item) => item.responsible || "Не вказано").map(([name, value]) => {
+    const tasks = filteredCases
+      .filter((item) => item.responsible === name)
+      .flatMap((item) => item.tasks || []);
+    const done = tasks.filter((task) => ["Готово", "Виконано", "Завершено"].includes(task.status)).length;
+    const percent = tasks.length ? Math.round((done / tasks.length) * 100) : Math.max(45, 90 - value * 8);
+    return [name, percent];
+  });
+  const lines = analyticsLineSeries(filteredCases);
+  const financeRows = financeRowsFromCases({ ...state, cases: filteredCases });
+  const financeOperations = buildFinanceOperations({ ...state, cases: filteredCases })
+    .filter((item) => inRange(item.date, state.analyticsDateStart, state.analyticsDateEnd));
+  const financeStats = financeTotalsFromData(financeRows, financeOperations);
   const currency = (value) => `${new Intl.NumberFormat("uk-UA").format(value)} грн`;
   const caseTypes = [...new Set(state.cases.map((item) => item.type).filter(Boolean))];
   const responsibles = [...new Set(state.cases.map((item) => item.responsible).filter(Boolean))];
@@ -343,9 +347,9 @@ export function renderAnalyticsScreen(ctx) {
               ${[0, 1, 2, 3, 4].map((line) => `<line x1="40" y1="${25 + line * 45}" x2="600" y2="${25 + line * 45}"></line>`).join("")}
             </g>
             ${[0, 20, 40, 60, 80].map((value, index) => `<text x="12" y="${212 - index * 45}">${value}</text>`).join("")}
-            <polyline class="line blue-line" points="${linePoints(lines.newCases)}" transform="translate(40 25)"></polyline>
-            <polyline class="line green-line" points="${linePoints(lines.closedCases)}" transform="translate(40 25)"></polyline>
-            <polyline class="line amber-line" points="${linePoints(lines.inWork)}" transform="translate(40 25)"></polyline>
+            <polyline class="line blue-line" points="${linePoints(lines.newCases, lines.max)}" transform="translate(40 25)"></polyline>
+            <polyline class="line green-line" points="${linePoints(lines.closedCases, lines.max)}" transform="translate(40 25)"></polyline>
+            <polyline class="line amber-line" points="${linePoints(lines.inWork, lines.max)}" transform="translate(40 25)"></polyline>
             ${dates.filter((_, index) => index % 2 === 0).map((date, index) => `<text class="axis" x="${42 + index * 80}" y="238">${date}</text>`).join("")}
           </svg>
         </article>
@@ -372,7 +376,7 @@ export function renderAnalyticsScreen(ctx) {
             <select><option>За успішними справами</option><option>За навантаженням</option></select>
           </div>
           <div class="analytics-lawyer-list">
-            ${LAWYERS.map(([name, percent], index) => `
+            ${lawyerRows.map(([name, percent], index) => `
               <div class="analytics-lawyer-row">
                 <span>${index + 1}</span>
                 ${advocatePhoto(name, "small")}
@@ -391,9 +395,9 @@ export function renderAnalyticsScreen(ctx) {
             <select><option>За період</option><option>За місяць</option></select>
           </div>
           <div class="analytics-finance-summary">
-            <div><span>Дохід</span><strong>${currency(stats.paid)}</strong><em>+15%</em></div>
-            <div><span>Витрати</span><strong>${currency(stats.debt)}</strong><em class="danger">+7%</em></div>
-            <div><span>Чистий прибуток</span><strong>${currency(stats.profit)}</strong><em>+18%</em></div>
+            <div><span>Дохід</span><strong>${currency(financeStats.income)}</strong><em>з фінансів</em></div>
+            <div><span>Витрати</span><strong>${currency(financeStats.expenses)}</strong><em class="danger">з операцій</em></div>
+            <div><span>Чистий прибуток</span><strong>${currency(financeStats.profit)}</strong><em>актуально</em></div>
           </div>
           <div class="analytics-column-chart">
             ${[

@@ -1,8 +1,16 @@
+import { caseFinancials } from "../derived-data.js";
+
 export function renderDashboardScreen(ctx) {
   const { state, $, badge, currency, clientById } = ctx;
   const activeCases = state.cases.filter((item) => item.status !== "Закрито").length;
-  const debt = state.cases.reduce((sum, item) => sum + item.debt, 0);
-  const income = state.cases.reduce((sum, item) => sum + item.income, 0);
+  const finance = state.cases.reduce((totals, item) => {
+    const row = caseFinancials(item);
+    return {
+      paid: totals.paid + row.paid,
+      debt: totals.debt + row.debt,
+      total: totals.total + row.total
+    };
+  }, { paid: 0, debt: 0, total: 0 });
   const telegram = state.clients.filter((client) => client.telegram).length;
 
   $("#dashboard").innerHTML = `
@@ -10,7 +18,7 @@ export function renderDashboardScreen(ctx) {
       <div class="metric"><span>Клієнтів у базі</span><strong>${state.clients.length}</strong></div>
       <div class="metric"><span>Активних справ</span><strong>${activeCases}</strong></div>
       <div class="metric"><span>Telegram підключено</span><strong>${telegram}</strong></div>
-      <div class="metric"><span>Заборгованість</span><strong>${currency(debt)}</strong></div>
+      <div class="metric"><span>Заборгованість</span><strong>${currency(finance.debt)}</strong></div>
     </div>
     <div class="layout" style="margin-top:16px">
       <div class="panel">
@@ -32,9 +40,9 @@ export function renderDashboardScreen(ctx) {
       <div class="panel">
         <h2>Фінансовий зріз</h2>
         <div class="profile">
-          <div class="profile-line"><span>Дохід по активних справах</span><strong>${currency(income)}</strong></div>
-          <div class="profile-line"><span>Очікується оплата</span><strong>${currency(debt)}</strong></div>
-          <div class="profile-line"><span>Маржинальність демо</span><strong>68%</strong></div>
+          <div class="profile-line"><span>Дохід по активних справах</span><strong>${currency(finance.paid)}</strong></div>
+          <div class="profile-line"><span>Очікується оплата</span><strong>${currency(finance.debt)}</strong></div>
+          <div class="profile-line"><span>Маржинальність демо</span><strong>${finance.total ? Math.round((finance.paid / finance.total) * 100) : 0}%</strong></div>
           <button class="primary" data-view-link="finance">Перейти до фінансів</button>
         </div>
       </div>
