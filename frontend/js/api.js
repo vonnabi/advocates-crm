@@ -1,7 +1,8 @@
 export function apiBaseUrl() {
   const configured = window.CRM_API_BASE || localStorage.getItem("crmApiBase");
   if (configured) return configured.replace(/\/$/, "");
-  if (window.location.port === "8001") return window.location.origin;
+  const hostname = window.location.hostname;
+  if (window.location.port === "8001" || hostname.endsWith(".onrender.com")) return window.location.origin;
   return "";
 }
 

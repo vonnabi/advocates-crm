@@ -1,4 +1,4 @@
-import { apiBaseUrl } from "./api.js?v=auth-login-1";
+import { apiBaseUrl } from "./api.js?v=render-api-1";
 
 async function readDataFile(path) {
   const response = await fetch(new URL(path, import.meta.url));
@@ -6,7 +6,7 @@ async function readDataFile(path) {
   return response.json();
 }
 
-async function readApiBootstrap(timeoutMs = 700) {
+async function readApiBootstrap(timeoutMs = 5000) {
   const baseUrl = apiBaseUrl();
   if (!baseUrl) return null;
   const controller = new AbortController();

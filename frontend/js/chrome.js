@@ -1,4 +1,4 @@
-import { loginToApi, logoutFromApi, shouldUseApi } from "./api.js?v=auth-login-1";
+import { loginToApi, logoutFromApi, shouldUseApi } from "./api.js?v=render-api-1";
 
 const DEMO_URL = "https://vonnabi.github.io/advocates-crm/";
 
