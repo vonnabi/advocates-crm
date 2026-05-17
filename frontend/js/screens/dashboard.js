@@ -51,19 +51,61 @@ function taskUrgencyTone(task) {
   return "green";
 }
 
+function dashboardStatusIconName(label = "", tone = "", kind = "Статус") {
+  const text = String(label).toLowerCase();
+  if (kind === "Пріоритет") return "bell";
+  if (text.includes("заплан")) return "calendar";
+  if (text.includes("не термін") || text.includes("не срочно")) return "clock";
+  if (text.includes("очіку")) return "clock";
+  if (text.includes("робот") || text.includes("процес")) return "refresh";
+  if (text.includes("готов") || text.includes("викон")) return "check";
+  if (text.includes("термін") || text.includes("срочно") || tone === "red") return "bell";
+  if (text.includes("простр")) return "warning";
+  return "tag";
+}
+
+function dashboardIconTone(label = "", fallbackTone = "", kind = "Статус") {
+  const text = String(label).toLowerCase();
+  if (kind === "Пріоритет") {
+    if (text.includes("висок")) return "red";
+    if (text.includes("серед")) return "amber";
+    if (text.includes("низьк")) return "green";
+    if (text.includes("планов")) return "blue";
+  }
+  if (text.includes("не термін") || text.includes("не срочно")) return "green";
+  if (text.includes("термін") || text.includes("срочно") || text.includes("простр")) return "red";
+  if (text.includes("очіку") || text.includes("серед")) return "amber";
+  if (text.includes("робот")) return "blue";
+  if (text.includes("готов") || text.includes("викон") || text.includes("заплан")) return "green";
+  if (fallbackTone) return fallbackTone;
+  return "blue";
+}
+
+function dashboardStatusIcon(label, icon, tone = "", kind = "Статус") {
+  const text = label || "Без статусу";
+  const resolvedTone = dashboardIconTone(text, tone, kind);
+  return `
+    <span class="dashboard-status-icon ${resolvedTone}" data-tooltip="${text}" tabindex="0" role="img" aria-label="${kind}: ${text}">
+      ${icon(dashboardStatusIconName(text, resolvedTone, kind))}
+    </span>
+    <span class="sr-only">${text}</span>
+  `;
+}
+
 function trendText(value) {
   return value >= 0 ? `+${value}%` : `${value}%`;
 }
 
-function kpiCard({ label, value, hint, iconName, tone = "blue", trend = "" }, icon) {
+function kpiCard({ label, value, hint, iconName, tone = "blue", trend = "", view = "" }, icon) {
+  const link = view ? ` data-view-link="${view}" aria-label="Відкрити розділ: ${label}"` : "";
   return `
-    <article class="dashboard-kpi-card">
+    <button class="dashboard-kpi-card" type="button"${link}>
       <span>${label}</span>
       <strong>${value}</strong>
       ${trend ? `<em class="${trend.startsWith("-") ? "down" : ""}">${trend}</em>` : ""}
       <small>${hint}</small>
       <i class="${tone}">${icon(iconName)}</i>
-    </article>
+    </button>
   `;
 }
 
@@ -73,7 +115,7 @@ function progress(percent) {
 }
 
 function eventRows(ctx, events) {
-  const { clientById, badge } = ctx;
+  const { clientById, icon } = ctx;
   return events.map((event) => {
     const client = clientById(event.clientId);
     return `
@@ -83,13 +125,13 @@ function eventRows(ctx, events) {
           <strong>${event.title}</strong>
           <small>${formatDisplayDate(event.date)} · ${client?.name || "Клієнт не вказаний"} · №${event.caseId}</small>
         </span>
-        ${badge(event.status)}
+        ${dashboardStatusIcon(event.status, icon)}
       </button>
     `;
   }).join("");
 }
 
-function taskRows(tasks, badge) {
+function taskRows(tasks, icon) {
   return tasks.map((task) => `
     <button class="dashboard-row dashboard-row-button" type="button" data-view-link="tasks">
       <i>${formatDisplayDate(task.due)}</i>
@@ -97,12 +139,12 @@ function taskRows(tasks, badge) {
         <strong>${task.title}</strong>
         <small>№${task.caseId} · ${task.client} · ${task.responsible || "Відповідального не вказано"}</small>
       </span>
-      ${badge(task.status, taskUrgencyTone(task))}
+      ${dashboardStatusIcon(task.status, icon, taskUrgencyTone(task))}
     </button>
   `).join("");
 }
 
-function caseRows(state, cases, currency, badge) {
+function caseRows(state, cases, currency, icon) {
   return cases.map((item) => {
     const finance = caseFinancials(item);
     return `
@@ -113,7 +155,7 @@ function caseRows(state, cases, currency, badge) {
           <small>${clientName(state, item)} · ${item.responsible} · дедлайн ${formatDisplayDate(item.deadline)}</small>
         </span>
         <b>${finance.debt ? currency(finance.debt) : "Без боргу"}</b>
-        ${badge(item.priority)}
+        ${dashboardStatusIcon(item.priority, icon, "", "Пріоритет")}
       </button>
     `;
   }).join("");
@@ -124,7 +166,7 @@ function quickButton(view, label, iconName, icon) {
 }
 
 export function renderDashboardScreen(ctx) {
-  const { state, $, badge, currency, icon } = ctx;
+  const { state, $, currency, icon } = ctx;
   const tasks = allDashboardTasks(state);
   const activeCases = state.cases.filter((item) => !closedStatuses.has(item.status));
   const overdueTasks = tasks.filter((task) => !isTaskDone(task) && task.dueDate && task.dueDate < dashboardToday);
@@ -165,12 +207,12 @@ export function renderDashboardScreen(ctx) {
 
       <section class="dashboard-kpi-grid">
         ${[
-          { label: "Активних справ", value: activeCases.length, hint: "у роботі бюро", iconName: "briefcase", tone: "blue", trend: trendText(12) },
-          { label: "Задач у планері", value: plannedTasks.length, hint: "автоматично пов'язані з планом", iconName: "calendar", tone: "violet", trend: trendText(8) },
-          { label: "Прострочені", value: overdueTasks.length, hint: "потребують контролю сьогодні", iconName: "bell", tone: "red", trend: overdueTasks.length ? "+100%" : "0%" },
-          { label: "Борг клієнтів", value: currency(finance.debt), hint: "з усіх активних справ", iconName: "tag", tone: "amber", trend: finance.debt ? "+15%" : "0%" },
-          { label: "Telegram", value: telegram, hint: "клієнтів підключено", iconName: "telegram", tone: "green", trend: trendText(10) },
-          { label: "OSINT ризики", value: osint.risks, hint: "виявлено у відкритих джерелах", iconName: "search", tone: "red", trend: trendText(20) }
+          { label: "Активних справ", value: activeCases.length, hint: "у роботі бюро", iconName: "briefcase", tone: "blue", trend: trendText(12), view: "cases" },
+          { label: "Задач у планері", value: plannedTasks.length, hint: "автоматично пов'язані з планом", iconName: "calendar", tone: "violet", trend: trendText(8), view: "planner" },
+          { label: "Прострочені", value: overdueTasks.length, hint: "потребують контролю сьогодні", iconName: "bell", tone: "red", trend: overdueTasks.length ? "+100%" : "0%", view: "tasks" },
+          { label: "Борг клієнтів", value: currency(finance.debt), hint: "з усіх активних справ", iconName: "tag", tone: "amber", trend: finance.debt ? "+15%" : "0%", view: "finance" },
+          { label: "Telegram", value: telegram, hint: "клієнтів підключено", iconName: "telegram", tone: "green", trend: trendText(10), view: "clients" },
+          { label: "OSINT ризики", value: osint.risks, hint: "виявлено у відкритих джерелах", iconName: "search", tone: "red", trend: trendText(20), view: "osint" }
         ].map((item) => kpiCard(item, icon)).join("")}
       </section>
 
@@ -205,7 +247,7 @@ export function renderDashboardScreen(ctx) {
                     <strong>${task.title}</strong>
                     <small>№${task.caseId} · ${task.client}</small>
                   </span>
-                  ${badge(task.status, taskUrgencyTone(task))}
+                  ${dashboardStatusIcon(task.status, icon, taskUrgencyTone(task))}
                 </button>
               `).join("") || `<p class="dashboard-empty">Критичних задач на сьогодні немає.</p>`}
             </div>
@@ -220,7 +262,7 @@ export function renderDashboardScreen(ctx) {
               <button class="secondary" type="button" data-view-link="planner">Відкрити планер</button>
             </div>
             <div class="dashboard-list">
-              ${taskRows(tasks.filter((task) => !isTaskDone(task)).sort((a, b) => (a.dueDate?.getTime() || 0) - (b.dueDate?.getTime() || 0)).slice(0, 6), badge)}
+              ${taskRows(tasks.filter((task) => !isTaskDone(task)).sort((a, b) => (a.dueDate?.getTime() || 0) - (b.dueDate?.getTime() || 0)).slice(0, 6), icon)}
             </div>
           </article>
 
@@ -233,7 +275,7 @@ export function renderDashboardScreen(ctx) {
               <button class="secondary" type="button" data-view-link="cases">Переглянути всі</button>
             </div>
             <div class="dashboard-list">
-              ${caseRows(state, highRiskCases.length ? highRiskCases : deadlineCases, currency, badge)}
+              ${caseRows(state, highRiskCases.length ? highRiskCases : deadlineCases, currency, icon)}
             </div>
           </article>
         </div>

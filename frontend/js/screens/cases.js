@@ -28,6 +28,13 @@ let openDeleteDocumentConfirm;
 let getDocumentPayload;
 let openStoredDocument;
 let syncNavigationState;
+let showToast;
+
+const completedCaseStatuses = new Set(["Завершено", "Закрито", "Архів"]);
+
+function isCaseCompleted(item) {
+  return completedCaseStatuses.has(item?.status);
+}
 
 function applyContext(ctx) {
   ({
@@ -60,7 +67,8 @@ function applyContext(ctx) {
     openDeleteDocumentConfirm,
     getDocumentPayload,
     openStoredDocument,
-    syncNavigationState
+    syncNavigationState,
+    showToast
   } = ctx);
 }
 
@@ -174,6 +182,138 @@ function priorityTone(priority) {
   return semanticTone(priority);
 }
 
+function caseStatusIconName(status) {
+  const icons = {
+    "В роботі": "refresh",
+    "Очікує відповідь": "clock",
+    "Терміново": "bell",
+    "Завершено": "check",
+    "Архів": "file",
+    "Закрито": "check"
+  };
+  return icons[status] || "briefcase";
+}
+
+function caseStatusUiTone(status) {
+  const tones = {
+    "В роботі": "case-work",
+    "Очікує відповідь": "case-waiting",
+    "Терміново": "case-urgent",
+    "Завершено": "case-completed",
+    "Архів": "case-archive",
+    "Закрито": "case-completed"
+  };
+  return tones[status] || "case-default";
+}
+
+function casePriorityIconName() {
+  return "bell";
+}
+
+function casePriorityUiTone(priority) {
+  const tones = {
+    "Високий": "case-urgent",
+    "Середній": "case-waiting",
+    "Низький": "case-low",
+    "Плановий": "case-planned"
+  };
+  return tones[priority] || "case-default";
+}
+
+function uniqueCaseOptions(baseOptions, currentValue) {
+  return [...new Set([currentValue, ...baseOptions].filter(Boolean))];
+}
+
+function casePillPicker(item, type) {
+  const isPriority = type === "priority";
+  const value = isPriority ? item.priority : item.status;
+  const options = isPriority
+    ? uniqueCaseOptions(["Високий", "Середній", "Низький", "Плановий"], value)
+    : uniqueCaseOptions(["В роботі", "Очікує відповідь", "Терміново", "Завершено", "Архів"], value);
+  const tone = isPriority ? casePriorityUiTone(value) : caseStatusUiTone(value);
+  const iconName = isPriority ? casePriorityIconName(value) : caseStatusIconName(value);
+  const label = isPriority ? `${value} пріоритет` : value;
+  const actionAttr = isPriority ? "data-case-priority-value" : "data-case-status-value";
+  return `
+    <details class="case-pill-picker ${tone}">
+      <summary class="case-preview-pill" aria-label="${isPriority ? "Змінити пріоритет справи" : "Змінити статус справи"}">
+        ${icon(iconName)}
+        <strong>${label}</strong>
+        <i>⌄</i>
+      </summary>
+      <div>
+        ${options.map((option) => {
+          const optionTone = isPriority ? casePriorityUiTone(option) : caseStatusUiTone(option);
+          const optionIcon = isPriority ? casePriorityIconName(option) : caseStatusIconName(option);
+          return `
+            <button type="button" class="${optionTone} ${option === value ? "active" : ""}" ${actionAttr}="${option}" data-case-pill-case="${item.id}">
+              <span>${icon(optionIcon)}</span>
+              <strong>${isPriority ? `${option} пріоритет` : option}</strong>
+              <em>${option === value ? "✓" : ""}</em>
+            </button>
+          `;
+        }).join("")}
+      </div>
+    </details>
+  `;
+}
+
+function caseTableStatusIcon(label, iconName, toneClass, kind = "Статус") {
+  return `
+    <span class="case-status-icon ${toneClass}" data-tooltip="${label || "Не вказано"}" tabindex="0" role="img" aria-label="${kind}: ${label || "Не вказано"}">
+      ${icon(iconName)}
+    </span>
+    <span class="sr-only">${label || "Не вказано"}</span>
+  `;
+}
+
+function caseDeadlineChip(item) {
+  return `
+    <span class="case-deadline-chip">
+      ${icon("calendar")}
+      <strong>${item.deadline || "Без строку"}</strong>
+    </span>
+  `;
+}
+
+function escapeAttribute(value = "") {
+  return String(value).replaceAll("&", "&amp;").replaceAll("\"", "&quot;").replaceAll("<", "&lt;");
+}
+
+function clientInitials(name = "") {
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  return `${parts[0]?.[0] || "К"}${parts[1]?.[0] || ""}`.toUpperCase();
+}
+
+function clientShortName(name = "") {
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "Клієнт не вказаний";
+  const [surname, ...rest] = parts;
+  const initials = rest.map((part) => `${part[0]}.`).join("");
+  return initials ? `${surname} ${initials}` : surname;
+}
+
+function caseDateValue(value = "") {
+  const [day, month, year] = String(value).split(".").map(Number);
+  if (!day || !month || !year) return 0;
+  return new Date(year, month - 1, day).getTime();
+}
+
+function caseClientCell(client, casesCount = 1) {
+  const hasPhoto = Boolean(client?.showPhoto && client?.photoUrl);
+  const photoStyle = hasPhoto ? ` style="--client-photo: url('${escapeAttribute(client.photoUrl)}')"` : "";
+  const name = client?.name || "Клієнт не вказаний";
+  return `
+    <div class="case-client-cell">
+      <span class="client-avatar case-client-avatar ${hasPhoto ? "has-client-photo" : ""}"${photoStyle}>${hasPhoto ? "" : clientInitials(name)}</span>
+      <span class="case-client-text">
+        <strong>${clientShortName(name)}${casesCount > 1 ? `<em>${casesCount}</em>` : ""}</strong>
+        <span>${icon("phone")}<em>${client?.phone || "Телефон не вказано"}</em></span>
+      </span>
+    </div>
+  `;
+}
+
 function editOnlyMenu(dataAttr, value, label = "Редагувати") {
   return actionMenu([
     { label, icon: "edit", attrs: { [dataAttr]: value } }
@@ -196,45 +336,84 @@ function caseMaterialBadges(item) {
   const documents = caseDocumentsCount(item);
   const events = caseProceduralItems(item).length;
   return `
-    <span class="case-material-badge blue">Док ${documents}</span>
-    <span class="case-material-badge amber">Зад ${item.tasks.length}</span>
-    <span class="case-material-badge violet">Под ${events}</span>
+    <span class="case-material-badge blue" data-tooltip="Документи">${icon("file")}<strong>${documents}</strong></span>
+    <span class="case-material-badge amber" data-tooltip="Задачі">${icon("check")}<strong>${item.tasks.length}</strong></span>
+    <span class="case-material-badge violet" data-tooltip="Події">${icon("calendar")}<strong>${events}</strong></span>
   `;
 }
 
-function casePreviewDocuments(item) {
+function casePreviewDocuments(item, mode = "accordion") {
   const rows = caseFolders(item).flatMap((folder, folderIndex) =>
     folder.files.map((file, fileIndex) => ({ folder, folderIndex, file, fileIndex }))
   );
   if (!rows.length) return `<p class="preview-empty">Документів поки немає</p>`;
   return rows.map(({ folder, folderIndex, file, fileIndex }) => `
-    <div class="preview-list-row preview-document-row">
+    <div class="preview-list-row preview-document-row ${mode === "stat" ? "case-stat-action-row" : ""}" ${mode === "stat" ? `tabindex="0" data-stat-doc="${item.id}|folder:${folderIndex}:${fileIndex}"` : ""}>
       <div>
         <div class="preview-document-title">${icon("file")}<strong>${file.name}</strong></div>
         <span class="preview-document-meta">${folder.name} ${badge(file.status || "Без статусу", documentStatusTone(file.status))}</span>
       </div>
-      <div class="folder-actions preview-row-actions">
+      ${mode === "stat" ? `
+        <div class="case-stat-row-actions" aria-label="Дії документа">
+          <button type="button" data-stat-open-document="${item.id}|folder:${folderIndex}:${fileIndex}" aria-label="Відкрити документ">${icon("eye")}</button>
+          <button type="button" data-stat-edit-document="${item.id}|folder:${folderIndex}:${fileIndex}" aria-label="Редагувати документ">${icon("edit")}</button>
+          <button type="button" data-stat-delete-document="${item.id}|${folderIndex}:${fileIndex}" aria-label="Видалити документ" class="danger-icon">${icon("trash")}</button>
+        </div>
+      ` : `<div class="folder-actions preview-row-actions">
         ${documentMenu([
           { label: "Відкрити", icon: "eye", attrs: { "data-preview-view-document": `${item.id}|folder:${folderIndex}:${fileIndex}` } },
           { label: "Редагувати", icon: "edit", attrs: { "data-preview-edit-document": `${item.id}|folder:${folderIndex}:${fileIndex}` } },
           { label: "Видалити", icon: "trash", danger: true, attrs: { "data-preview-delete-document": `${item.id}|${folderIndex}:${fileIndex}` } }
         ])}
-      </div>
+      </div>`}
     </div>
   `).join("");
 }
 
-function casePreviewTasks(item) {
+function casePreviewTasks(item, mode = "accordion") {
   if (!item.tasks.length) return `<p class="preview-empty">Задач поки немає</p>`;
-  return item.tasks.map((task) => `
-    <div class="preview-list-row">
+  return item.tasks.map((task, index) => `
+    <div class="preview-list-row ${mode === "stat" ? "case-stat-action-row" : ""}" ${mode === "stat" ? `tabindex="0" data-stat-task="${item.id}|${index}"` : ""}>
       <div>
         <strong>${task.title}</strong>
         <span>${task.due || "Без строку"} · ${task.responsible || item.responsible}</span>
       </div>
       ${badge(task.status, taskTone(task.status))}
+      ${mode === "stat" ? `
+        <div class="case-stat-row-actions" aria-label="Дії задачі">
+          <button type="button" data-stat-open-task="${item.id}|${index}" aria-label="Відкрити задачу">${icon("eye")}</button>
+          <button type="button" data-stat-edit-task="${item.id}|${index}" aria-label="Редагувати задачу">${icon("edit")}</button>
+          <button type="button" data-stat-delete-task="${item.id}|${index}" aria-label="Видалити задачу" class="danger-icon">${icon("trash")}</button>
+        </div>
+      ` : ""}
     </div>
   `).join("");
+}
+
+function casePreviewEvents(item, mode = "accordion") {
+  const rows = caseProceduralItems(item);
+  if (!rows.length) return `<p class="preview-empty">Подій поки немає</p>`;
+  return rows.map((row, index) => {
+    const action = Array.isArray(row) ? row[0] : row.action;
+    const due = Array.isArray(row) ? row[3] : row.due;
+    const status = Array.isArray(row) ? row[4] : row.status;
+    return `
+      <div class="preview-list-row ${mode === "stat" ? "case-stat-action-row" : ""}" ${mode === "stat" ? `tabindex="0" data-stat-event="${item.id}|${index}"` : ""}>
+        <div>
+          <strong>${action || "Подія без назви"}</strong>
+          <span>${due || "Без дати"}</span>
+        </div>
+        ${badge(status || "Не розпочато", semanticTone(status))}
+        ${mode === "stat" ? `
+          <div class="case-stat-row-actions" aria-label="Дії події">
+            <button type="button" data-stat-open-event="${item.id}|${index}" aria-label="Відкрити подію">${icon("eye")}</button>
+            <button type="button" data-stat-edit-event="${item.id}|${index}" aria-label="Редагувати подію">${icon("edit")}</button>
+            <button type="button" data-stat-delete-event="${item.id}|${index}" aria-label="Видалити подію" class="danger-icon">${icon("trash")}</button>
+          </div>
+        ` : ""}
+      </div>
+    `;
+  }).join("");
 }
 
 function casePreviewHistory(item) {
@@ -292,45 +471,77 @@ function financePreviewStatus(item) {
 
 function casePreviewCard(item) {
   const client = clientById(item.clientId);
-  const finance = caseFinance(item);
-  const financeStatus = financePreviewStatus(item);
+  const documentsCount = caseDocumentsCount(item);
+  const eventsCount = caseProceduralItems(item).length;
+  const financeProgress = financePercent(item);
   return `
-    <article class="case-card case-preview-card">
-      <div class="case-preview-head">
-        <h3 class="case-preview-title">Картка справи</h3>
-        ${badge(item.status, semanticTone(item.status))}
+    <article class="case-card case-preview-card ${isCaseCompleted(item) ? "case-completed-card" : ""}">
+      <div class="case-preview-hero">
+        <span class="case-preview-icon">${icon("briefcase")}</span>
+        <div>
+          <h2>${item.title}</h2>
+          <p>№${item.id} · ${client?.name || "Клієнт не вказаний"}</p>
+        </div>
       </div>
-      <div class="case-preview-meta">
-        <span class="case-preview-number">№${item.id}</span>
-        <span class="muted">відкрито ${item.opened}</span>
+      <div class="case-preview-pills">
+        <div class="case-preview-pill-row">
+          <span>Пріоритет</span>
+          ${casePillPicker(item, "priority")}
+        </div>
+        <div class="case-preview-pill-row">
+          <span>Статус</span>
+          ${casePillPicker(item, "status")}
+        </div>
       </div>
       <div class="case-preview-rows">
         <div><span>Клієнт</span><strong>${client?.name || "Не вказано"}</strong></div>
-        <div><span>Тип</span><strong>${item.type}</strong></div>
-        <div><span>Етап</span><strong>${item.stage}</strong></div>
-        <div><span>Відповідальний</span><strong>${item.responsible}</strong></div>
-        <div><span>Суд / орган</span><strong>${item.court}</strong></div>
+        <div><span>Відповідальний</span><strong class="case-preview-person">${advocatePhoto(item.responsible, "mini")}${item.responsible}</strong></div>
+        <div><span>Тип / етап</span><strong>${item.type}<br><em>${item.stage}</em></strong></div>
+        <div><span>Відкрито</span><strong>${item.opened}</strong></div>
         <div><span>Дедлайн</span><strong>${item.deadline}</strong></div>
-        <div><span>Пріоритет</span>${badge(item.priority, priorityTone(item.priority))}</div>
+        <div><span>Суд / орган</span><strong>${item.court}</strong></div>
       </div>
       <div class="case-preview-summary">
-        <h2>${item.title}</h2>
+        <h3>Суть справи</h3>
         <p>${item.description}</p>
       </div>
       <div class="case-preview-links">
-        <button type="button" data-preview-open="${item.id}" class="case-preview-open"><span>${icon("eye")}</span><strong>Відкрити картку</strong></button>
-        <details class="case-preview-accordion finance-preview-line">
-          <summary><span>›</span><strong>Фінанси</strong><em class="finance-status-pill ${financeStatus.tone}">${financeStatus.text}</em></summary>
-          ${casePreviewFinance(item)}
-        </details>
-        <details class="case-preview-accordion">
-          <summary><span>›</span><strong>Документи</strong><em>${caseDocumentsCount(item)}</em></summary>
-          <div class="preview-list">${casePreviewDocuments(item)}</div>
-        </details>
-        <details class="case-preview-accordion">
-          <summary><span>›</span><strong>Задачі</strong><em>${item.tasks.length}</em></summary>
-          <div class="preview-list">${casePreviewTasks(item)}</div>
-        </details>
+        <div class="case-preview-primary-actions">
+          <button type="button" data-preview-open="${item.id}" class="case-preview-open"><span>${icon("eye")}</span><strong>Відкрити</strong></button>
+          <button type="button" data-edit-case-row="${item.id}" class="case-preview-edit">${icon("edit")} Редагувати</button>
+        </div>
+        <div class="case-preview-stats">
+          <div class="case-preview-stat stat-documents" role="button" tabindex="0" data-case-stat="documents" data-case-stat-case="${item.id}">
+            <i>${icon("file")}<strong>${documentsCount}</strong></i><em>Док-ти</em>
+          </div>
+          <div class="case-preview-stat stat-tasks" role="button" tabindex="0" data-case-stat="tasks" data-case-stat-case="${item.id}">
+            <i>${icon("check")}<strong>${item.tasks.length}</strong></i><em>Задачі</em>
+          </div>
+          <div class="case-preview-stat stat-events" role="button" tabindex="0" data-case-stat="events" data-case-stat-case="${item.id}">
+            <i>${icon("calendar")}<strong>${eventsCount}</strong></i><em>Події</em>
+          </div>
+          <div class="case-preview-stat stat-finance" role="button" tabindex="0" data-case-stat="finance" data-case-stat-case="${item.id}">
+            <i>${icon("briefcase")}<strong>${financeProgress}%</strong></i><em>Оплата</em>
+          </div>
+          <div class="case-stat-popovers">
+            <div class="case-stat-popover stat-panel-documents">
+              <div class="case-stat-popover-head"><strong>Документи</strong><span>${documentsCount}</span></div>
+              <div class="preview-list case-stat-preview-list">${casePreviewDocuments(item, "stat")}</div>
+            </div>
+            <div class="case-stat-popover stat-panel-tasks">
+              <div class="case-stat-popover-head"><strong>Задачі</strong><span>${item.tasks.length}</span></div>
+              <div class="preview-list case-stat-preview-list">${casePreviewTasks(item, "stat")}</div>
+            </div>
+            <div class="case-stat-popover stat-panel-events">
+              <div class="case-stat-popover-head"><strong>Події</strong><span>${eventsCount}</span></div>
+              <div class="preview-list case-stat-preview-list">${casePreviewEvents(item, "stat")}</div>
+            </div>
+            <div class="case-stat-popover case-stat-finance-popover stat-panel-finance">
+              <div class="case-stat-popover-head"><strong>Оплата</strong><span>${financeProgress}%</span></div>
+              ${casePreviewFinance(item)}
+            </div>
+          </div>
+        </div>
         <details class="case-preview-accordion">
           <summary><span>›</span><strong>Історія справи</strong><em>${item.history.length}</em></summary>
           <div class="preview-list">${casePreviewHistory(item)}</div>
@@ -341,86 +552,124 @@ function casePreviewCard(item) {
 }
 
 function renderCaseList() {
-  const selectedPageSize = $("#case-page-size")?.value || String(state.casePageSize || 6);
+  const selectedPageSize = String(state.casePageSize || 6);
   const activeFilterId = document.activeElement?.id;
-  const cursorPosition = activeFilterId === "case-search" ? $("#case-search")?.selectionStart : null;
-  const selectedStatus = $("#case-status-filter")?.value || "";
-  const selectedType = $("#case-type-filter")?.value || "";
-  const selectedResponsible = $("#case-responsible-filter")?.value || "";
-  const query = ($("#case-search")?.value || "").toLowerCase();
+  const cursorPosition = ["case-search", "case-list-search-secondary"].includes(activeFilterId) ? document.activeElement?.selectionStart : null;
+  const selectedStatus = state.caseStatusFilter || "all";
+  const selectedType = state.caseTypeFilter || "all";
+  const selectedResponsible = state.caseResponsibleFilter || "all";
+  const quickFilter = state.caseQuickFilter || "all";
+  const query = (state.caseQuery || "").toLowerCase().trim();
   const filteredCases = state.cases
     .filter((item) => {
       const client = clientById(item.clientId);
       const text = `${item.id} ${client?.name} ${item.title} ${item.type} ${item.status} ${item.court} ${item.responsible}`.toLowerCase();
+      const byQuick =
+        quickFilter === "all" ||
+        (quickFilter === "urgent" && (item.priority === "Високий" || item.status === "Терміново")) ||
+        (quickFilter === "tasks" && item.tasks.length > 0) ||
+        (quickFilter === "debt" && (item.debt || 0) > 0);
       return (!query || text.includes(query))
-        && (!selectedStatus || item.status === selectedStatus)
-        && (!selectedType || item.type === selectedType)
-        && (!selectedResponsible || item.responsible === selectedResponsible);
+        && (selectedStatus === "all" || item.status === selectedStatus)
+        && (selectedType === "all" || item.type === selectedType)
+        && (selectedResponsible === "all" || item.responsible === selectedResponsible)
+        && byQuick;
     });
-  const pageSize = selectedPageSize === "all" ? Math.max(filteredCases.length, 1) : Number(selectedPageSize);
-  const totalPages = Math.max(1, Math.ceil(filteredCases.length / pageSize));
+  const clientCaseCounts = filteredCases.reduce((counts, item) => {
+    const key = String(item.clientId ?? "unknown");
+    counts.set(key, (counts.get(key) || 0) + 1);
+    return counts;
+  }, new Map());
+  const sortedCases = [...filteredCases].sort((a, b) => {
+    const clientA = clientById(a.clientId)?.name || "";
+    const clientB = clientById(b.clientId)?.name || "";
+    return clientA.localeCompare(clientB, "uk") || caseDateValue(a.opened) - caseDateValue(b.opened) || a.id.localeCompare(b.id, "uk");
+  });
+  const pageSize = selectedPageSize === "all" ? Math.max(sortedCases.length, 1) : Number(selectedPageSize);
+  const totalPages = Math.max(1, Math.ceil(sortedCases.length / pageSize));
   state.casePage = Math.min(Math.max(1, state.casePage || 1), totalPages);
   const pageStart = (state.casePage - 1) * pageSize;
-  const pageCases = filteredCases.slice(pageStart, pageStart + pageSize);
+  const pageCases = sortedCases.slice(pageStart, pageStart + pageSize);
+  const caseIds = new Set(state.cases.map((item) => item.id));
+  state.selectedCaseKeys = (state.selectedCaseKeys || []).filter((id) => caseIds.has(id));
+  const selectedCaseSet = new Set(state.selectedCaseKeys || []);
+  const selectedPageCount = pageCases.filter((item) => selectedCaseSet.has(item.id)).length;
+  const selectedCasesCount = selectedCaseSet.size;
+  const allCasesSelected = Boolean(pageCases.length && selectedPageCount === pageCases.length);
+  const someCasesSelected = Boolean(selectedPageCount && selectedPageCount < pageCases.length);
   const selected = pageCases.find((item) => item.id === state.selectedCaseId) || pageCases[0] || filteredCases[0] || state.cases[0];
   if (selected) state.selectedCaseId = selected.id;
+  const visibleClientKeys = new Set();
   const rows = pageCases
     .map((item) => {
       const client = clientById(item.clientId);
-      return `<tr class="${item.id === selected.id ? "selected" : ""}" data-preview-case="${item.id}">
+      const clientKey = String(item.clientId ?? "unknown");
+      const showClient = !visibleClientKeys.has(clientKey);
+      visibleClientKeys.add(clientKey);
+      return `<tr class="${item.id === selected.id ? "selected" : ""} ${isCaseCompleted(item) ? "case-completed-row" : ""}" data-preview-case="${item.id}">
+        <td>${showClient ? caseClientCell(client, clientCaseCounts.get(clientKey) || 1) : `<span class="case-client-repeat-cell" aria-label="Такий самий клієнт"></span>`}</td>
         <td>
           <div class="case-number-cell">
-            <a href="#" data-open-case="${item.id}">№${item.id}</a>
-            <span class="case-row-actions">
-              ${actionMenu([
-                { label: "Відкрити", icon: "eye", attrs: { "data-open-case": item.id, "aria-label": "Відкрити справу" } },
-                { label: "Редагувати", icon: "edit", attrs: { "data-edit-case-row": item.id, "aria-label": "Редагувати справу" } },
-                { label: "Видалити", icon: "trash", danger: true, attrs: { "data-delete-case": item.id, "aria-label": "Видалити справу" } }
-              ], { label: "Дії справи" })}
+            <input type="checkbox" data-select-case-row="${item.id}" ${selectedCaseSet.has(item.id) ? "checked" : ""} aria-label="Вибрати справу" />
+            <span class="case-number-stack">
+              <a href="#" data-open-case="${item.id}">№${item.id}</a>
+              <small>${item.opened}</small>
             </span>
           </div>
-          <span>${item.opened}</span>
         </td>
-        <td><strong>${client?.name || "Не вказано"}</strong><span>${item.responsible}</span></td>
-        <td><strong>${item.title}</strong><span>${item.type}</span></td>
+        <td>
+          <strong>${item.title}</strong>
+          <span>${item.type}</span>
+          <div class="case-materials">${caseMaterialBadges(item)}</div>
+        </td>
         <td>${item.stage}</td>
-        <td><div class="case-materials">${caseMaterialBadges(item)}</div></td>
-        <td>${item.deadline}</td>
-        <td>${badge(item.priority, priorityTone(item.priority))}</td>
-        <td>${badge(item.status, statusTone(item.status))}</td>
+        <td>${caseDeadlineChip(item)}</td>
+        <td>${caseTableStatusIcon(item.priority, casePriorityIconName(item.priority), casePriorityUiTone(item.priority), "Пріоритет")}</td>
+        <td>${caseTableStatusIcon(item.status, caseStatusIconName(item.status), caseStatusUiTone(item.status))}</td>
         <td>${caseFinanceSummary(item)}</td>
+        <td class="case-actions-cell">
+          <span class="case-row-actions">
+            ${actionMenu([
+              { label: "Відкрити", icon: "eye", attrs: { "data-open-case": item.id, "aria-label": "Відкрити справу" } },
+              { label: "Редагувати", icon: "edit", attrs: { "data-edit-case-row": item.id, "aria-label": "Редагувати справу" } },
+              { label: "Видалити", icon: "trash", danger: true, attrs: { "data-delete-case": item.id, "aria-label": "Видалити справу" } }
+            ], { label: "Дії справи" })}
+          </span>
+        </td>
       </tr>`;
     }).join("");
   const urgentCases = state.cases.filter((item) => item.priority === "Високий" || item.status === "Терміново").length;
   const totalTasks = state.cases.reduce((sum, item) => sum + item.tasks.length, 0);
   const totalDebt = state.cases.reduce((sum, item) => sum + item.debt, 0);
+  const hasManualCaseFilters = Boolean(query) || selectedStatus !== "all" || selectedType !== "all" || selectedResponsible !== "all";
+  const allKpiActive = quickFilter === "all" && !hasManualCaseFilters;
   $("#case-detail").innerHTML = `
     <div class="case-list-screen">
       <div class="case-list-head">
         <div class="case-list-global-search">
-          <input id="case-search" value="${$("#case-search")?.value || ""}" placeholder="Пошук клієнта, справи, події..." />
+          <input id="case-search" value="${state.caseQuery || ""}" placeholder="Пошук клієнта, справи, події..." />
           <button class="icon-button" type="button">${icon("filter")}</button>
           <button class="primary" id="create-case-from-list">+ Додати справу</button>
         </div>
       </div>
       <div class="case-kpi-grid">
-        <article><span>Усього справ</span><strong>${state.cases.length}</strong></article>
-        <article><span>Термінові</span><strong>${urgentCases}</strong></article>
-        <article><span>Задач по справах</span><strong>${totalTasks}</strong></article>
-        <article><span>Борг по справах</span><strong>${currency(totalDebt)}</strong></article>
+        <button class="panel case-kpi-card ${allKpiActive ? "active" : ""}" type="button" data-case-kpi="all"><span>Усього справ</span><strong>${state.cases.length}</strong><i>${icon("briefcase")}</i></button>
+        <button class="panel case-kpi-card ${quickFilter === "urgent" ? "active" : ""}" type="button" data-case-kpi="urgent"><span>Термінові</span><strong>${urgentCases}</strong><i class="red">${icon("bell")}</i></button>
+        <button class="panel case-kpi-card ${quickFilter === "tasks" ? "active" : ""}" type="button" data-case-kpi="tasks"><span>Задач по справах</span><strong>${totalTasks}</strong><i class="amber">${icon("check")}</i></button>
+        <button class="panel case-kpi-card ${quickFilter === "debt" ? "active" : ""}" type="button" data-case-kpi="debt"><span>Борг по справах</span><strong>${currency(totalDebt)}</strong><i class="violet">${icon("briefcase")}</i></button>
       </div>
       <div class="case-list-toolbar">
-        <input id="case-list-search-secondary" value="${$("#case-search")?.value || ""}" placeholder="Пошук справи..." />
+        <input id="case-list-search-secondary" value="${state.caseQuery || ""}" placeholder="Пошук справи..." />
         <select id="case-status-filter">
-          <option value="">Всі статуси</option>
+          <option value="all">Всі статуси</option>
           ${[...new Set(state.cases.map((item) => item.status))].map((status) => `<option value="${status}" ${status === selectedStatus ? "selected" : ""}>${status}</option>`).join("")}
         </select>
         <select id="case-type-filter">
-          <option value="">Всі типи</option>
+          <option value="all">Всі типи</option>
           ${[...new Set(state.cases.map((item) => item.type))].map((type) => `<option value="${type}" ${type === selectedType ? "selected" : ""}>${type}</option>`).join("")}
         </select>
         <select id="case-responsible-filter">
-          <option value="">Всі адвокати</option>
+          <option value="all">Всі адвокати</option>
           ${[...new Set(state.cases.map((item) => item.responsible).filter(Boolean))].map((responsible) => `<option value="${responsible}" ${responsible === selectedResponsible ? "selected" : ""}>${responsible}</option>`).join("")}
         </select>
       </div>
@@ -430,15 +679,15 @@ function renderCaseList() {
             <table class="case-list-table">
               <thead>
                 <tr>
-                  <th>Номер</th>
                   <th>Клієнт</th>
+                  <th><span class="case-title-head"><input type="checkbox" data-select-case-page aria-label="Вибрати всі справи на сторінці" ${allCasesSelected ? "checked" : ""} /><span class="case-title-label">Справа</span><span class="tasks-bulk-bar case-bulk-bar ${selectedCasesCount ? "active" : ""}" aria-label="Масові дії справ"><em>${selectedCasesCount}</em><button class="task-bulk-icon bulk-work" type="button" data-case-bulk-action="work" data-tooltip="В роботу" aria-label="Позначити справи в роботі">${icon("refresh")}</button><button class="task-bulk-icon bulk-planner" type="button" data-case-bulk-action="waiting" data-tooltip="Очікує відповідь" aria-label="Позначити очікування відповіді">${icon("clock")}</button><button class="task-bulk-icon bulk-done" type="button" data-case-bulk-action="urgent" data-tooltip="Терміново" aria-label="Позначити терміновими">${icon("bell")}</button><button class="task-bulk-icon bulk-delete" type="button" data-case-bulk-action="delete" data-tooltip="Видалити вибрані" aria-label="Видалити вибрані справи">${icon("trash")}</button><button class="task-bulk-icon bulk-clear" type="button" data-case-bulk-action="clear" data-tooltip="Скинути вибір" aria-label="Скинути вибір справ">×</button></span></span></th>
                   <th>Назва</th>
                   <th>Етап</th>
-                  <th>Матеріали</th>
                   <th>Дедлайн</th>
                   <th>Пріоритет</th>
                   <th>Статус</th>
                   <th>Фінанси</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>${rows || `<tr><td colspan="9">Справ не знайдено</td></tr>`}</tbody>
@@ -446,7 +695,7 @@ function renderCaseList() {
           </div>
           <div class="case-pagination">
             <div class="case-pagination-left">
-              <span>Показано ${filteredCases.length ? pageStart + 1 : 0}-${Math.min(pageStart + pageSize, filteredCases.length)} з ${filteredCases.length}</span>
+              <span>Показано ${sortedCases.length ? pageStart + 1 : 0}-${Math.min(pageStart + pageSize, sortedCases.length)} з ${sortedCases.length} справ</span>
               <select id="case-page-size">
                 ${[6, 10, 20, 30].map((size) => `<option value="${size}" ${String(size) === selectedPageSize ? "selected" : ""}>${size} на сторінці</option>`).join("")}
                 <option value="all" ${selectedPageSize === "all" ? "selected" : ""}>Усі справи</option>
@@ -465,27 +714,55 @@ function renderCaseList() {
   `;
   bindActionMenus?.($("#case-detail"));
   $("#create-case-from-list")?.addEventListener("click", () => openCaseDialog());
+  document.querySelectorAll("[data-case-kpi]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.caseQuickFilter = button.dataset.caseKpi || "all";
+      state.caseQuery = "";
+      state.caseStatusFilter = "all";
+      state.caseTypeFilter = "all";
+      state.caseResponsibleFilter = "all";
+      state.selectedCaseKeys = [];
+      state.casePage = 1;
+      renderCaseList();
+    });
+  });
   $("#case-list-search-secondary")?.addEventListener("input", (event) => {
-    $("#case-search").value = event.currentTarget.value;
+    state.caseQuery = event.currentTarget.value;
+    state.caseQuickFilter = "all";
+    state.selectedCaseKeys = [];
     state.casePage = 1;
     renderCaseList();
   });
-  ["#case-search", "#case-status-filter", "#case-type-filter", "#case-responsible-filter", "#case-page-size"].forEach((selector) => {
-    $(selector)?.addEventListener("input", () => {
-      if (selector === "#case-page-size") state.casePageSize = $("#case-page-size").value;
+  $("#case-search")?.addEventListener("input", (event) => {
+    state.caseQuery = event.currentTarget.value;
+    state.caseQuickFilter = "all";
+    state.selectedCaseKeys = [];
+    state.casePage = 1;
+    renderCaseList();
+  });
+  [
+    ["#case-status-filter", "caseStatusFilter"],
+    ["#case-type-filter", "caseTypeFilter"],
+    ["#case-responsible-filter", "caseResponsibleFilter"]
+  ].forEach(([selector, stateKey]) => {
+    $(selector)?.addEventListener("change", (event) => {
+      state[stateKey] = event.currentTarget.value;
+      state.caseQuickFilter = "all";
+      state.selectedCaseKeys = [];
       state.casePage = 1;
       renderCaseList();
     });
-    $(selector)?.addEventListener("change", () => {
-      if (selector === "#case-page-size") state.casePageSize = $("#case-page-size").value;
-      state.casePage = 1;
-      renderCaseList();
-    });
+  });
+  $("#case-page-size")?.addEventListener("change", (event) => {
+    state.casePageSize = event.currentTarget.value;
+    state.selectedCaseKeys = [];
+    state.casePage = 1;
+    renderCaseList();
   });
   if (activeFilterId) {
     const activeFilter = document.getElementById(activeFilterId);
     activeFilter?.focus();
-    if (activeFilterId === "case-search" && cursorPosition !== null) {
+    if (["case-search", "case-list-search-secondary"].includes(activeFilterId) && cursorPosition !== null) {
       activeFilter.setSelectionRange(cursorPosition, cursorPosition);
     }
   }
@@ -502,6 +779,185 @@ function renderCaseList() {
     event.preventDefault();
     event.stopPropagation();
     openFinanceDialog(node.dataset.previewFinance);
+  }));
+  document.querySelectorAll("[data-preview-add-document]").forEach((node) => node.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openDocumentDialog(node.dataset.previewAddDocument, null, "cases");
+  }));
+  document.querySelectorAll("[data-preview-add-task]").forEach((node) => node.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openTaskDialog(node.dataset.previewAddTask, null, "cases");
+  }));
+  document.querySelectorAll("[data-preview-add-event]").forEach((node) => node.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const item = caseById(node.dataset.previewAddEvent);
+    openEventDialog({ caseId: item.id, clientId: item.clientId });
+  }));
+  const caseStatTypes = ["documents", "tasks", "events", "finance"];
+  const setCaseStatsPanel = (container, type = null) => {
+    if (!container) return;
+    caseStatTypes.forEach((item) => container.classList.remove(`show-${item}`));
+    if (type) container.classList.add(`show-${type}`);
+  };
+  const closeCaseStatPopovers = (except = null) => {
+    const exceptContainer = except?.closest(".case-preview-stats") || null;
+    document.querySelectorAll("[data-case-stat].open").forEach((node) => {
+      if (node !== except) {
+        node.classList.remove("open");
+        node.setAttribute("aria-expanded", "false");
+      }
+    });
+    document.querySelectorAll(".case-preview-stats").forEach((container) => {
+      if (container !== exceptContainer) setCaseStatsPanel(container);
+    });
+  };
+  const runCaseStatAction = (node) => {
+    const item = caseById(node.dataset.caseStatCase);
+    if (!item) return;
+    if (node.dataset.caseStat === "documents") {
+      openDocumentDialog(item.id, null, "cases");
+      return;
+    }
+    if (node.dataset.caseStat === "tasks") {
+      openTaskDialog(item.id, null, "cases");
+      return;
+    }
+    if (node.dataset.caseStat === "events") {
+      openEventDialog({ caseId: item.id, clientId: item.clientId });
+      return;
+    }
+    if (node.dataset.caseStat === "finance") {
+      openFinanceDialog(item.id);
+    }
+  };
+  let caseStatClickTimer = null;
+  document.querySelectorAll("[data-case-stat]").forEach((node) => {
+    node.setAttribute("aria-expanded", "false");
+    node.addEventListener("click", (event) => {
+      if (event.target.closest(".case-stat-popover")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      window.clearTimeout(caseStatClickTimer);
+      caseStatClickTimer = window.setTimeout(() => {
+        const shouldOpen = !node.classList.contains("open");
+        const container = node.closest(".case-preview-stats");
+        closeCaseStatPopovers(node);
+        node.classList.toggle("open", shouldOpen);
+        node.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+        setCaseStatsPanel(container, shouldOpen ? node.dataset.caseStat : null);
+      }, 190);
+    });
+    node.addEventListener("dblclick", (event) => {
+      if (event.target.closest(".case-stat-popover")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      window.clearTimeout(caseStatClickTimer);
+      closeCaseStatPopovers();
+      runCaseStatAction(node);
+    });
+    node.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      node.click();
+    });
+  });
+  $("#case-detail")?.addEventListener("click", (event) => {
+    if (!event.target.closest("[data-case-stat], .case-stat-popover")) closeCaseStatPopovers();
+  });
+  const clearCaseStatRowActions = (except = null) => {
+    document.querySelectorAll(".case-stat-action-row.active").forEach((row) => {
+      if (row !== except) row.classList.remove("active");
+    });
+  };
+  document.querySelectorAll(".case-stat-action-row").forEach((row) => {
+    row.addEventListener("click", (event) => {
+      if (event.target.closest(".case-stat-row-actions")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const shouldActivate = !row.classList.contains("active");
+      clearCaseStatRowActions(row);
+      row.classList.toggle("active", shouldActivate);
+    });
+    row.addEventListener("dblclick", (event) => {
+      if (event.target.closest(".case-stat-row-actions")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (row.dataset.statDoc) {
+        const [caseId, encoded] = row.dataset.statDoc.split("|");
+        openDocumentDialog(caseId, getDocumentPayload(caseId, encoded));
+        return;
+      }
+      if (row.dataset.statTask) {
+        const [caseId, taskIndex] = row.dataset.statTask.split("|");
+        openTaskDialog(caseId, Number(taskIndex), "cases");
+        return;
+      }
+      if (row.dataset.statEvent) {
+        const [caseId, actionIndex] = row.dataset.statEvent.split("|");
+        const caseItem = caseById(caseId);
+        openEventDialog({ caseId, clientId: caseItem?.clientId }, Number(actionIndex));
+      }
+    });
+    row.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      row.click();
+    });
+  });
+  document.querySelectorAll("[data-stat-open-document]").forEach((node) => node.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const [caseId, encoded] = node.dataset.statOpenDocument.split("|");
+    const payload = getDocumentPayload(caseId, encoded);
+    openStoredDocument(payload.file || payload.doc, {
+      caseId,
+      editContext: payload,
+      folderName: payload.folder?.name || payload.linked?.folder?.name,
+      returnView: "cases"
+    });
+  }));
+  document.querySelectorAll("[data-stat-edit-document]").forEach((node) => node.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const [caseId, encoded] = node.dataset.statEditDocument.split("|");
+    openDocumentDialog(caseId, getDocumentPayload(caseId, encoded));
+  }));
+  document.querySelectorAll("[data-stat-delete-document]").forEach((node) => node.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const [caseId, encoded] = node.dataset.statDeleteDocument.split("|");
+    const [folderIndex, fileIndex] = encoded.split(":").map(Number);
+    openDeleteDocumentConfirm({ caseId, folderIndex, fileIndex, type: "folderFile" });
+  }));
+  document.querySelectorAll("[data-stat-open-task], [data-stat-edit-task]").forEach((node) => node.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const value = node.dataset.statOpenTask || node.dataset.statEditTask;
+    const [caseId, taskIndex] = value.split("|");
+    openTaskDialog(caseId, Number(taskIndex), "cases");
+  }));
+  document.querySelectorAll("[data-stat-delete-task]").forEach((node) => node.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const [caseId, taskIndex] = node.dataset.statDeleteTask.split("|");
+    openDeleteDocumentConfirm({ caseId, taskIndex: Number(taskIndex), type: "task" });
+  }));
+  document.querySelectorAll("[data-stat-open-event], [data-stat-edit-event]").forEach((node) => node.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const value = node.dataset.statOpenEvent || node.dataset.statEditEvent;
+    const [caseId, actionIndex] = value.split("|");
+    const item = caseById(caseId);
+    openEventDialog({ caseId, clientId: item?.clientId }, Number(actionIndex));
+  }));
+  document.querySelectorAll("[data-stat-delete-event]").forEach((node) => node.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const [caseId, actionIndex] = node.dataset.statDeleteEvent.split("|");
+    openDeleteDocumentConfirm({ caseId, actionIndex: Number(actionIndex), type: "proceduralAction" });
   }));
   document.querySelectorAll("[data-preview-view-document]").forEach((node) => node.addEventListener("click", (event) => {
     event.preventDefault();
@@ -538,6 +994,90 @@ function renderCaseList() {
     event.stopPropagation();
     openDeleteDocumentConfirm({ caseId: node.dataset.deleteCase, type: "case" });
   }));
+  document.querySelectorAll("[data-case-priority-value], [data-case-status-value]").forEach((node) => node.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const item = caseById(node.dataset.casePillCase);
+    if (!item) return;
+    const isPriority = Boolean(node.dataset.casePriorityValue);
+    const nextValue = isPriority ? node.dataset.casePriorityValue : node.dataset.caseStatusValue;
+    if (!nextValue) return;
+    const field = isPriority ? "priority" : "status";
+    if (item[field] === nextValue) {
+      node.closest("details")?.removeAttribute("open");
+      return;
+    }
+    item[field] = nextValue;
+    const today = new Date().toLocaleDateString("uk-UA");
+    item.history = [
+      { date: today, text: `${isPriority ? "Пріоритет" : "Статус"} справи змінено на "${nextValue}".` },
+      ...(item.history || [])
+    ];
+    renderCaseList();
+  }));
+  const selectCasePageCheckbox = document.querySelector("[data-select-case-page]");
+  if (selectCasePageCheckbox) selectCasePageCheckbox.indeterminate = someCasesSelected;
+  document.querySelector("[data-select-case-page]")?.addEventListener("click", (event) => event.stopPropagation());
+  document.querySelector("[data-select-case-page]")?.addEventListener("change", (event) => {
+    const pageIds = pageCases.map((item) => item.id);
+    const next = new Set(state.selectedCaseKeys || []);
+    pageIds.forEach((id) => {
+      if (event.currentTarget.checked) next.add(id);
+      else next.delete(id);
+    });
+    state.selectedCaseKeys = [...next];
+    renderCaseList();
+  });
+  document.querySelectorAll("[data-select-case-row]").forEach((input) => {
+    input.addEventListener("click", (event) => event.stopPropagation());
+    input.addEventListener("change", () => {
+      const next = new Set(state.selectedCaseKeys || []);
+      if (input.checked) next.add(input.dataset.selectCaseRow);
+      else next.delete(input.dataset.selectCaseRow);
+      state.selectedCaseKeys = [...next];
+      renderCaseList();
+    });
+  });
+  document.querySelectorAll("[data-case-bulk-action]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const action = button.dataset.caseBulkAction;
+      if (action === "clear") {
+        state.selectedCaseKeys = [];
+        renderCaseList();
+        return;
+      }
+      const selectedIds = new Set(state.selectedCaseKeys || []);
+      const selectedCases = state.cases.filter((item) => selectedIds.has(item.id));
+      if (!selectedCases.length) return;
+      if (action === "delete") {
+        state.cases = state.cases.filter((item) => !selectedIds.has(item.id));
+        state.events = state.events.filter((event) => !selectedIds.has(event.caseId));
+        state.selectedCaseKeys = [];
+        state.selectedCaseId = state.cases[0]?.id || "";
+        state.casePage = 1;
+        renderCaseList();
+        showToast?.(`Видалено ${selectedCases.length} справ.`, "danger");
+        return;
+      }
+      const nextStatus = {
+        work: "В роботі",
+        waiting: "Очікує відповідь",
+        urgent: "Терміново"
+      }[action];
+      if (!nextStatus) return;
+      const today = new Date().toLocaleDateString("uk-UA");
+      selectedCases.forEach((item) => {
+        item.status = nextStatus;
+        item.history = [
+          { date: today, text: `Статус справи змінено на "${nextStatus}" через масову дію.` },
+          ...(item.history || [])
+        ];
+      });
+      state.selectedCaseKeys = [];
+      renderCaseList();
+    });
+  });
   document.querySelectorAll("[data-preview-case]").forEach((node) => node.addEventListener("click", (event) => {
     event.preventDefault();
     if (event.target.closest("a,button")) return;
@@ -546,6 +1086,7 @@ function renderCaseList() {
   }));
   document.querySelectorAll("[data-case-page]").forEach((node) => node.addEventListener("click", () => {
     state.casePage = Number(node.dataset.casePage);
+    state.selectedCaseKeys = [];
     renderCaseList();
   }));
 }

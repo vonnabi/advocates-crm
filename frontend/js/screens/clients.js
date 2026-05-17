@@ -21,7 +21,7 @@ export function renderClientsScreen(ctx) {
           <h2>Клієнти (124)</h2>
           <table class="clients-table">
             <thead>
-              <tr><th><input type="checkbox" aria-label="Обрати всіх клієнтів" /></th><th>ПІБ клієнта</th><th>Телефон</th><th>Email</th><th>Суть звернення</th><th>Дата додавання</th><th>Telegram</th><th>Дії</th></tr>
+              <tr><th><input type="checkbox" data-select-client-page aria-label="Обрати всіх клієнтів" /></th><th><span class="client-title-head"><span class="client-title-label">ПІБ клієнта</span><span class="tasks-bulk-bar clients-bulk-bar" data-client-bulk-bar aria-label="Масові дії клієнтів"></span></span></th><th>Телефон</th><th>Email</th><th>Суть звернення</th><th>Дата додавання</th><th>Telegram</th><th>Дії</th></tr>
             </thead>
             <tbody id="clients-table"></tbody>
           </table>
@@ -74,11 +74,13 @@ export function renderClientsScreen(ctx) {
 export function renderClientRows(ctx) {
   const { state, $, icon, actionMenu, bindActionMenus, openClientDialog, openDeleteDocumentConfirm } = ctx;
   const query = ($("#client-filter")?.value || "").toLowerCase();
-  const rows = state.clients
-    .filter((client) => !query || `${client.name} ${client.phone} ${client.email} ${client.request} ${client.telegramUsername} ${client.manager}`.toLowerCase().includes(query))
+  const selectedClientSet = new Set((state.selectedClientKeys || []).map(String));
+  const filteredClients = state.clients
+    .filter((client) => !query || `${client.name} ${client.phone} ${client.email} ${client.request} ${client.telegramUsername} ${client.manager}`.toLowerCase().includes(query));
+  const rows = filteredClients
     .map((client) => `
       <tr>
-        <td><input type="checkbox" aria-label="Обрати ${client.name}" /></td>
+        <td><input type="checkbox" data-select-client-row="${client.id}" ${selectedClientSet.has(String(client.id)) ? "checked" : ""} aria-label="Обрати ${client.name}" /></td>
         <td>
           <div class="client-name-cell">
             <a href="#" data-open-client="${client.id}">${client.name}</a>
@@ -100,7 +102,38 @@ export function renderClientRows(ctx) {
     `)
     .join("");
   $("#clients-table").innerHTML = rows || `<tr><td colspan="8">Клієнтів не знайдено</td></tr>`;
+  updateClientBulkHeader(ctx, filteredClients);
   bindActionMenus?.($("#clients-table"));
+  const pageCheckbox = document.querySelector("[data-select-client-page]");
+  if (pageCheckbox) {
+    pageCheckbox.onclick = (event) => event.stopPropagation();
+    pageCheckbox.onchange = (event) => {
+      const visibleIds = filteredClients.map((client) => String(client.id));
+      const next = new Set((state.selectedClientKeys || []).map(String));
+      visibleIds.forEach((id) => {
+        if (event.currentTarget.checked) next.add(id);
+        else next.delete(id);
+      });
+      state.selectedClientKeys = [...next];
+      renderClientRows(ctx);
+    };
+  }
+  document.querySelectorAll("[data-select-client-row]").forEach((input) => {
+    input.addEventListener("click", (event) => event.stopPropagation());
+    input.addEventListener("change", () => {
+      const next = new Set((state.selectedClientKeys || []).map(String));
+      if (input.checked) next.add(input.dataset.selectClientRow);
+      else next.delete(input.dataset.selectClientRow);
+      state.selectedClientKeys = [...next];
+      renderClientRows(ctx);
+    });
+  });
+  document.querySelectorAll("[data-client-bulk-action]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      handleClientBulkAction(ctx, button.dataset.clientBulkAction);
+    });
+  });
   document.querySelectorAll("[data-open-client]").forEach((link) => {
     link.addEventListener("click", (event) => {
       event.preventDefault();
@@ -115,6 +148,74 @@ export function renderClientRows(ctx) {
       openDeleteDocumentConfirm({ type: "client", clientId: Number(button.dataset.deleteClient), returnView: "clients" });
     });
   });
+}
+
+function updateClientBulkHeader(ctx, filteredClients) {
+  const { state, icon } = ctx;
+  const selected = new Set((state.selectedClientKeys || []).map(String));
+  const visibleIds = filteredClients.map((client) => String(client.id));
+  const selectedVisible = visibleIds.filter((id) => selected.has(id));
+  const checkbox = document.querySelector("[data-select-client-page]");
+  if (checkbox) {
+    checkbox.checked = Boolean(visibleIds.length) && selectedVisible.length === visibleIds.length;
+    checkbox.indeterminate = selectedVisible.length > 0 && selectedVisible.length < visibleIds.length;
+  }
+  const bulkBar = document.querySelector("[data-client-bulk-bar]");
+  if (!bulkBar) return;
+  const selectedCount = selected.size;
+  bulkBar.classList.toggle("active", Boolean(selectedCount));
+  bulkBar.innerHTML = selectedCount ? `
+    <em>${selectedCount}</em>
+    <button class="task-bulk-icon bulk-work" type="button" data-client-bulk-action="telegram" data-tooltip="Підключити Telegram" aria-label="Підключити Telegram вибраним клієнтам">${icon("telegram")}</button>
+    <button class="task-bulk-icon bulk-planner" type="button" data-client-bulk-action="mailing" data-tooltip="Додати в розсилку" aria-label="Додати вибраних клієнтів в розсилку">${icon("mail")}</button>
+    <button class="task-bulk-icon bulk-delete" type="button" data-client-bulk-action="delete" data-tooltip="Видалити вибрані" aria-label="Видалити вибраних клієнтів">${icon("trash")}</button>
+    <button class="task-bulk-icon bulk-clear" type="button" data-client-bulk-action="clear" data-tooltip="Скинути вибір" aria-label="Скинути вибір клієнтів">×</button>
+  ` : "";
+}
+
+function handleClientBulkAction(ctx, action) {
+  const { state, renderAll, switchView, showToast } = ctx;
+  const selectedIds = new Set((state.selectedClientKeys || []).map(String));
+  if (action === "clear") {
+    state.selectedClientKeys = [];
+    renderClientRows(ctx);
+    showToast?.("Вибір клієнтів скинуто.");
+    return;
+  }
+  if (!selectedIds.size) return;
+  if (action === "telegram") {
+    state.clients.forEach((client) => {
+      if (!selectedIds.has(String(client.id))) return;
+      client.telegram = true;
+      client.telegramUsername = client.telegramUsername || `@client_${client.id}`;
+    });
+    state.selectedClientKeys = [];
+    renderClientRows(ctx);
+    showToast?.("Telegram підключено для вибраних клієнтів.");
+    return;
+  }
+  if (action === "mailing") {
+    state.mailingRecipientMode = "manual";
+    state.mailingManualClientIds = [...selectedIds].map(Number);
+    state.mailingMainTab = "new";
+    state.selectedClientKeys = [];
+    renderAll?.();
+    switchView?.("mailings");
+    showToast?.("Вибраних клієнтів додано в ручну розсилку.");
+    return;
+  }
+  if (action === "delete") {
+    const remainingCaseIds = new Set(state.cases.filter((item) => !selectedIds.has(String(item.clientId))).map((item) => item.id));
+    const deletedCount = state.clients.filter((client) => selectedIds.has(String(client.id))).length;
+    state.clients = state.clients.filter((client) => !selectedIds.has(String(client.id)));
+    state.cases = state.cases.filter((item) => !selectedIds.has(String(item.clientId)));
+    state.events = state.events.filter((event) => remainingCaseIds.has(event.caseId));
+    state.selectedClientKeys = [];
+    state.selectedClientId = state.clients[0]?.id || "";
+    renderAll?.();
+    switchView?.("clients");
+    showToast?.(`Видалено ${deletedCount} клієнтів.`, "danger");
+  }
 }
 
 function bindClientMailingPreview(ctx) {

@@ -65,6 +65,45 @@ function documentCompactStatus(status) {
   return labels[status] || status || "Без статусу";
 }
 
+const DOCUMENT_STATUS_OPTIONS = [
+  "Чернетка",
+  "Не подано",
+  "В роботі",
+  "Подано",
+  "Відповідь очікується",
+  "Потрібно перевірити",
+  "Отримано",
+  "Готово"
+];
+
+function documentStatusIconName(status) {
+  const icons = {
+    "Чернетка": "edit",
+    "Не подано": "clock",
+    "В роботі": "refresh",
+    "Подано": "fileUp",
+    "Відповідь очікується": "bell",
+    "Потрібно перевірити": "search",
+    "Отримано": "file",
+    "Готово": "check"
+  };
+  return icons[status] || "file";
+}
+
+function documentStatusUiTone(status) {
+  const tones = {
+    "Чернетка": "doc-draft",
+    "Не подано": "doc-not-submitted",
+    "В роботі": "doc-in-work",
+    "Подано": "doc-submitted",
+    "Відповідь очікується": "doc-waiting",
+    "Потрібно перевірити": "doc-review",
+    "Отримано": "doc-received",
+    "Готово": "doc-ready"
+  };
+  return tones[status] || "doc-default";
+}
+
 function filteredDocuments(ctx, rows) {
   const { state } = ctx;
   const query = (state.documentQuery || "").trim().toLowerCase();
@@ -146,15 +185,24 @@ export function renderDocumentsScreen(ctx) {
     openFolderDialog,
     openDeleteDocumentConfirm,
     bindViewLinks,
+    formatDate,
     showToast
   } = ctx;
   const rows = documentRows(ctx).map((doc) => ({ ...doc, dueState: documentDueState(ctx, doc) }));
+  const documentKeys = new Set(rows.map((doc) => doc.key));
+  state.selectedDocumentKeys = (state.selectedDocumentKeys || []).filter((key) => documentKeys.has(key));
   const statuses = [...new Set(rows.map((doc) => doc.status).filter(Boolean))];
   const types = [...new Set(rows.map((doc) => doc.type || "Інше").filter(Boolean))];
   const clients = [...new Set(rows.map((doc) => doc.client).filter(Boolean))];
   const filtered = filteredDocuments(ctx, rows);
   const archive = activeArchiveSelection(ctx, filtered);
   const tableRows = archive.visibleRows;
+  const tableRowKeys = new Set(tableRows.map((doc) => doc.key));
+  state.selectedDocumentKeys = (state.selectedDocumentKeys || []).filter((key) => tableRowKeys.has(key));
+  const selectedDocumentSet = new Set(state.selectedDocumentKeys || []);
+  const selectedDocumentsCount = selectedDocumentSet.size;
+  const allDocumentsSelected = Boolean(tableRows.length && selectedDocumentsCount === tableRows.length);
+  const someDocumentsSelected = Boolean(selectedDocumentsCount && selectedDocumentsCount < tableRows.length);
   if (tableRows.length && !tableRows.some((doc) => doc.key === state.selectedDocumentKey)) {
     state.selectedDocumentKey = tableRows[0].key;
   }
@@ -162,8 +210,13 @@ export function renderDocumentsScreen(ctx) {
     state.selectedDocumentKey = filtered[0]?.key || "";
   }
   const selected = tableRows.find((doc) => doc.key === state.selectedDocumentKey) || tableRows[0] || filtered[0] || rows[0];
+  const selectedSubmittedIso = selected ? ctx.parseDisplayDate?.(selected.submitted) || "" : "";
+  const selectedResponseDueIso = selected ? ctx.parseDisplayDate?.(selected.responseDue) || "" : "";
   const selectedCase = archive.selectedCase?.id || selected?.caseId || state.selectedCaseId || state.cases[0]?.id || "";
   const selectedFolders = selectedCase ? caseFolders(ctx.caseById(selectedCase)) : [];
+  const selectedFolderIndex = archive.selectedFolder
+    ? selectedFolders.findIndex((folder) => folder.name === archive.selectedFolder.name)
+    : -1;
   const submittedCount = rows.filter((doc) => ["Подано", "Відповідь очікується", "Отримано"].includes(doc.status)).length;
   const draftCount = rows.filter((doc) => ["Чернетка", "Не подано"].includes(doc.status)).length;
   const overdueCount = rows.filter((doc) => doc.dueState.overdue).length;
@@ -226,6 +279,7 @@ export function renderDocumentsScreen(ctx) {
           ${state.cases.map((item) => `<option value="${item.id}" ${state.documentCaseFilter === item.id ? "selected" : ""}>№${item.id}</option>`).join("")}
         </select>
         <button class="secondary ${state.documentDueFilter === "overdue" ? "active" : ""}" type="button" data-document-due-filter>${icon("bell")} Без відповіді</button>
+        <button class="secondary documents-filter-reset" type="button" data-document-reset ${quickFilter === "all" && !hasManualDocumentFilters ? "disabled" : ""}>Скинути</button>
       </div>
 
       <div class="documents-layout">
@@ -280,12 +334,16 @@ export function renderDocumentsScreen(ctx) {
               <h3>${archiveTitle}</h3>
               <p>${archiveSubtitle}</p>
             </div>
-            <span>${tableRows.length} документів</span>
+            <div class="documents-folder-head-actions">
+              <span>${tableRows.length} документів</span>
+              ${!archive.isAll ? `<button class="secondary" type="button" data-documents-add-current>${icon("file")} Додати</button>` : ""}
+              ${archive.selectedFolder && selectedFolderIndex >= 0 ? `<button class="secondary" type="button" data-documents-edit-folder>${icon("edit")} Папка</button>` : ""}
+            </div>
           </div>
           <table class="documents-table">
             <thead>
               <tr>
-                <th>Документ</th>
+                <th><span class="document-title-head"><input type="checkbox" data-select-document-page aria-label="Вибрати всі документи в списку" ${allDocumentsSelected ? "checked" : ""} /><span class="document-title-label">Документ</span><span class="tasks-bulk-bar documents-bulk-bar ${selectedDocumentsCount ? "active" : ""}" aria-label="Масові дії документів"><em>${selectedDocumentsCount}</em><button class="task-bulk-icon bulk-work" type="button" data-document-bulk-action="work" data-tooltip="В роботу" aria-label="Позначити документи в роботі">${icon("refresh")}</button><button class="task-bulk-icon bulk-done" type="button" data-document-bulk-action="submitted" data-tooltip="Подано" aria-label="Позначити документи поданими">${icon("check")}</button><button class="task-bulk-icon bulk-planner" type="button" data-document-bulk-action="received" data-tooltip="Отримано" aria-label="Позначити документи отриманими">${icon("file")}</button><button class="task-bulk-icon bulk-delete" type="button" data-document-bulk-action="delete" data-tooltip="Видалити вибрані" aria-label="Видалити вибрані документи">${icon("trash")}</button><button class="task-bulk-icon bulk-clear" type="button" data-document-bulk-action="clear" data-tooltip="Скинути вибір" aria-label="Скинути вибір документів">×</button></span></span></th>
                 <th>Справа</th>
                 <th>Папка</th>
                 <th>Статус</th>
@@ -296,16 +354,23 @@ export function renderDocumentsScreen(ctx) {
             </thead>
             <tbody>
               ${tableRows.map((doc) => `
-                <tr class="${doc.key === state.selectedDocumentKey ? "selected" : ""}" data-document-row="${doc.key}">
+                <tr class="${doc.key === state.selectedDocumentKey ? "selected" : ""}" data-document-row="${doc.key}" tabindex="0" aria-selected="${doc.key === state.selectedDocumentKey}">
                   <td>
-                    <button class="document-title-button" type="button" data-select-document="${doc.key}">
-                      ${icon("file")}
-                      <span><strong>${doc.name}</strong><small>${doc.type || "Документ"}</small></span>
-                    </button>
+                    <div class="document-title-cell">
+                      <input type="checkbox" data-select-document-row="${doc.key}" ${selectedDocumentSet.has(doc.key) ? "checked" : ""} aria-label="Вибрати документ" />
+                      <button class="document-title-button" type="button" data-select-document="${doc.key}">
+                        ${icon("file")}
+                        <span><strong>${doc.name}</strong><small>${doc.type || "Документ"}</small></span>
+                      </button>
+                    </div>
                   </td>
                   <td><button class="case-link-button" type="button" data-open-document-case="${doc.caseId}">№${doc.caseId}</button><small>${doc.client}</small></td>
                   <td>${doc.folderName}</td>
-                  <td>${badge(documentCompactStatus(doc.status), documentStatusTone(doc.status))}</td>
+                  <td>
+                    <span class="document-status-icon ${documentStatusUiTone(doc.status)}" data-tooltip="${doc.status || "Без статусу"}" tabindex="0" role="img" aria-label="Статус: ${doc.status || "Без статусу"}">
+                      ${icon(documentStatusIconName(doc.status))}
+                    </span>
+                  </td>
                   <td><span class="documents-due ${doc.dueState.tone}">${doc.responseDue || "-"}<small>${doc.dueState.label}</small></span></td>
                   <td>${doc.sourceLabel}</td>
                   <td>
@@ -318,7 +383,13 @@ export function renderDocumentsScreen(ctx) {
                     </div>
                   </td>
                 </tr>
-              `).join("") || `<tr><td class="empty-cell" colspan="7">У цій папці документів немає</td></tr>`}
+              `).join("") || `<tr><td class="empty-cell documents-empty-table-cell" colspan="7">
+                <div>
+                  <strong>У цій папці документів немає</strong>
+                  <span>${archive.selectedFolder ? "Додайте перший документ одразу в цю папку." : "Оберіть папку або додайте документ до справи."}</span>
+                  <button class="secondary" type="button" data-documents-add-empty ${selectedCase ? "" : "disabled"}>${icon("file")} Додати документ</button>
+                </div>
+              </td></tr>`}
             </tbody>
           </table>
         </section>
@@ -332,13 +403,41 @@ export function renderDocumentsScreen(ctx) {
                 <p>№${selected.caseId} · ${selected.client}</p>
               </div>
             </div>
-            <div class="documents-status-line">${badge(selected.status || "Без статусу", documentStatusTone(selected.status))}</div>
+            <div class="documents-status-line">
+              <span>Статус</span>
+              <details class="document-status-picker ${documentStatusUiTone(selected.status)}" data-document-status-menu>
+                <summary>
+                  <span>${icon(documentStatusIconName(selected.status))}</span>
+                  <strong>${selected.status || "Без статусу"}</strong>
+                  <i>⌄</i>
+                </summary>
+                <div>
+                  ${DOCUMENT_STATUS_OPTIONS.map((status) => `
+                    <button class="${documentStatusUiTone(status)} ${selected.status === status ? "active" : ""}" type="button" data-document-status-pick="${selected.key}" data-document-status-value="${status}">
+                      <span>${icon(documentStatusIconName(status))}</span>
+                      <strong>${status}</strong>
+                      ${selected.status === status ? `<em>${icon("check")}</em>` : ""}
+                    </button>
+                  `).join("")}
+                </div>
+              </details>
+            </div>
             <dl class="documents-meta">
               <div><dt>Тип</dt><dd>${selected.type || "Не вказано"}</dd></div>
               <div><dt>Папка</dt><dd>${selected.folderName}</dd></div>
               <div><dt>Відповідальний</dt><dd class="documents-responsible">${advocatePhoto?.(selected.responsible, "mini") || ""}${selected.responsible}</dd></div>
-              <div><dt>Дата подання</dt><dd>${selected.submitted || "-"}</dd></div>
-              <div><dt>Строк відповіді</dt><dd>${selected.responseDue || "-"}</dd></div>
+              <div>
+                <dt>Дата подання</dt>
+                <dd>
+                  <input class="documents-date-input" type="date" value="${selectedSubmittedIso}" data-document-date-change="${selected.key}" data-document-date-field="submitted" aria-label="Дата подання документа" />
+                </dd>
+              </div>
+              <div>
+                <dt>Строк відповіді</dt>
+                <dd>
+                  <input class="documents-date-input" type="date" value="${selectedResponseDueIso}" data-document-date-change="${selected.key}" data-document-date-field="responseDue" aria-label="Строк відповіді документа" />
+                </dd>
+              </div>
               <div><dt>Контроль</dt><dd>${badge(selected.dueState.label, selected.dueState.tone === "muted" ? "blue" : selected.dueState.tone)}</dd></div>
               <div><dt>Джерело</dt><dd>${selected.sourceLabel}</dd></div>
             </dl>
@@ -374,14 +473,28 @@ export function renderDocumentsScreen(ctx) {
   `;
 
   bindActionMenus?.(documentsNode);
+  const selectDocumentPageCheckbox = documentsNode.querySelector("[data-select-document-page]");
+  if (selectDocumentPageCheckbox) selectDocumentPageCheckbox.indeterminate = someDocumentsSelected;
 
-  documentsNode.querySelector("[data-documents-add]")?.addEventListener("click", () => {
+  const openDocumentForArchive = () => {
     if (!selectedCase) return;
     openDocumentDialog(selectedCase, null, "documents");
-  });
+    if (selectedFolderIndex >= 0) {
+      const folderSelect = $("#document-folder");
+      if (folderSelect) folderSelect.value = String(selectedFolderIndex);
+    }
+  };
+
+  documentsNode.querySelector("[data-documents-add]")?.addEventListener("click", openDocumentForArchive);
+  documentsNode.querySelector("[data-documents-add-current]")?.addEventListener("click", openDocumentForArchive);
+  documentsNode.querySelector("[data-documents-add-empty]")?.addEventListener("click", openDocumentForArchive);
   documentsNode.querySelector("[data-documents-add-folder]")?.addEventListener("click", () => {
     if (!selectedCase) return;
     openFolderDialog(selectedCase, null, "documents");
+  });
+  documentsNode.querySelector("[data-documents-edit-folder]")?.addEventListener("click", () => {
+    if (!selectedCase || selectedFolderIndex < 0) return;
+    openFolderDialog(selectedCase, selectedFolderIndex, "documents");
   });
   documentsNode.querySelectorAll("[data-documents-template]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -392,6 +505,62 @@ export function renderDocumentsScreen(ctx) {
   documentsNode.querySelectorAll("[data-documents-ai]").forEach((button) => {
     button.addEventListener("click", () => {
       showToast?.("AI перевірка документа буде підключена після API для документів.", "info");
+    });
+  });
+  const updateDocumentStatus = (key, nextStatus) => {
+    const { caseId, encoded } = payloadFromKey(key);
+    const payload = getDocumentPayload(caseId, encoded);
+    const today = new Date().toLocaleDateString("uk-UA");
+    const update = (target) => {
+      if (!target) return;
+      target.status = nextStatus;
+      target.updated = today;
+      if (nextStatus === "Подано" && (!target.submitted || target.submitted === "-")) {
+        target.submitted = today;
+      }
+    };
+    update(payload.doc);
+    update(payload.file);
+    update(payload.linked?.file);
+    payload.item?.history?.unshift({
+      date: today,
+      text: `Статус документа «${payload.doc?.name || payload.file?.name || "Документ"}» змінено на «${nextStatus}».`
+    });
+    state.selectedDocumentKey = key;
+    renderDocumentsScreen(ctx);
+    showToast?.("Статус документа оновлено.");
+  };
+  documentsNode.querySelectorAll("[data-document-status-pick]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      updateDocumentStatus(button.dataset.documentStatusPick, button.dataset.documentStatusValue);
+    });
+  });
+  documentsNode.querySelector("[data-document-status-change]")?.addEventListener("change", (event) => {
+    updateDocumentStatus(event.currentTarget.dataset.documentStatusChange, event.currentTarget.value);
+  });
+  documentsNode.querySelectorAll("[data-document-date-change]").forEach((input) => {
+    input.addEventListener("change", (event) => {
+      const { caseId, encoded } = payloadFromKey(event.currentTarget.dataset.documentDateChange);
+      const payload = getDocumentPayload(caseId, encoded);
+      const field = event.currentTarget.dataset.documentDateField;
+      const today = new Date().toLocaleDateString("uk-UA");
+      const nextValue = event.currentTarget.value ? formatDate(event.currentTarget.value) : "-";
+      const update = (target) => {
+        if (!target) return;
+        target[field] = nextValue;
+        target.updated = today;
+      };
+      update(payload.doc);
+      update(payload.file);
+      update(payload.linked?.file);
+      payload.item?.history?.unshift({
+        date: today,
+        text: `${field === "submitted" ? "Дату подання" : "Строк відповіді"} документа «${payload.doc?.name || payload.file?.name || "Документ"}» змінено.`
+      });
+      state.selectedDocumentKey = event.currentTarget.dataset.documentDateChange;
+      renderDocumentsScreen(ctx);
+      showToast?.(field === "submitted" ? "Дату подання оновлено." : "Строк відповіді оновлено.");
     });
   });
   documentsNode.querySelectorAll("[data-document-kpi]").forEach((button) => {
@@ -406,6 +575,7 @@ export function renderDocumentsScreen(ctx) {
       state.documentArchiveCaseId = "all";
       state.documentArchiveFolder = "";
       state.selectedDocumentKey = "";
+      state.selectedDocumentKeys = [];
       renderDocumentsScreen(ctx);
     });
   });
@@ -414,6 +584,7 @@ export function renderDocumentsScreen(ctx) {
     state.documentQuickFilter = "all";
     state.documentArchiveCaseId = "all";
     state.documentArchiveFolder = "";
+    state.selectedDocumentKeys = [];
     renderDocumentsScreen(ctx);
     const input = documentsNode.querySelector("[data-document-query]");
     input?.focus();
@@ -422,11 +593,13 @@ export function renderDocumentsScreen(ctx) {
   documentsNode.querySelector("[data-document-status]")?.addEventListener("change", (event) => {
     state.documentQuickFilter = "all";
     state.documentStatusFilter = event.currentTarget.value;
+    state.selectedDocumentKeys = [];
     renderDocumentsScreen(ctx);
   });
   documentsNode.querySelector("[data-document-type]")?.addEventListener("change", (event) => {
     state.documentQuickFilter = "all";
     state.documentTypeFilter = event.currentTarget.value;
+    state.selectedDocumentKeys = [];
     renderDocumentsScreen(ctx);
   });
   documentsNode.querySelector("[data-document-client]")?.addEventListener("change", (event) => {
@@ -436,6 +609,7 @@ export function renderDocumentsScreen(ctx) {
     state.documentArchiveCaseId = "all";
     state.documentArchiveFolder = "";
     state.selectedDocumentKey = "";
+    state.selectedDocumentKeys = [];
     renderDocumentsScreen(ctx);
   });
   documentsNode.querySelector("[data-document-case]")?.addEventListener("change", (event) => {
@@ -448,12 +622,113 @@ export function renderDocumentsScreen(ctx) {
       state.documentArchiveCaseId = "all";
       state.documentArchiveFolder = "";
     }
+    state.selectedDocumentKeys = [];
     renderDocumentsScreen(ctx);
   });
   documentsNode.querySelector("[data-document-due-filter]")?.addEventListener("click", () => {
     state.documentQuickFilter = "all";
     state.documentDueFilter = state.documentDueFilter === "overdue" ? "all" : "overdue";
+    state.selectedDocumentKeys = [];
     renderDocumentsScreen(ctx);
+  });
+  documentsNode.querySelector("[data-document-reset]")?.addEventListener("click", () => {
+    state.documentQuickFilter = "all";
+    state.documentQuery = "";
+    state.documentStatusFilter = "all";
+    state.documentTypeFilter = "all";
+    state.documentClientFilter = "all";
+    state.documentDueFilter = "all";
+    state.documentCaseFilter = "all";
+    state.documentArchiveCaseId = "all";
+    state.documentArchiveFolder = "";
+    state.selectedDocumentKey = "";
+    state.selectedDocumentKeys = [];
+    renderDocumentsScreen(ctx);
+  });
+  documentsNode.querySelector("[data-select-document-page]")?.addEventListener("click", (event) => event.stopPropagation());
+  documentsNode.querySelector("[data-select-document-page]")?.addEventListener("change", (event) => {
+    state.selectedDocumentKeys = event.currentTarget.checked ? tableRows.map((doc) => doc.key) : [];
+    renderDocumentsScreen(ctx);
+  });
+  documentsNode.querySelectorAll("[data-select-document-row]").forEach((input) => {
+    input.addEventListener("click", (event) => event.stopPropagation());
+    input.addEventListener("change", () => {
+      const next = new Set(state.selectedDocumentKeys || []);
+      if (input.checked) next.add(input.dataset.selectDocumentRow);
+      else next.delete(input.dataset.selectDocumentRow);
+      state.selectedDocumentKeys = [...next].filter((key) => tableRowKeys.has(key));
+      renderDocumentsScreen(ctx);
+    });
+  });
+  documentsNode.querySelectorAll("[data-document-bulk-action]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const action = button.dataset.documentBulkAction;
+      if (action === "clear") {
+        state.selectedDocumentKeys = [];
+        renderDocumentsScreen(ctx);
+        showToast?.("Вибір документів скинуто.");
+        return;
+      }
+      const selectedKeys = state.selectedDocumentKeys || [];
+      if (!selectedKeys.length) return;
+      const today = new Date().toLocaleDateString("uk-UA");
+      if (action === "delete") {
+        const payloads = selectedKeys.map((key) => {
+          const { caseId, encoded } = payloadFromKey(key);
+          return getDocumentPayload(caseId, encoded);
+        });
+        const deletedNames = [];
+        payloads.forEach((payload) => {
+          if (!payload?.item) return;
+          const documentsToDelete = new Set([payload.doc].filter(Boolean));
+          const filesToDelete = new Set([payload.file, payload.linked?.file].filter(Boolean));
+          deletedNames.push(payload.doc?.name || payload.file?.name || "Документ");
+          payload.item.documents = (payload.item.documents || []).filter((doc) => !documentsToDelete.has(doc));
+          caseFolders(payload.item).forEach((folder) => {
+            folder.files = (folder.files || []).filter((file) => !filesToDelete.has(file));
+            folder.updated = today;
+          });
+          payload.item.history?.unshift({
+            date: today,
+            text: `Масово видалено документ: ${payload.doc?.name || payload.file?.name || "Документ"}.`
+          });
+        });
+        state.selectedDocumentKeys = [];
+        state.selectedDocumentKey = "";
+        renderDocumentsScreen(ctx);
+        showToast?.(`Видалено ${deletedNames.length} документів.`, "danger");
+        return;
+      }
+      const statusByAction = {
+        work: "В роботі",
+        submitted: "Подано",
+        received: "Отримано"
+      };
+      const nextStatus = statusByAction[action];
+      selectedKeys.forEach((key) => {
+        const { caseId, encoded } = payloadFromKey(key);
+        const payload = getDocumentPayload(caseId, encoded);
+        const update = (target) => {
+          if (!target) return;
+          target.status = nextStatus;
+          target.updated = today;
+          if (nextStatus === "Подано" && (!target.submitted || target.submitted === "-")) {
+            target.submitted = today;
+          }
+        };
+        update(payload.doc);
+        update(payload.file);
+        update(payload.linked?.file);
+        payload.item?.history?.unshift({
+          date: today,
+          text: `Масово змінено статус документа «${payload.doc?.name || payload.file?.name || "Документ"}» на «${nextStatus}».`
+        });
+      });
+      state.selectedDocumentKeys = [];
+      renderDocumentsScreen(ctx);
+      showToast?.(`Оновлено ${selectedKeys.length} документів.`);
+    });
   });
   documentsNode.querySelectorAll("[data-select-document]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -461,11 +736,38 @@ export function renderDocumentsScreen(ctx) {
       renderDocumentsScreen(ctx);
     });
   });
+  documentsNode.querySelectorAll("[data-document-row]").forEach((row) => {
+    const selectRow = () => {
+      state.selectedDocumentKey = row.dataset.documentRow;
+      renderDocumentsScreen(ctx);
+    };
+    row.addEventListener("click", (event) => {
+      if (event.target.closest("button, a, input, select, textarea, .row-action-menu-wrap")) return;
+      selectRow();
+    });
+    row.addEventListener("keydown", (event) => {
+      if (!["Enter", " "].includes(event.key)) return;
+      event.preventDefault();
+      selectRow();
+    });
+    row.addEventListener("dblclick", (event) => {
+      if (event.target.closest("button, a, input, select, textarea, .row-action-menu-wrap")) return;
+      const { caseId, encoded } = payloadFromKey(row.dataset.documentRow);
+      const payload = getDocumentPayload(caseId, encoded);
+      openStoredDocument(payload.file || payload.doc, {
+        caseId,
+        editContext: payload,
+        folderName: payload.folder?.name || payload.linked?.folder?.name,
+        returnView: "documents"
+      });
+    });
+  });
   documentsNode.querySelector("[data-document-all-node]")?.addEventListener("click", () => {
     state.documentArchiveCaseId = "all";
     state.documentArchiveFolder = "";
     state.documentCaseFilter = "all";
     state.selectedDocumentKey = "";
+    state.selectedDocumentKeys = [];
     renderDocumentsScreen(ctx);
   });
   documentsNode.querySelectorAll("[data-document-case-node]").forEach((button) => {
@@ -474,6 +776,7 @@ export function renderDocumentsScreen(ctx) {
       state.documentArchiveFolder = "";
       state.documentCaseFilter = "all";
       state.selectedDocumentKey = "";
+      state.selectedDocumentKeys = [];
       renderDocumentsScreen(ctx);
     });
   });
@@ -484,6 +787,7 @@ export function renderDocumentsScreen(ctx) {
       state.documentArchiveFolder = folderParts.join("|");
       state.documentCaseFilter = "all";
       state.selectedDocumentKey = "";
+      state.selectedDocumentKeys = [];
       renderDocumentsScreen(ctx);
     });
   });

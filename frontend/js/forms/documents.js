@@ -126,6 +126,9 @@ export function setupDocumentForm({
     });
     state.selectedCaseId = item.id;
     state.openCaseSection = "documents";
+    state.documentArchiveCaseId = item.id;
+    state.documentArchiveFolder = targetFolder.name;
+    state.selectedDocumentKey = `${item.id}|procedural:0`;
     $("#document-dialog").close();
     renderAll();
     switchView(state.documentDialogReturnView || "cases");
