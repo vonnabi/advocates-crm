@@ -79,7 +79,7 @@ https://<github-username>.github.io/<repository-name>/
    - Django web service `advocates-crm`;
    - PostgreSQL database `advocates-crm-db`;
    - переменные окружения `DATABASE_URL`, `SECRET_KEY`, `DJANGO_DEBUG=false`.
-5. После первого деплоя будет выполнен импорт демо-данных.
+5. При первом запуске сервис выполнит миграции и импорт демо-данных, если база еще пустая.
 
 Тестовый вход после деплоя:
 

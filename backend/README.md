@@ -32,9 +32,8 @@ cd backend
 В корне проекта есть `render.yaml` и `scripts/render-build.sh`. Render поднимает Django web service и PostgreSQL базу из GitHub:
 
 - `buildCommand`: установка зависимостей и `collectstatic`;
-- `preDeployCommand`: `python manage.py migrate`;
-- `initialDeployHook`: `python manage.py seed_demo`;
-- `startCommand`: Gunicorn для `config.wsgi:application`.
+- `startCommand`: `scripts/render-start.sh`;
+- `render-start.sh`: применяет миграции, импортирует демо-данные только если база пустая, затем запускает Gunicorn для `config.wsgi:application`.
 
 Для локальной проверки production-настроек:
 
