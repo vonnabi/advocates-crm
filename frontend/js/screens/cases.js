@@ -508,7 +508,12 @@ function renderCaseList() {
     event.stopPropagation();
     const [caseId, encoded] = node.dataset.previewViewDocument.split("|");
     const payload = getDocumentPayload(caseId, encoded);
-    openStoredDocument(payload.file || payload.doc);
+    openStoredDocument(payload.file || payload.doc, {
+      caseId,
+      editContext: payload,
+      folderName: payload.folder?.name || payload.linked?.folder?.name,
+      returnView: "cases"
+    });
   }));
   document.querySelectorAll("[data-preview-edit-document]").forEach((node) => node.addEventListener("click", (event) => {
     event.preventDefault();
@@ -985,7 +990,12 @@ function renderCaseProfile(id) {
   document.querySelectorAll("[data-view-document]").forEach((button) => button.addEventListener("click", (event) => {
     event.stopPropagation();
     const payload = getDocumentPayload(item.id, button.dataset.viewDocument);
-    openStoredDocument(payload.file || payload.doc);
+    openStoredDocument(payload.file || payload.doc, {
+      caseId: item.id,
+      editContext: payload,
+      folderName: payload.folder?.name || payload.linked?.folder?.name,
+      returnView: "cases"
+    });
   }));
   document.querySelectorAll("[data-edit-document]").forEach((button) => button.addEventListener("click", (event) => {
     event.stopPropagation();

@@ -7,7 +7,9 @@ const DIALOG_CLOSE_BUTTONS = [
   ["#finance-action-dialog-close", "#finance-action-dialog"],
   ["#salary-dialog-close", "#salary-dialog"],
   ["#document-dialog-close", "#document-dialog"],
+  ["#document-preview-close", "#document-preview-dialog"],
   ["#task-dialog-close", "#task-dialog"],
+  ["#subtask-dialog-close", "#subtask-dialog"],
   ["#event-dialog-close", "#event-dialog"],
   ["#folder-dialog-close", "#folder-dialog"]
 ];

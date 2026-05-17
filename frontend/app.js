@@ -133,6 +133,7 @@ const {
   openStoredDocument,
   openDocumentDialog,
   openTaskDialog,
+  openSubtaskDialog,
   openEventDialog,
   openFolderDialog,
   openDeleteDocumentConfirm
@@ -146,6 +147,8 @@ const {
   caseProceduralItems,
   calendarEntries,
   calendarEventMeta,
+  renderAll,
+  switchView,
   showToast
 });
 
@@ -193,6 +196,7 @@ function screenContext() {
     openFinanceDialog,
     openDocumentDialog,
     openTaskDialog,
+    openSubtaskDialog,
     openEventDialog,
     openFolderDialog,
     openDeleteDocumentConfirm,

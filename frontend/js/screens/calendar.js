@@ -56,6 +56,8 @@ export function renderCalendarScreen(ctx) {
 }
 
 function eventClass(event) {
+  const typeConfig = calendarEventTypeMap()[event.type];
+  if (typeConfig) return typeConfig.className;
   if (event.source === "task") return "task";
   if (event.type.includes("Зустр") || event.type.includes("Консульта")) return "meeting";
   if (event.type.includes("Суд")) return "court";
@@ -65,18 +67,22 @@ function eventClass(event) {
   return "other";
 }
 
+function calendarEventTypeMap() {
+  return {
+    "Судове засідання": { className: "court", label: "Суд", hint: "Суд / орган" },
+    "Зустріч з клієнтом": { className: "meeting", label: "Зустріч", hint: "Клієнт" },
+    "Консультація": { className: "consultation", label: "Консультація", hint: "Первинний контакт" },
+    "Підготовка документа": { className: "doc", label: "Документ", hint: "Процесуальний документ" },
+    "Крайній строк": { className: "deadline", label: "Дедлайн", hint: "Контроль строку" },
+    "Ожидання відповіді від органу": { className: "waiting", label: "Очікування", hint: "Суд / ТЦК / держорган" },
+    "Внутрішня задача": { className: "task", label: "Задача", hint: "Внутрішня робота" },
+    "Інше": { className: "other", label: "Інше", hint: "Довільна подія" }
+  };
+}
+
 export function calendarEventTypes(ctx = null) {
   if (ctx) applyContext(ctx);
-  return [
-    "Судове засідання",
-    "Зустріч з клієнтом",
-    "Консультація",
-    "Підготовка документа",
-    "Крайній строк",
-    "Ожидання відповіді від органу",
-    "Внутрішня задача",
-    "Інше"
-  ];
+  return Object.keys(calendarEventTypeMap());
 }
 
 export function calendarStatuses(ctx = null) {
@@ -128,7 +134,7 @@ function calendarReminderRows(event) {
     before: beforeOptions[index] || meta.reminderBefore,
     recipient: meta.reminderRecipients,
     scheduledAt: reminderScheduledAt(event, beforeOptions[index] || meta.reminderBefore),
-    status: event.source === "task" ? "Очікує" : "Увімкнено"
+    status: event.status === "Виконано" ? "Виконано" : event.source === "task" ? "Очікує" : "Увімкнено"
   }));
 }
 
@@ -226,6 +232,11 @@ function renderCalendar() {
     ? [...filtered].sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))
     : filtered.filter((event) => visibleIso.has(event.date));
   const upcoming = [...filtered].sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`)).slice(0, 4);
+  const typeStats = calendarEventTypes().map((type) => ({
+    type,
+    count: filtered.filter((event) => event.type === type).length,
+    ...calendarEventTypeMap()[type]
+  }));
   const selected = visibleEvents.find((event) => event.id === state.selectedEventId) || visibleEvents[0] || filtered.find((event) => event.id === state.selectedEventId) || filtered[0] || entries[0];
   const gridStyle = `--calendar-columns:${mode === "day" ? 1 : 7};`;
   const pickerYears = Array.from({ length: 11 }, (_, index) => activeDate.getFullYear() - 5 + index);
@@ -273,7 +284,7 @@ function renderCalendar() {
         <select id="calendar-responsible-filter" aria-label="Фільтр відповідальних"><option value="all">Усі відповідальні</option>${responsibleOptions}</select>
         <select id="calendar-status-filter" aria-label="Фільтр статусів"><option value="all">Усі статуси</option>${calendarStatuses().map((status) => `<option value="${status}" ${statusFilter === status ? "selected" : ""}>${status}</option>`).join("")}</select>
         <input id="calendar-authority-filter" value="${state.calendarAuthorityFilter || ""}" placeholder="Орган / суд / ТЦК" />
-        <label class="calendar-overdue-filter"><input id="calendar-overdue-filter" type="checkbox" ${state.calendarOverdueOnly ? "checked" : ""} /> Просрочені</label>
+        <label class="calendar-overdue-filter"><input id="calendar-overdue-filter" type="checkbox" ${state.calendarOverdueOnly ? "checked" : ""} /> Прострочені</label>
       </div>
       <div class="calendar-layout">
         <div class="calendar-left-stack">
@@ -311,16 +322,15 @@ function renderCalendar() {
             </div>
             `}
             <div class="calendar-legend">
-              <span><i class="meeting"></i>Зустрічі</span>
-              <span><i class="court"></i>Суд</span>
-              <span><i class="doc"></i>Документи</span>
-              <span><i class="deadline"></i>Кінцевий термін</span>
-              <span><i class="waiting"></i>Очікування відповіді</span>
-              <span><i class="other"></i>Інше</span>
+              ${typeStats.map((item) => `<button type="button" class="${filter === item.type ? "active" : ""}" data-calendar-type="${item.type}" title="${item.hint}">
+                <i class="${item.className}"></i>
+                <span>${item.label}</span>
+                <em>${item.count}</em>
+              </button>`).join("")}
             </div>
           </div>
           <div class="panel calendar-events-list">
-            <div class="calendar-events-head"><h2>Найближчі події</h2><button class="ghost">Показати всі</button></div>
+            <div class="calendar-events-head"><h2>Найближчі події</h2><button class="ghost" type="button" data-calendar-show-list>Показати всі</button></div>
             ${upcoming.map((event) => {
               const client = clientById(event.clientId);
               const leftLabel = eventTimeLeftLabel(event);
@@ -337,8 +347,8 @@ function renderCalendar() {
         <aside class="calendar-side">
           <div class="panel" id="event-card"></div>
           <div class="panel calendar-reminders">
-            <div class="calendar-reminders-head"><h2>Нагадування</h2><button class="ghost">+ Додати нагадування</button></div>
-            ${selected ? calendarReminderRows(selected).map((row) => `<div class="reminder-row">${icon(row.channel === "SMS" ? "mail" : row.channel === "CRM" ? "bell" : "telegram")}<div><strong>${row.channel}</strong><span>${row.before} до події (${row.scheduledAt})</span></div><em class="reminder-status">${row.status}</em></div>`).join("") : `<p class="muted">Виберіть подію, щоб побачити нагадування.</p>`}
+            <div class="calendar-reminders-head"><h2>Нагадування</h2><button class="ghost" type="button" data-send-selected-reminder>${icon("bell")} Нагадати зараз</button></div>
+            ${selected ? calendarReminderRows(selected).map((row) => `<div class="reminder-row">${icon(row.channel === "SMS" ? "mail" : row.channel === "CRM" ? "bell" : "telegram")}<div><strong>${row.channel}</strong><span>${row.before} до події (${row.scheduledAt})</span><small>${row.recipient}</small></div><em class="reminder-status">${row.status}</em></div>`).join("") : `<p class="muted">Виберіть подію, щоб побачити нагадування.</p>`}
           </div>
           <div class="panel calendar-reminders active-reminders">
             <h2>Нагадування активні</h2>
@@ -362,6 +372,18 @@ function renderCalendar() {
     state.calendarPickerOpen = false;
     renderCalendar();
   }));
+  document.querySelectorAll("[data-calendar-type]").forEach((button) => button.addEventListener("click", () => {
+    state.calendarFilter = state.calendarFilter === button.dataset.calendarType ? "all" : button.dataset.calendarType;
+    renderCalendar();
+  }));
+  document.querySelector("[data-calendar-show-list]")?.addEventListener("click", () => {
+    state.calendarMode = "list";
+    renderCalendar();
+  });
+  document.querySelector("[data-send-selected-reminder]")?.addEventListener("click", () => {
+    if (!selected || selected.source === "task") return;
+    sendManualReminder(selected.id);
+  });
   document.querySelector("[data-calendar-today]")?.addEventListener("click", () => {
     state.calendarDate = todayIso();
     state.calendarPickerOpen = false;
@@ -442,13 +464,25 @@ function renderCalendar() {
   });
 }
 
+function sendManualReminder(eventId) {
+  const target = state.events.find((item) => `event-${item.id}` === eventId);
+  if (!target) return;
+  const channels = calendarEventMeta({ ...target, id: eventId }).reminderChannels;
+  target.reminderLog = [
+    { date: new Date().toLocaleString("uk-UA"), text: `Нагадування відправлено вручну: ${channels}.` },
+    ...(target.reminderLog || [])
+  ];
+  renderCalendar();
+}
+
 function renderEventCard(id) {
   const event = calendarEntries().find((item) => item.id === id) || calendarEntries()[0];
   if (!event) {
     $("#event-card").innerHTML = `<h2>Подія</h2><p class="muted">Подій поки немає.</p>`;
     return;
   }
-  const { client, caseItem, authority, location, responsible, endTime, recurrence, reminderBefore, reminderChannels } = calendarEventMeta(event);
+  const { client, caseItem, authority, location, responsible, endTime, recurrence, reminderBefore, reminderChannels, reminderRecipients } = calendarEventMeta(event);
+  const typeConfig = calendarEventTypeMap()[event.type] || calendarEventTypeMap()["Інше"];
   const orderedEvents = [...calendarEntries()].sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
   const eventIndex = Math.max(0, orderedEvents.findIndex((item) => item.id === event.id));
   const previousEvent = orderedEvents[(eventIndex - 1 + orderedEvents.length) % orderedEvents.length];
@@ -474,7 +508,7 @@ function renderEventCard(id) {
     <div class="event-card-title">
       <span class="event-dot ${eventClass(event)}"></span>
       <strong>${event.title}</strong>
-      ${badge(event.source === "task" ? "Задача" : event.type, eventClass(event) === "court" ? "green" : eventClass(event) === "deadline" ? "red" : "blue")}
+      ${badge(event.source === "task" ? "Задача" : typeConfig.label, eventClass(event) === "court" ? "green" : eventClass(event) === "deadline" ? "red" : "blue")}
     </div>
     <div class="event-profile">
       <div class="event-info-list">
@@ -484,9 +518,13 @@ function renderEventCard(id) {
         <div class="event-info-row">${icon("briefcase")}<span><strong>Справа №${event.caseId}</strong><em>${caseItem?.title || "Без назви справи"}</em></span></div>
         <div class="event-info-row">${icon("user")}<span><strong>Клієнт: ${client?.name || "Не вказано"}</strong></span></div>
         <div class="event-info-row">${icon("user")}<span><strong>Відповідальний: ${responsible}</strong></span></div>
-        <div class="event-info-row">${icon("bell")}<span><strong>${reminderBefore} · ${reminderChannels}</strong><em>${recurrence} · ${event.status}</em></span></div>
+        <div class="event-info-row">${icon("bell")}<span><strong>${reminderBefore} · ${reminderChannels}</strong><em>${reminderRecipients} · ${recurrence} · ${event.status}</em></span></div>
       </div>
       <p class="muted event-description">${event.description || "Опис події ще не додано."}</p>
+      <div class="event-reminder-log">
+        <strong>Журнал нагадувань</strong>
+        ${(event.reminderLog || []).map((row) => `<span>${row.date} · ${row.text}</span>`).join("") || `<span>Автоматичні нагадування ще не відправлялись.</span>`}
+      </div>
       <div class="event-card-actions" id="event-card-actions">
         <button class="secondary" data-edit-calendar-event="${event.id}">${icon("edit")} Редагувати</button>
         <button class="secondary danger" data-delete-calendar-event="${event.id}">${icon("trash")} Видалити</button>
@@ -532,13 +570,7 @@ function renderEventCard(id) {
   });
   document.querySelector("[data-send-calendar-reminder]")?.addEventListener("click", () => {
     if (event.source === "task") return;
-    const target = state.events.find((item) => `event-${item.id}` === event.id);
-    if (!target) return;
-    target.reminderLog = [
-      { date: new Date().toLocaleString("uk-UA"), text: "Нагадування відправлено вручну через CRM." },
-      ...(target.reminderLog || [])
-    ];
-    renderCalendar();
+    sendManualReminder(event.id);
   });
   document.querySelector("[data-delete-calendar-event]")?.addEventListener("click", () => {
     if (event.source === "task") {

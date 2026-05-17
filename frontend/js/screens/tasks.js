@@ -13,6 +13,7 @@ let clientById;
 let caseById;
 let parseDisplayDate;
 let openTaskDialog;
+let openSubtaskDialog;
 let openDeleteDocumentConfirm;
 let renderAll;
 let renderCases;
@@ -38,6 +39,7 @@ function applyContext(ctx) {
     caseById,
     parseDisplayDate,
     openTaskDialog,
+    openSubtaskDialog,
     openDeleteDocumentConfirm,
     renderAll,
     renderCases,
@@ -80,6 +82,66 @@ function sourceTask(task) {
   return task ? caseById(task.caseId)?.tasks?.[task.taskIndex] : null;
 }
 
+function taskCoexecutors(task = {}) {
+  if (Array.isArray(task.coexecutors)) return task.coexecutors.filter(Boolean);
+  return String(task.coexecutors || "").split(",").map((value) => value.trim()).filter(Boolean);
+}
+
+function taskReminderLabel(task = {}) {
+  if (!task.reminderEnabled) return "Без нагадування";
+  return `${task.reminderBefore || "За 1 день"} · ${task.reminderChannel || "CRM"}`;
+}
+
+function taskSubtasks(task = {}, fallbackResponsible = "") {
+  if (Array.isArray(task.subtasks) && task.subtasks.length) return task.subtasks;
+  return [
+    { title: "Перевірити вихідні матеріали", responsible: fallbackResponsible, due: task.dueText || task.due || "Не вказано", status: task.completed ? "Виконано" : "В роботі" },
+    { title: "Підготувати результат по задачі", responsible: fallbackResponsible, due: task.plannerDateText || task.dueText || "Не вказано", status: task.completed ? "Виконано" : "Нова" }
+  ];
+}
+
+function taskProgress(task = {}, subtasks = []) {
+  if (task.completed) return 100;
+  if (subtasks.length) {
+    return Math.max(10, Math.round((subtasks.filter((subtask) => subtask.status === "Виконано").length / subtasks.length) * 100));
+  }
+  if (task.status === "В роботі") return 60;
+  if (task.status === "Очікує") return 35;
+  return 20;
+}
+
+function renderTaskSubtasksMenu(task = {}) {
+  const subtasks = taskSubtasks(task, task.responsible);
+  const doneCount = subtasks.filter((subtask) => subtask.status === "Виконано").length;
+  return `
+    <details class="task-subtasks-popover" data-task-subtasks-menu>
+      <summary>
+        ${icon("check")}
+        <span>Підзадачі: ${subtasks.length}</span>
+        <em>${doneCount}/${subtasks.length}</em>
+      </summary>
+      <div class="task-subtasks-menu">
+        ${subtasks.map((subtask, subtaskIndex) => `
+          <div class="task-subtasks-menu-row">
+            <span>
+              <strong>${subtask.title}</strong>
+              <small>${subtask.responsible || task.responsible || "Не вказано"} · ${subtask.due || task.dueText || "Не вказано"}</small>
+            </span>
+            ${badge(subtask.status || "Нова", taskTone(subtask.status || "Нова"))}
+            <div class="task-subtasks-actions">
+              ${actionMenu([
+                { label: "Редагувати задачу", icon: "edit", attrs: { "data-edit-subtask-task": task.key, "data-subtask-index": subtaskIndex } },
+                { label: "Видалити підзадачу", icon: "trash", danger: true, attrs: { "data-delete-subtask-task": task.key, "data-subtask-index": subtaskIndex } }
+              ], { label: "Дії підзадачі", triggerAttr: "data-subtask-action-menu-trigger" })}
+            </div>
+          </div>
+        `).join("")}
+        <button class="task-subtasks-new" type="button" data-new-subtask-task="${task.key}">+ Додати підзадачу</button>
+      </div>
+    </details>
+  `;
+}
+
 function syncPlannerQueue(tasks = allCaseTasks()) {
   let changed = 0;
   tasks.forEach((task) => {
@@ -117,6 +179,7 @@ export function allCaseTasks(ctx = null) {
       const manualReason = task.plannerManual ? "Додано вручну" : "";
       const importantReason = task.plannerImportant ? "Важлива задача" : "";
       const plannerSuppressed = Boolean(task.plannerSuppressed && !task.plannerManual && !task.plannerImportant);
+      const coexecutors = taskCoexecutors(task);
       return {
         ...task,
         key: `${item.id}:${index}`,
@@ -131,6 +194,10 @@ export function allCaseTasks(ctx = null) {
         completed,
         daysUntilDue,
         priority,
+        coexecutors,
+        teamTask: coexecutors.length > 0,
+        reminderLabel: taskReminderLabel(task),
+        plannerDateText: task.plannerDateText || (task.plannerDate ? formatDate(task.plannerDate) : ""),
         plannerAutoReason: autoReason,
         plannerReason: manualReason || importantReason || autoReason || "",
         plannerIncluded: Boolean(!plannerSuppressed && (task.plannerManual || task.plannerImportant || autoReason)),
@@ -158,32 +225,36 @@ function taskCard(task) {
     `;
   }
   const caseItem = caseById(task.caseId);
-  const progress = task.completed ? 100 : task.status === "В роботі" ? 60 : task.status === "Очікує" ? 35 : 20;
+  const subtasks = taskSubtasks(task, task.responsible);
+  const progress = taskProgress(task, subtasks);
   const dueIso = parseDisplayDate(task.dueText);
-  const plannerDate = dueIso ? formatDate(dueIso) : "Не заплановано";
-  const dueStatus = task.overdue ? "Просрочено" : "Завтра";
+  const plannerDate = task.plannerDateText || (dueIso ? formatDate(dueIso) : "Не заплановано");
+  const dueStatus = task.overdue ? "Просрочено" : task.daysUntilDue === 0 ? "Сьогодні" : task.daysUntilDue === 1 ? "Завтра" : "За планом";
   const detailTab = state.taskDetailTab || "info";
   const plannerLabel = task.plannerIncluded
     ? `${task.plannerReason || "Заплановано"}<br>${plannerDate}`
     : "Не заплановано";
-  const taskSubtasks = [
-    { title: "Перевірити вихідні документи", responsible: task.responsible, due: task.dueText, status: task.completed ? "Виконано" : "В роботі" },
-    { title: "Підготувати короткий проєкт рішення", responsible: "Петренко С.В.", due: plannerDate, status: "Очікує" },
-    { title: "Узгодити результат з відповідальним адвокатом", responsible: task.responsible, due: plannerDate, status: "Нова" }
-  ];
+  const coexecutors = taskCoexecutors(task);
   const taskFiles = [
+    ...(task.files || []).map((file) => ({
+      name: file.name,
+      meta: file.meta || file.status || "Файл задачі",
+      tone: documentStatusTone(file.status)
+    })),
     ...(caseItem?.documents || []).slice(0, 3).map((document) => ({
       name: `${document.name}.docx`,
       meta: `${document.status || "Без статусу"} · ${document.submitted || "дата не вказана"}`,
       tone: documentStatusTone(document.status)
     })),
-    { name: "Коментар до задачі.pdf", meta: "Файл задачі · чернетка", tone: "blue" }
+    { name: "Матеріали задачі.pdf", meta: "Файл задачі · чернетка", tone: "blue" }
   ].slice(0, 4);
   const taskHistory = [
+    ...(task.history || []),
     { date: task.dueText, text: `Дедлайн задачі встановлено для ${task.responsible}.` },
-    { date: "15.05.2024 09:30", text: "Задачу додано до планера." },
+    ...(task.plannerIncluded ? [{ date: plannerDate, text: `Задачу додано до планера: ${task.plannerReason || "ручне планування"}.` }] : []),
     ...(caseItem?.history || []).slice(0, 2)
   ];
+  const taskComments = task.comments || (task.comment ? [{ author: task.responsible, date: task.dueText, text: task.comment }] : []);
   const detailPanels = {
     info: `
       <div class="task-detail-info">
@@ -195,20 +266,29 @@ function taskCard(task) {
           <span>Відповідальний</span>
           <strong class="advocate-person">${advocatePhoto(task.responsible)}${task.responsible}</strong>
         </div>
+        <div>
+          <span>Співвиконавці</span>
+          <strong>${coexecutors.length ? coexecutors.map((name) => `<em class="task-chip">${name}</em>`).join("") : "Не призначено"}</strong>
+        </div>
         <div><span>Дедлайн</span><strong>${task.dueText}<br><em>${dueStatus}</em></strong></div>
         <div>
           <span>Статус</span>
-          <select class="task-status-select" data-task-status-change="${task.key}">
-            ${["Нова", "Очікує", "В роботі", "Заплановано", "Виконано"].map((status) => `<option value="${status}" ${task.status === status ? "selected" : ""}>${status}</option>`).join("")}
+          <select class="task-status-select tone-${taskTone(task.status)}" data-task-status-change="${task.key}">
+            ${["Нова", "Заплановано", "Очікує", "В роботі", "На перевірці", "Перенесено", "Просрочено", "Скасовано", "Терміново", "Не терміново", "Виконано"].map((status) => `<option value="${status}" ${task.status === status ? "selected" : ""}>${status}</option>`).join("")}
           </select>
         </div>
         <div>
           <span>Пов'язана з планером</span>
           <strong class="planner-connected"><span class="event-dot ${task.plannerIncluded ? "court" : ""}"></span>${plannerLabel}</strong>
         </div>
+        <div>
+          <span>Нагадування</span>
+          <strong>${task.reminderLabel}</strong>
+        </div>
       </div>
       <h3>Опис</h3>
       <p>${task.caseTitle}. ${task.description || "Контроль виконання задачі та пов'язаних матеріалів по справі."}</p>
+      ${task.comment ? `<h3>Коментар</h3><p>${task.comment}</p>` : ""}
       <div class="task-progress">
         <div><strong>Прогрес виконання</strong><span>${progress}%</span></div>
         <i style="--progress:${progress}%"></i>
@@ -216,7 +296,7 @@ function taskCard(task) {
     `,
     subtasks: `
       <div class="task-subtask-list">
-        ${taskSubtasks.map((subtask, index) => `
+        ${subtasks.map((subtask) => `
           <label class="task-subtask-row">
             <input type="checkbox" ${subtask.status === "Виконано" ? "checked" : ""} />
             <span>
@@ -251,6 +331,18 @@ function taskCard(task) {
           </div>
         `).join("")}
       </div>
+    `,
+    comments: `
+      <div class="task-history-list task-comments-list">
+        ${taskComments.map((item) => `
+          <div class="task-history-row">
+            <i></i>
+            <span>${item.date || "Сьогодні"} · ${item.author || task.responsible}</span>
+            <strong>${item.text}</strong>
+          </div>
+        `).join("") || `<p class="muted">Коментарів по задачі ще немає.</p>`}
+      </div>
+      <button class="secondary task-inline-add" data-edit-task-global="${task.key}">+ Додати коментар</button>
     `
   };
   return `
@@ -265,8 +357,9 @@ function taskCard(task) {
       <div class="task-detail-priority">${badge(`${task.priority} пріоритет`, riskTone(task.priority))}</div>
       <div class="task-detail-tabs">
         <button class="${detailTab === "info" ? "active" : ""}" data-task-detail-tab="info">Інформація</button>
-        <button class="${detailTab === "subtasks" ? "active" : ""}" data-task-detail-tab="subtasks">Підзадачі <span>${taskSubtasks.length}</span></button>
+        <button class="${detailTab === "subtasks" ? "active" : ""}" data-task-detail-tab="subtasks">Підзадачі <span>${subtasks.length}</span></button>
         <button class="${detailTab === "files" ? "active" : ""}" data-task-detail-tab="files">Файли</button>
+        <button class="${detailTab === "comments" ? "active" : ""}" data-task-detail-tab="comments">Коментарі <span>${taskComments.length}</span></button>
         <button class="${detailTab === "history" ? "active" : ""}" data-task-detail-tab="history">Історія</button>
       </div>
       <div class="task-detail-panel">${detailPanels[detailTab] || detailPanels.info}</div>
@@ -288,7 +381,16 @@ function renderTasks() {
   const query = (state.taskQuery || "").toLowerCase().trim();
   const tab = state.taskTab || "all";
   const filtered = tasks.filter((task) => {
-    const byQuery = !query || [task.title, task.caseId, task.caseTitle, task.clientName, task.responsible].some((value) => String(value).toLowerCase().includes(query));
+    const byQuery = !query || [
+      task.title,
+      task.caseId,
+      task.caseTitle,
+      task.clientName,
+      task.responsible,
+      task.description,
+      task.comment,
+      ...taskCoexecutors(task)
+    ].some((value) => String(value).toLowerCase().includes(query));
     const byStatus = state.taskStatusFilter === "all" || task.status === state.taskStatusFilter;
     const byPriority = state.taskPriorityFilter === "all" || task.priority === state.taskPriorityFilter;
     const byCase = state.taskCaseFilter === "all" || task.caseId === state.taskCaseFilter;
@@ -296,6 +398,7 @@ function renderTasks() {
     const byTab =
       tab === "all" ||
       (tab === "mine" && task.responsible === "Іваненко А.Ю.") ||
+      (tab === "team" && task.teamTask) ||
       (tab === "overdue" && task.overdue) ||
       (tab === "done" && task.completed) ||
       (tab === "cases" && task.caseId);
@@ -315,6 +418,8 @@ function renderTasks() {
   const overdueCount = tasks.filter((task) => task.overdue).length;
   const doneCount = tasks.filter((task) => task.completed).length;
   const plannedCount = tasks.filter((task) => task.plannerIncluded && !task.completed).length;
+  const teamCount = tasks.filter((task) => task.teamTask).length;
+  const reminderCount = tasks.filter((task) => task.reminderEnabled).length;
   const inWorkCount = tasks.filter((task) => task.status === "В роботі").length;
   const completion = tasks.length ? Math.round((doneCount / tasks.length) * 100) : 0;
   const responsibleOptions = [...new Set(tasks.map((task) => task.responsible).filter(Boolean))];
@@ -328,6 +433,18 @@ function renderTasks() {
   const mediumPct = priorityPct(mediumPriority);
   const lowPct = priorityPct(lowPriority);
   const plannedPct = Math.max(0, 100 - highPct - mediumPct - lowPct);
+  const bottomPlanItems = tasks
+    .filter((task) => task.plannerIncluded && !task.completed)
+    .sort((a, b) => String(a.plannerTime || a.dueText).localeCompare(String(b.plannerTime || b.dueText)))
+    .slice(0, 3);
+  const planTime = (task) => task.plannerTime || String(task.dueText || "").match(/\d{2}:\d{2}/)?.[0] || "09:00";
+  const planTone = (task) => task.priority === "Високий" ? "red" : task.priority === "Середній" ? "amber" : task.priority === "Низький" ? "green" : "blue";
+  const syncSteps = [
+    { icon: "calendar", title: "Створіть задачу", text: "Додайте задачу з дедлайном" },
+    { icon: "check", title: "Встановіть пріоритет", text: "Задачі сортуються за важливістю" },
+    { icon: "briefcase", title: "Додано в планер", text: "Важливі задачі йдуть у план" },
+    { icon: "calendar", title: "Виконуйте та контролюйте", text: "Відстежуйте прогрес" }
+  ];
   $("#tasks").innerHTML = `
     <div class="tasks-screen">
       <div class="tasks-page-head">
@@ -343,6 +460,7 @@ function renderTasks() {
       <div class="tasks-tabs" role="tablist">
         <button class="${tab === "all" ? "active" : ""}" data-task-tab="all">Всі задачі</button>
         <button class="${tab === "mine" ? "active" : ""}" data-task-tab="mine">Мої задачі</button>
+        <button class="${tab === "team" ? "active" : ""}" data-task-tab="team">Командні <span>${teamCount}</span></button>
         <button class="${tab === "cases" ? "active" : ""}" data-task-tab="cases">По справах</button>
         <button class="${tab === "overdue" ? "active" : ""}" data-task-tab="overdue">Просрочені</button>
         <button class="${tab === "done" ? "active" : ""}" data-task-tab="done">Завершені</button>
@@ -354,7 +472,7 @@ function renderTasks() {
             <article><div><span>Виконано</span><strong>${doneCount}</strong><em>${completion}%</em></div><i class="green">${icon("check")}</i></article>
             <article><div><span>В роботі</span><strong>${inWorkCount}</strong><em>${tasks.length ? Math.round((inWorkCount / tasks.length) * 100) : 0}%</em></div><i class="amber">${icon("search")}</i></article>
             <article><div><span>Просрочені</span><strong>${overdueCount}</strong><em>${tasks.length ? Math.round((overdueCount / tasks.length) * 100) : 0}%</em></div><i class="red">${icon("bell")}</i></article>
-            <article><div><span>Заплановано в планері</span><strong>${plannedCount}</strong><em>${tasks.length ? Math.round((plannedCount / tasks.length) * 100) : 0}%</em></div><i class="violet">${icon("calendar")}</i></article>
+            <article><div><span>Планер / нагадування</span><strong>${plannedCount} / ${reminderCount}</strong><em>${tasks.length ? Math.round((plannedCount / tasks.length) * 100) : 0}% у плані</em></div><i class="violet">${icon("calendar")}</i></article>
           </div>
           <div class="tasks-toolbar">
             <input id="task-search" value="${state.taskQuery || ""}" type="search" placeholder="Пошук задачі, клієнта, справи..." />
@@ -367,7 +485,7 @@ function renderTasks() {
             </select>
             <select id="task-status-filter">
               <option value="all">Всі статуси</option>
-              ${["Очікує", "В роботі", "Терміново", "Не терміново", "Виконано"].map((status) => `<option value="${status}" ${state.taskStatusFilter === status ? "selected" : ""}>${status}</option>`).join("")}
+              ${["Нова", "Заплановано", "Очікує", "В роботі", "На перевірці", "Перенесено", "Просрочено", "Скасовано", "Терміново", "Не терміново", "Виконано"].map((status) => `<option value="${status}" ${state.taskStatusFilter === status ? "selected" : ""}>${status}</option>`).join("")}
             </select>
             <select id="task-case-filter">
               <option value="all">Всі справи</option>
@@ -394,6 +512,12 @@ function renderTasks() {
                       <div>
                         <strong>${task.title}</strong>
                         <span>${task.caseTitle}</span>
+                        <div class="task-row-meta">
+                          ${renderTaskSubtasksMenu(task)}
+                          ${task.teamTask ? `<b>Співвиконавці: ${task.coexecutors.length}</b>` : ""}
+                          ${task.reminderEnabled ? `<b>${icon("bell")} ${task.reminderBefore || "Нагадування"}</b>` : ""}
+                          ${task.plannerIncluded ? `<b>${icon("calendar")} Планер</b>` : ""}
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -435,11 +559,15 @@ function renderTasks() {
       <div class="tasks-bottom-grid">
         <article class="panel task-sync-card">
           <h2>Як працює синхронізація з планером</h2>
-          <div>
-            <span>${icon("calendar")}<strong>Створіть задачу</strong><em>Додайте задачу з пріоритетом та дедлайном</em></span>
-            <span>${icon("check")}<strong>Встановіть пріоритет</strong><em>Задачі сортуються за рівнем важливості</em></span>
-            <span>${icon("bell")}<strong>Додано в планер</strong><em>Найважливіші задачі потрапляють в план дня</em></span>
-            <span>${icon("calendar")}<strong>Контролюйте</strong><em>Відстежуйте прогрес виконання</em></span>
+          <div class="task-sync-flow">
+            ${syncSteps.map((step, index) => `
+              <span class="task-sync-step">
+                <i>${icon(step.icon)}</i>
+                <strong>${step.title}</strong>
+                <em>${step.text}</em>
+              </span>
+              ${index < syncSteps.length - 1 ? `<b class="task-sync-arrow">→</b>` : ""}
+            `).join("")}
           </div>
         </article>
         <article class="panel task-priority-card">
@@ -455,8 +583,18 @@ function renderTasks() {
           </div>
         </article>
         <article class="panel task-plan-card">
-          <h2>Задачі в планері на завтра</h2>
-          ${tasks.filter((task) => task.plannerIncluded && !task.completed).slice(0, 3).map((task) => `<div><time>${task.dueText}</time><strong>${task.title}</strong><span>№${task.caseId} · ${task.plannerReason || "Планер"}</span></div>`).join("")}
+          <h2>Задачі в планері на завтра (16.05.2024)</h2>
+          <div class="task-plan-list">
+            ${bottomPlanItems.map((task) => `
+              <div class="task-plan-row ${planTone(task)}">
+                <time>${planTime(task)}</time>
+                <span>
+                  <strong>${task.title}</strong>
+                  <em>№${task.caseId}</em>
+                </span>
+              </div>
+            `).join("") || `<p class="muted">Задачі в планері відсутні.</p>`}
+          </div>
           <button class="ghost" data-view-link="planner">Відкрити планер</button>
         </article>
       </div>
@@ -534,6 +672,15 @@ function renderTasks() {
       scrollTaskDetailIntoView();
     });
   });
+  document.querySelectorAll("[data-task-subtasks-menu]").forEach((details) => {
+    details.addEventListener("click", (event) => event.stopPropagation());
+    details.addEventListener("toggle", () => {
+      if (!details.open) return;
+      document.querySelectorAll("[data-task-subtasks-menu]").forEach((other) => {
+        if (other !== details) other.open = false;
+      });
+    });
+  });
   document.querySelector(".task-side-close")?.addEventListener("click", () => {
     state.taskDetailOpen = false;
     renderTasks();
@@ -595,6 +742,37 @@ function renderTasks() {
       event.stopPropagation();
       const task = tasks.find((item) => item.key === button.dataset.deleteTaskGlobal);
       if (task) openDeleteDocumentConfirm({ type: "task", caseId: task.caseId, taskIndex: task.taskIndex, returnView: "tasks" });
+    });
+  });
+  document.querySelectorAll("[data-edit-subtask-task]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const task = tasks.find((item) => item.key === button.dataset.editSubtaskTask);
+      if (task) openSubtaskDialog(task.caseId, task.taskIndex, Number(button.dataset.subtaskIndex), "tasks");
+    });
+  });
+  document.querySelectorAll("[data-new-subtask-task]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const task = tasks.find((item) => item.key === button.dataset.newSubtaskTask);
+      if (task) openSubtaskDialog(task.caseId, task.taskIndex, null, "tasks");
+    });
+  });
+  document.querySelectorAll("[data-delete-subtask-task]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const task = tasks.find((item) => item.key === button.dataset.deleteSubtaskTask);
+      const source = sourceTask(task);
+      if (!source) return;
+      source.subtasks = taskSubtasks(source, source.responsible);
+      source.subtasks.splice(Number(button.dataset.subtaskIndex), 1);
+      source.history = [
+        { date: new Date().toLocaleDateString("uk-UA"), text: "Видалено підзадачу." },
+        ...(source.history || [])
+      ];
+      renderAll();
+      switchView("tasks");
+      showToast("Підзадачу видалено.");
     });
   });
   document.querySelectorAll("[data-toggle-task-global]").forEach((input) => {

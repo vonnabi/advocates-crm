@@ -44,30 +44,92 @@
       {
         "title": "Підготовка та подання адміністративного позову",
         "status": "Терміново",
+        "priority": "Високий",
         "due": "20.05.2024 10:00",
         "responsible": "Іваненко А.Ю.",
-        "showInCalendar": true
+        "coexecutors": ["Петренко С.В."],
+        "description": "Сформувати пакет документів, фінальну редакцію позову та подати матеріали через судовий кабінет.",
+        "comment": "Перевірити додатки перед поданням і зафіксувати квитанцію в документах справи.",
+        "showInCalendar": true,
+        "plannerManual": true,
+        "plannerImportant": true,
+        "plannerDate": "2024-05-20",
+        "plannerDateText": "20.05.2024",
+        "plannerTime": "10:00",
+        "reminderEnabled": true,
+        "reminderBefore": "За 1 день",
+        "reminderChannel": "CRM + Telegram",
+        "subtasks": [
+          {
+            "title": "Перевірити додатки до позову",
+            "status": "Виконано",
+            "responsible": "Петренко С.В.",
+            "due": "19.05.2024"
+          },
+          {
+            "title": "Підписати фінальну редакцію",
+            "status": "В роботі",
+            "responsible": "Іваненко А.Ю.",
+            "due": "20.05.2024"
+          },
+          {
+            "title": "Завантажити квитанцію про подання",
+            "status": "Нова",
+            "responsible": "Іваненко А.Ю.",
+            "due": "20.05.2024"
+          }
+        ],
+        "comments": [
+          {
+            "author": "Іваненко А.Ю.",
+            "date": "17.05.2024",
+            "text": "Підтвердити актуальну адресу ТЦК перед поданням."
+          }
+        ],
+        "history": [
+          {
+            "date": "17.05.2024",
+            "text": "Задачу додано до Планера як термінову."
+          }
+        ]
       },
       {
         "title": "Отримати письмову відповідь на ТЦК",
         "status": "Не терміново",
+        "priority": "Середній",
         "due": "25.05.2024 12:00",
         "responsible": "Петренко С.В.",
-        "showInCalendar": true
+        "description": "Проконтролювати відповідь на адвокатський запит і оновити статус документів у справі.",
+        "showInCalendar": true,
+        "reminderEnabled": true,
+        "reminderBefore": "За 3 дні",
+        "reminderChannel": "CRM"
       },
       {
         "title": "Підготувати клопотання про забезпечення позову",
         "status": "Терміново",
+        "priority": "Високий",
         "due": "18.05.2024 09:00",
         "responsible": "Іваненко А.Ю.",
-        "showInCalendar": true
+        "coexecutors": ["Мельник Н.П."],
+        "description": "Підготувати окреме клопотання, погодити правову позицію та додати докази ризику.",
+        "showInCalendar": true,
+        "plannerImportant": true,
+        "plannerTime": "09:00",
+        "reminderEnabled": true,
+        "reminderBefore": "За 3 години",
+        "reminderChannel": "CRM + Telegram"
       },
       {
         "title": "Консультація клієнта щодо документів",
         "status": "Не терміново",
+        "priority": "Плановий",
         "due": "22.05.2024 14:00",
         "responsible": "Петренко С.В.",
-        "showInCalendar": true
+        "description": "Пояснити клієнту перелік документів і строки їх підготовки.",
+        "showInCalendar": true,
+        "plannerManual": true,
+        "plannerTime": "14:00"
       }
     ],
     "history": [
@@ -110,14 +172,26 @@
       {
         "title": "Перевірити первинні документи",
         "status": "В роботі",
+        "priority": "Середній",
         "due": "23.05.2024",
-        "showInCalendar": true
+        "responsible": "Мельник Н.П.",
+        "coexecutors": ["Кравчук А.В."],
+        "description": "Звірити договір, акти та рахунки перед підготовкою претензії.",
+        "showInCalendar": true,
+        "reminderEnabled": true,
+        "reminderBefore": "За 1 день",
+        "reminderChannel": "CRM"
       },
       {
         "title": "Підготувати претензію",
         "status": "Очікує",
+        "priority": "Високий",
         "due": "26.05.2024",
-        "showInCalendar": true
+        "responsible": "Мельник Н.П.",
+        "description": "Підготувати проєкт претензії після перевірки первинних документів.",
+        "showInCalendar": true,
+        "plannerImportant": true,
+        "plannerTime": "11:30"
       }
     ],
     "history": [
@@ -160,8 +234,17 @@
       {
         "title": "Запросити документи щодо майна",
         "status": "Очікує",
+        "priority": "Середній",
         "due": "24.05.2024",
-        "showInCalendar": true
+        "responsible": "Іваненко А.Ю.",
+        "coexecutors": ["Петренко С.В."],
+        "description": "Сформувати перелік майна і запросити підтверджувальні документи у клієнта.",
+        "showInCalendar": true,
+        "plannerManual": true,
+        "plannerTime": "09:00",
+        "reminderEnabled": true,
+        "reminderBefore": "За 1 день",
+        "reminderChannel": "CRM + Telegram"
       }
     ],
     "history": [

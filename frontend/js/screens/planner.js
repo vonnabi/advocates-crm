@@ -4,6 +4,7 @@ function planDateLabel(date, monthNames) {
 }
 
 function dueTime(task, index) {
+  if (task.plannerTime) return task.plannerTime;
   const match = String(task.dueText || "").match(/\d{2}:\d{2}/);
   const fallback = ["10:00", "11:30", "14:00", "12:30", "15:30", "16:30", "09:00", "17:30"];
   return match?.[0] || fallback[index % fallback.length];
@@ -56,14 +57,15 @@ export function renderPlannerScreen(ctx) {
   } = ctx;
   const tasks = allCaseTasks();
   const entries = calendarEntries();
-  const planDate = dateFromIso(calendarToday);
+  const planDateIso = state.plannerDate || calendarToday;
+  const planDate = dateFromIso(planDateIso);
   const sourceTask = (task) => task ? caseById(task.caseId)?.tasks?.[task.taskIndex] : null;
   const priorityOrder = { "Високий": 0, "Середній": 1, "Низький": 2, "Плановий": 3 };
   const planItems = tasks
     .filter((task) => task.plannerIncluded && !task.completed)
     .sort((a, b) => {
       const priorityDiff = (priorityOrder[a.priority] ?? 3) - (priorityOrder[b.priority] ?? 3);
-      return priorityDiff || String(a.dueText).localeCompare(String(b.dueText));
+      return priorityDiff || dueTime(a, 0).localeCompare(dueTime(b, 0)) || String(a.dueText).localeCompare(String(b.dueText));
     })
     .slice(0, 8);
   const groups = [
@@ -93,6 +95,11 @@ export function renderPlannerScreen(ctx) {
   const productivityBase = Math.max(1, planItems.length);
   const productivityDone = Math.min(productivityBase, Math.max(completed, Math.max(0, productivityBase - 3)));
   const productivity = Math.round((productivityDone / productivityBase) * 100);
+  const teamPlannerGroups = [...new Set(planItems.map((task) => task.responsible).filter(Boolean))].map((name) => ({
+    name,
+    items: planItems.filter((task) => task.responsible === name)
+  }));
+  const reminderCount = planItems.filter((task) => task.reminderEnabled).length;
   const calendarTomorrow = [...entries].sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`)).slice(0, 3);
 
   $("#planner").innerHTML = `
@@ -112,7 +119,7 @@ export function renderPlannerScreen(ctx) {
         <article><div><span>Всього справ / подій</span><strong>${planItems.length}</strong></div><i>${icon("calendar")}</i></article>
         <article><div><span>Термінові</span><strong>${groups[0].items.length}</strong></div><i class="red">!</i></article>
         <article><div><span>Важливі</span><strong>${groups[1].items.length}</strong></div><i class="amber">${icon("tag")}</i></article>
-        <article><div><span>Планові</span><strong>${groups[2].items.length}</strong></div><i class="green">${icon("calendar")}</i></article>
+        <article><div><span>Планові / нагадування</span><strong>${groups[2].items.length} / ${reminderCount}</strong></div><i class="green">${icon("calendar")}</i></article>
       </div>
 
       <div class="planner-layout">
@@ -134,6 +141,7 @@ export function renderPlannerScreen(ctx) {
                       <div class="planner-item-main">
                         <strong>${task.title}</strong>
                         <span>${task.caseTitle} · ${task.plannerReason || task.status}</span>
+                        <em>${task.reminderEnabled ? `${icon("bell")} ${task.reminderBefore || "Нагадування"}` : "Без нагадування"}${task.teamTask ? ` · Співвиконавці: ${task.coexecutors.join(", ")}` : ""}</em>
                       </div>
                       ${badge(taskCategory(task), group.tone)}
                       <div class="planner-item-case">
@@ -183,6 +191,20 @@ export function renderPlannerScreen(ctx) {
               <li>Пріоритетів справ</li>
             </ul>
             <small>Ви можете вручну додавати або змінювати порядок справ у плані.</small>
+          </section>
+
+          <section class="panel planner-side-card planner-team-card">
+            <h2>Планери команди</h2>
+            <div class="planner-team-list">
+              ${teamPlannerGroups.map((group) => `
+                <p>
+                  <span>${group.name}</span>
+                  <strong>${group.items.length} задач</strong>
+                  <em>${group.items.filter((task) => task.priority === "Високий").length} термінових</em>
+                </p>
+              `).join("") || `<p><span>Команда</span><strong>0 задач</strong><em>План порожній</em></p>`}
+            </div>
+            <small>Адміністратор бачить особистий план і навантаження кожного учасника.</small>
           </section>
 
           <section class="panel planner-side-card planner-calendar-card">

@@ -1,4 +1,83 @@
 export function setupCaseItemForms({ state, $, caseById, caseFolders, formatDate, renderAll, switchView, showToast }) {
+  function defaultSubtasksForTask(task = {}, fallbackResponsible = "") {
+    return [
+      { title: "Перевірити вихідні матеріали", responsible: fallbackResponsible, due: task.due || "Не вказано", status: task.completed ? "Виконано" : "В роботі" },
+      { title: "Підготувати результат по задачі", responsible: fallbackResponsible, due: task.plannerDateText || task.due || "Не вказано", status: task.completed ? "Виконано" : "Нова" }
+    ];
+  }
+
+  function taskPayloadFromForm(form, due, existing = {}) {
+    const title = form.get("title");
+    const priority = form.get("priority") || "Середній";
+    const plannerManual = Boolean(form.get("plannerManual"));
+    const plannerImportant = Boolean(form.get("plannerImportant"));
+    const coexecutors = form.getAll("coexecutors").filter(Boolean);
+    const reminderEnabled = Boolean(form.get("reminderEnabled"));
+    const plannerDate = form.get("plannerDate");
+    const plannerTime = form.get("plannerTime");
+    const comment = String(form.get("comment") || "").trim();
+    const today = new Date().toLocaleDateString("uk-UA");
+    const comments = [...(existing.comments || [])];
+    if (comment && comment !== existing.comment && !comments.some((item) => item.text === comment)) {
+      comments.unshift({
+        author: form.get("responsible") || "Іваненко А.Ю.",
+        date: today,
+        text: comment
+      });
+    }
+    const responsible = form.get("responsible") || existing.responsible || "Іваненко А.Ю.";
+    const dueText = due ? formatDate(due) : "Не вказано";
+    const subtaskStatuses = form.getAll("subtaskStatus");
+    const formSubtasks = form.getAll("subtaskTitle")
+      .map((value, index) => {
+        const subtaskTitle = String(value || "").trim();
+        if (!subtaskTitle) return null;
+        const previous = existing.subtasks?.[index] || {};
+        return {
+          ...previous,
+          title: subtaskTitle,
+          status: subtaskStatuses[index] || previous.status || "Нова",
+          responsible,
+          due: dueText
+        };
+      })
+      .filter(Boolean);
+    const fallbackSubtasks = [
+      { title: "Перевірити вихідні матеріали", status: "В роботі", responsible, due: dueText },
+      { title: "Підготувати результат по задачі", status: "Нова", responsible, due: dueText }
+    ];
+    return {
+      ...existing,
+      title,
+      status: form.get("status"),
+      priority,
+      responsible,
+      due: dueText,
+      description: String(form.get("description") || "").trim(),
+      coexecutors,
+      showInCalendar: Boolean(form.get("showInCalendar") && due),
+      plannerManual,
+      plannerImportant,
+      plannerDate,
+      plannerDateText: plannerDate ? formatDate(plannerDate) : "",
+      plannerTime,
+      reminderEnabled,
+      reminderBefore: form.get("reminderBefore") || "За 1 день",
+      reminderChannel: form.get("reminderChannel") || "CRM",
+      comment,
+      comments,
+      subtasks: formSubtasks.length ? formSubtasks : existing.subtasks || fallbackSubtasks,
+      files: existing.files || [],
+      history: [
+        {
+          date: today,
+          text: existing.title ? `Оновлено задачу: ${title}.` : `Створено задачу: ${title}.`
+        },
+        ...(existing.history || [])
+      ]
+    };
+  }
+
   $("#task-form").addEventListener("submit", (event) => {
     if (event.submitter?.value === "cancel") return;
     event.preventDefault();
@@ -7,20 +86,10 @@ export function setupCaseItemForms({ state, $, caseById, caseFolders, formatDate
     const item = caseById(taskIndex !== null ? event.currentTarget.dataset.originalCaseId : form.get("caseId"));
     const due = form.get("due");
     const title = form.get("title");
-    const priority = form.get("priority") || "Середній";
-    const plannerManual = Boolean(form.get("plannerManual"));
-    const plannerImportant = Boolean(form.get("plannerImportant"));
     if (taskIndex !== null) {
       const task = item.tasks[taskIndex];
       if (!task) return;
-      task.title = title;
-      task.status = form.get("status");
-      task.priority = priority;
-      task.responsible = form.get("responsible");
-      task.due = due ? formatDate(due) : "Не вказано";
-      task.showInCalendar = Boolean(form.get("showInCalendar") && due);
-      task.plannerManual = plannerManual;
-      task.plannerImportant = plannerImportant;
+      item.tasks[taskIndex] = taskPayloadFromForm(form, due, task);
       item.history.unshift({
         date: new Date().toLocaleDateString("uk-UA"),
         text: `Оновлено задачу: ${title}.`
@@ -32,16 +101,7 @@ export function setupCaseItemForms({ state, $, caseById, caseFolders, formatDate
       showToast("Задачу оновлено.");
       return;
     }
-    item.tasks.unshift({
-      title,
-      status: form.get("status"),
-      priority,
-      responsible: form.get("responsible"),
-      due: due ? formatDate(due) : "Не вказано",
-      showInCalendar: Boolean(form.get("showInCalendar") && due),
-      plannerManual,
-      plannerImportant
-    });
+    item.tasks.unshift(taskPayloadFromForm(form, due));
     item.history.unshift({
       date: new Date().toLocaleDateString("uk-UA"),
       text: `Додано задачу: ${title}.`
@@ -52,6 +112,47 @@ export function setupCaseItemForms({ state, $, caseById, caseFolders, formatDate
     renderAll();
     switchView(state.taskDialogReturnView || "cases");
     showToast("Задачу додано.");
+  });
+
+  $("#subtask-form").addEventListener("submit", (event) => {
+    if (event.submitter?.value === "cancel") return;
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const item = caseById(form.get("caseId"));
+    const taskIndex = Number(form.get("taskIndex"));
+    const subtaskIndex = form.get("subtaskIndex") === "" ? null : Number(form.get("subtaskIndex"));
+    const task = item?.tasks?.[taskIndex];
+    if (!item || !task) return;
+    const title = String(form.get("title") || "").trim();
+    if (!title) return;
+    const due = form.get("due");
+    const responsible = form.get("responsible") || task.responsible || item.responsible || "Іваненко А.Ю.";
+    const subtasks = task.subtasks?.length
+      ? [...task.subtasks]
+      : defaultSubtasksForTask(task, task.responsible || item.responsible || responsible);
+    const previous = subtaskIndex === null ? {} : subtasks[subtaskIndex] || {};
+    const payload = {
+      ...previous,
+      title,
+      status: form.get("status") || previous.status || "Нова",
+      responsible,
+      due: due ? formatDate(due) : previous.due || task.due || "Не вказано"
+    };
+    if (subtaskIndex === null) {
+      subtasks.push(payload);
+    } else {
+      subtasks[subtaskIndex] = payload;
+    }
+    task.subtasks = subtasks;
+    item.history.unshift({
+      date: new Date().toLocaleDateString("uk-UA"),
+      text: subtaskIndex === null ? `Додано підзадачу: ${title}.` : `Оновлено підзадачу: ${title}.`
+    });
+    state.selectedCaseId = item.id;
+    $("#subtask-dialog").close();
+    renderAll();
+    switchView(state.taskDialogReturnView || "tasks");
+    showToast(subtaskIndex === null ? "Підзадачу додано." : "Підзадачу оновлено.");
   });
 
   $("#folder-form").addEventListener("submit", (event) => {

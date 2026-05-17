@@ -132,9 +132,10 @@ function attributeString(attrs = {}) {
 export function actionMenu(items = [], options = {}) {
   const label = options.label || "Дії";
   const className = options.className ? ` ${options.className}` : "";
+  const triggerAttr = options.triggerAttr || "data-action-menu-trigger";
   return `
     <div class="row-action-menu-wrap${className}">
-      <button type="button" class="icon-button compact row-action-trigger" data-action-menu-trigger aria-label="${label}" aria-expanded="false">⋮</button>
+      <button type="button" class="icon-button compact row-action-trigger" ${triggerAttr} aria-label="${label}" aria-expanded="false">⋮</button>
       <div class="row-action-menu" hidden>
         ${items.map((item) => {
           const tone = item.danger ? " danger" : "";
@@ -165,13 +166,13 @@ export function bindActionMenus(root = document) {
     document.addEventListener("click", (event) => {
       if (event.target.closest(".row-action-menu-wrap")) return;
       document.querySelectorAll(".row-action-menu").forEach(resetActionMenu);
-      document.querySelectorAll("[data-action-menu-trigger]").forEach((button) => {
+      document.querySelectorAll("[data-action-menu-trigger], [data-subtask-action-menu-trigger]").forEach((button) => {
         button.setAttribute("aria-expanded", "false");
       });
     });
   }
 
-  root.querySelectorAll("[data-action-menu-trigger]").forEach((button) => {
+  root.querySelectorAll("[data-action-menu-trigger], [data-subtask-action-menu-trigger]").forEach((button) => {
     if (button.dataset.actionMenuBound === "true") return;
     button.dataset.actionMenuBound = "true";
     button.addEventListener("click", (event) => {
@@ -189,7 +190,7 @@ export function bindActionMenus(root = document) {
           resetActionMenu(item);
         }
       });
-      document.querySelectorAll("[data-action-menu-trigger]").forEach((item) => {
+      document.querySelectorAll("[data-action-menu-trigger], [data-subtask-action-menu-trigger]").forEach((item) => {
         if (item !== button) item.setAttribute("aria-expanded", "false");
       });
       if (menu) {
