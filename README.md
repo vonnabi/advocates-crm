@@ -68,6 +68,28 @@ https://<github-username>.github.io/<repository-name>/
 
 Важно: GitHub Pages публикует только интерфейс из папки `frontend`. Внутренние материалы, ТЗ и демо-данные не нужны заказчику для просмотра сайта.
 
+## Как опубликовать полноценное демо с логином
+
+Для просмотра заказчиком с настоящим входом, ролями и сохранением данных используем Render Blueprint:
+
+1. Откройте Render Dashboard.
+2. Создайте `New Blueprint Instance`.
+3. Подключите GitHub-репозиторий `vonnabi/advocates-crm`.
+4. Render прочитает `render.yaml` и создаст:
+   - Django web service `advocates-crm`;
+   - PostgreSQL database `advocates-crm-db`;
+   - переменные окружения `DATABASE_URL`, `SECRET_KEY`, `DJANGO_DEBUG=false`.
+5. После первого деплоя будет выполнен импорт демо-данных.
+
+Тестовый вход после деплоя:
+
+```text
+ivanenko@advocates.crm
+demo12345
+```
+
+В этом варианте заказчик открывает ссылку вида `https://advocates-crm.onrender.com/` и видит не статический макет, а CRM через Django backend.
+
 ## Структура проекта
 
 ```text

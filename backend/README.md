@@ -27,6 +27,28 @@ cd backend
 
 После сидинга ожидаемые демо-данные: 4 клиента, 4 справы, 9 задач, 6 событий.
 
+## Деплой на Render
+
+В корне проекта есть `render.yaml` и `scripts/render-build.sh`. Render поднимает Django web service и PostgreSQL базу из GitHub:
+
+- `buildCommand`: установка зависимостей и `collectstatic`;
+- `preDeployCommand`: `python manage.py migrate`;
+- `initialDeployHook`: `python manage.py seed_demo`;
+- `startCommand`: Gunicorn для `config.wsgi:application`.
+
+Для локальной проверки production-настроек:
+
+```bash
+SECRET_KEY=local-check-secret-key-with-more-than-fifty-characters-123456 DJANGO_DEBUG=false DJANGO_ALLOWED_HOSTS=127.0.0.1,localhost DJANGO_SECURE_SSL_REDIRECT=true ../.venv/bin/python manage.py check --deploy
+```
+
+Демо-вход после первого seed:
+
+```text
+ivanenko@advocates.crm
+demo12345
+```
+
 ## API
 
 - `GET /api/health/` — проверка сервиса.
