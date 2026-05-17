@@ -1,3 +1,6 @@
+import { deleteDocumentFromApi, saveDocumentToApi, shouldUseApi } from "../api.js";
+import { normalizeDocument } from "../state.js";
+
 function documentRows(ctx) {
   const { state, clientById, caseFolders, findFolderFileByDocument } = ctx;
   return state.cases.flatMap((item) => {
@@ -507,7 +510,59 @@ export function renderDocumentsScreen(ctx) {
       showToast?.("AI перевірка документа буде підключена після API для документів.", "info");
     });
   });
-  const updateDocumentStatus = (key, nextStatus) => {
+  const documentApiId = (document) => {
+    const id = document?.id || document?.documentId;
+    const number = Number(id);
+    return Number.isInteger(number) && number > 0 ? number : "";
+  };
+  const applySavedDocument = (payload, saved) => {
+    if (!saved) return;
+    const update = (target) => {
+      if (!target) return;
+      target.id = saved.id || target.id;
+      target.documentId = saved.documentId || saved.id || target.documentId;
+      target.name = saved.name || target.name;
+      target.type = saved.type || target.type;
+      target.folder = saved.folder || target.folder;
+      target.status = saved.status || target.status;
+      target.submitted = saved.submitted || target.submitted;
+      target.responseDue = saved.responseDue || target.responseDue;
+      target.comment = saved.comment || target.comment;
+      target.url = saved.url || target.url;
+      target.history = saved.history || target.history || [];
+    };
+    update(payload.doc);
+    update(payload.file);
+    update(payload.linked?.file);
+  };
+  const savePayloadDocument = async (payload) => {
+    if (!shouldUseApi(state) || !payload?.item) return null;
+    const source = payload.doc || payload.file || payload.linked?.file;
+    const saved = normalizeDocument(await saveDocumentToApi({
+      ...source,
+      id: documentApiId(source),
+      caseId: payload.item.id,
+      folder: payload.folder?.name || payload.linked?.folder?.name || source?.folder || "Процесуальні документи",
+      name: source?.name || "Документ",
+      type: source?.type || "Інше",
+      status: source?.status || "Чернетка",
+      submitted: source?.submitted || "-",
+      responseDue: source?.responseDue || "-",
+      comment: source?.comment || "",
+      url: source?.url || "",
+      responsible: source?.responsible || payload.item.responsible,
+      history: source?.history || []
+    }));
+    applySavedDocument(payload, saved);
+    return saved;
+  };
+  const deletePayloadDocument = async (payload) => {
+    if (!shouldUseApi(state)) return;
+    const source = payload?.doc || payload?.file || payload?.linked?.file;
+    const id = documentApiId(source);
+    if (id) await deleteDocumentFromApi(id);
+  };
+  const updateDocumentStatus = async (key, nextStatus) => {
     const { caseId, encoded } = payloadFromKey(key);
     const payload = getDocumentPayload(caseId, encoded);
     const today = new Date().toLocaleDateString("uk-UA");
@@ -526,21 +581,29 @@ export function renderDocumentsScreen(ctx) {
       date: today,
       text: `Статус документа «${payload.doc?.name || payload.file?.name || "Документ"}» змінено на «${nextStatus}».`
     });
+    if (shouldUseApi(state)) {
+      try {
+        await savePayloadDocument(payload);
+      } catch (_error) {
+        showToast?.("Не вдалося зберегти статус документа в базі.", "danger");
+        return;
+      }
+    }
     state.selectedDocumentKey = key;
     renderDocumentsScreen(ctx);
     showToast?.("Статус документа оновлено.");
   };
   documentsNode.querySelectorAll("[data-document-status-pick]").forEach((button) => {
-    button.addEventListener("click", (event) => {
+    button.addEventListener("click", async (event) => {
       event.stopPropagation();
-      updateDocumentStatus(button.dataset.documentStatusPick, button.dataset.documentStatusValue);
+      await updateDocumentStatus(button.dataset.documentStatusPick, button.dataset.documentStatusValue);
     });
   });
-  documentsNode.querySelector("[data-document-status-change]")?.addEventListener("change", (event) => {
-    updateDocumentStatus(event.currentTarget.dataset.documentStatusChange, event.currentTarget.value);
+  documentsNode.querySelector("[data-document-status-change]")?.addEventListener("change", async (event) => {
+    await updateDocumentStatus(event.currentTarget.dataset.documentStatusChange, event.currentTarget.value);
   });
   documentsNode.querySelectorAll("[data-document-date-change]").forEach((input) => {
-    input.addEventListener("change", (event) => {
+    input.addEventListener("change", async (event) => {
       const { caseId, encoded } = payloadFromKey(event.currentTarget.dataset.documentDateChange);
       const payload = getDocumentPayload(caseId, encoded);
       const field = event.currentTarget.dataset.documentDateField;
@@ -558,6 +621,14 @@ export function renderDocumentsScreen(ctx) {
         date: today,
         text: `${field === "submitted" ? "Дату подання" : "Строк відповіді"} документа «${payload.doc?.name || payload.file?.name || "Документ"}» змінено.`
       });
+      if (shouldUseApi(state)) {
+        try {
+          await savePayloadDocument(payload);
+        } catch (_error) {
+          showToast?.("Не вдалося зберегти дату документа в базі.", "danger");
+          return;
+        }
+      }
       state.selectedDocumentKey = event.currentTarget.dataset.documentDateChange;
       renderDocumentsScreen(ctx);
       showToast?.(field === "submitted" ? "Дату подання оновлено." : "Строк відповіді оновлено.");
@@ -661,7 +732,7 @@ export function renderDocumentsScreen(ctx) {
     });
   });
   documentsNode.querySelectorAll("[data-document-bulk-action]").forEach((button) => {
-    button.addEventListener("click", (event) => {
+    button.addEventListener("click", async (event) => {
       event.stopPropagation();
       const action = button.dataset.documentBulkAction;
       if (action === "clear") {
@@ -678,6 +749,14 @@ export function renderDocumentsScreen(ctx) {
           const { caseId, encoded } = payloadFromKey(key);
           return getDocumentPayload(caseId, encoded);
         });
+        if (shouldUseApi(state)) {
+          try {
+            await Promise.all(payloads.map(deletePayloadDocument));
+          } catch (_error) {
+            showToast?.("Не вдалося видалити вибрані документи з бази.", "danger");
+            return;
+          }
+        }
         const deletedNames = [];
         payloads.forEach((payload) => {
           if (!payload?.item) return;
@@ -725,6 +804,17 @@ export function renderDocumentsScreen(ctx) {
           text: `Масово змінено статус документа «${payload.doc?.name || payload.file?.name || "Документ"}» на «${nextStatus}».`
         });
       });
+      if (shouldUseApi(state)) {
+        try {
+          await Promise.all(selectedKeys.map((key) => {
+            const { caseId, encoded } = payloadFromKey(key);
+            return savePayloadDocument(getDocumentPayload(caseId, encoded));
+          }));
+        } catch (_error) {
+          showToast?.("Не вдалося зберегти масову дію документів у базі.", "danger");
+          return;
+        }
+      }
       state.selectedDocumentKeys = [];
       renderDocumentsScreen(ctx);
       showToast?.(`Оновлено ${selectedKeys.length} документів.`);

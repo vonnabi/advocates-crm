@@ -1,3 +1,6 @@
+import { deleteClientFromApi, saveClientCommunicationToApi, saveClientToApi, shouldUseApi } from "../api.js";
+import { normalizeClient, normalizeClientCommunication } from "../state.js";
+
 export function renderClientsScreen(ctx) {
   const { state, $, icon, openClientDialog } = ctx;
   const selected = clientById(ctx, state.selectedClientId) || state.clients[0];
@@ -173,7 +176,7 @@ function updateClientBulkHeader(ctx, filteredClients) {
   ` : "";
 }
 
-function handleClientBulkAction(ctx, action) {
+async function handleClientBulkAction(ctx, action) {
   const { state, renderAll, switchView, showToast } = ctx;
   const selectedIds = new Set((state.selectedClientKeys || []).map(String));
   if (action === "clear") {
@@ -184,11 +187,32 @@ function handleClientBulkAction(ctx, action) {
   }
   if (!selectedIds.size) return;
   if (action === "telegram") {
-    state.clients.forEach((client) => {
-      if (!selectedIds.has(String(client.id))) return;
+    const selectedClients = state.clients.filter((client) => selectedIds.has(String(client.id)));
+    selectedClients.forEach((client) => {
       client.telegram = true;
       client.telegramUsername = client.telegramUsername || `@client_${client.id}`;
+      client.lastContact = new Date().toLocaleDateString("uk-UA");
+      client.communications = [
+        {
+          date: client.lastContact,
+          channel: "Telegram",
+          title: "Telegram підключено",
+          status: "Підключено",
+          author: client.manager
+        },
+        ...(client.communications || [])
+      ];
     });
+    if (shouldUseApi(state)) {
+      try {
+        await Promise.all(selectedClients.map(async (client) => {
+          Object.assign(client, normalizeClient(await saveClientToApi(client)));
+        }));
+      } catch (_error) {
+        showToast?.("Не вдалося зберегти Telegram для вибраних клієнтів.", "danger");
+        return;
+      }
+    }
     state.selectedClientKeys = [];
     renderClientRows(ctx);
     showToast?.("Telegram підключено для вибраних клієнтів.");
@@ -205,6 +229,14 @@ function handleClientBulkAction(ctx, action) {
     return;
   }
   if (action === "delete") {
+    if (shouldUseApi(state)) {
+      try {
+        await Promise.all([...selectedIds].map((id) => deleteClientFromApi(id)));
+      } catch (_error) {
+        showToast?.("Не вдалося видалити вибраних клієнтів з бази.", "danger");
+        return;
+      }
+    }
     const remainingCaseIds = new Set(state.cases.filter((item) => !selectedIds.has(String(item.clientId))).map((item) => item.id));
     const deletedCount = state.clients.filter((client) => selectedIds.has(String(client.id))).length;
     state.clients = state.clients.filter((client) => !selectedIds.has(String(client.id)));
@@ -251,6 +283,45 @@ function clientAvatar(client) {
   return `<div class="client-avatar large ${hasPhoto ? "has-client-photo" : ""}"${photoStyle}>${hasPhoto ? "" : clientInitials(client.name)}</div>`;
 }
 
+function communicationTitle(type) {
+  return {
+    call: ["Телефон", "Зафіксовано телефонний дзвінок", "Контакт"],
+    telegram: ["Telegram", "Зафіксовано повідомлення Telegram", "Контакт"],
+    sms: ["SMS", "Зафіксовано SMS повідомлення", "Контакт"],
+    email: ["Email", "Зафіксовано email лист", "Контакт"]
+  }[type] || ["CRM", "Зафіксовано контакт", "Контакт"];
+}
+
+async function addClientCommunication(ctx, clientId, type) {
+  const { state, renderAll, showToast } = ctx;
+  const client = clientById(ctx, clientId);
+  if (!client) return;
+  const relatedCase = state.cases.find((item) => item.clientId === client.id);
+  const [channel, title, status] = communicationTitle(type);
+  let communication = {
+    clientId: client.id,
+    date: new Date().toLocaleDateString("uk-UA"),
+    channel,
+    title,
+    status,
+    author: client.manager,
+    caseId: relatedCase?.id || ""
+  };
+  if (shouldUseApi(state)) {
+    try {
+      communication = normalizeClientCommunication(await saveClientCommunicationToApi(communication));
+    } catch (_error) {
+      showToast?.("Не вдалося зберегти комунікацію в базі.", "danger");
+      return;
+    }
+  }
+  client.communications = [communication, ...(client.communications || [])];
+  client.lastContact = communication.date;
+  renderAll?.();
+  renderClientProfile(ctx, client.id);
+  showToast?.(`${channel}: контакт зафіксовано.`);
+}
+
 export function renderClientProfile(ctx, id) {
   const { state, $, icon, badge, statusTone, advocatePhoto, openClientDialog } = ctx;
   const client = clientById(ctx, id);
@@ -288,10 +359,39 @@ export function renderClientProfile(ctx, id) {
           <div class="related-case-strip">${relatedCases.map((item) => badge(`Справа №${item.id}`, statusTone(item.status))).join("")}</div>
         </div>
       </div>
+      <div class="client-communication-panel">
+        <div class="client-communication-head">
+          <div>
+            <h3>Комунікації</h3>
+            <p>Останні контакти, повідомлення та CRM-нотатки по клієнту.</p>
+          </div>
+          <div class="client-communication-actions">
+            <button class="secondary compact" type="button" data-client-communication="call">${icon("phone")} Дзвінок</button>
+            <button class="secondary compact" type="button" data-client-communication="telegram">${icon("telegram")} Telegram</button>
+            <button class="secondary compact" type="button" data-client-communication="sms">${icon("mail")} SMS</button>
+            <button class="secondary compact" type="button" data-client-communication="email">${icon("mail")} Email</button>
+          </div>
+        </div>
+        <div class="client-communication-list">
+          ${(client.communications || []).slice(0, 6).map((item) => `
+            <div class="client-communication-row">
+              <i>${icon(item.channel === "Telegram" ? "telegram" : item.channel === "Телефон" ? "phone" : "mail")}</i>
+              <div>
+                <strong>${item.title}</strong>
+                <span>${item.channel} · ${item.date || "Без дати"}${item.caseId ? ` · Справа №${item.caseId}` : ""}</span>
+              </div>
+              <em>${item.status || "Контакт"}</em>
+            </div>
+          `).join("") || `<p class="muted">Комунікацій поки немає.</p>`}
+        </div>
+      </div>
     </div>
   `;
   const editButton = document.querySelector(`[data-edit-client="${client.id}"]`);
   editButton?.addEventListener("click", () => openClientDialog(client.id));
+  document.querySelectorAll("[data-client-communication]").forEach((button) => {
+    button.addEventListener("click", () => addClientCommunication(ctx, client.id, button.dataset.clientCommunication));
+  });
 }
 
 function clientById(ctx, id) {

@@ -1,5 +1,8 @@
+import { saveCaseToApi, shouldUseApi } from "../api.js";
+import { normalizeCase } from "../state.js";
+
 export function setupCaseForm({ state, $, caseById, formatDate, renderAll, switchView, showToast }) {
-  $("#case-form").addEventListener("submit", (event) => {
+  $("#case-form").addEventListener("submit", async (event) => {
     if (event.submitter?.value === "cancel") return;
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -20,6 +23,14 @@ export function setupCaseForm({ state, $, caseById, formatDate, renderAll, switc
         date: new Date().toLocaleDateString("uk-UA"),
         text: "Дані справи оновлено."
       });
+      if (shouldUseApi(state)) {
+        try {
+          Object.assign(item, normalizeCase(await saveCaseToApi(item)));
+        } catch (_error) {
+          showToast("Не вдалося зберегти справу в базі.", "danger");
+          return;
+        }
+      }
       state.selectedCaseId = item.id;
       state.caseScreen = "list";
       $("#case-dialog").close();
@@ -61,8 +72,17 @@ export function setupCaseForm({ state, $, caseById, formatDate, renderAll, switc
         }
       ]
     };
-    state.cases.unshift(newCase);
-    state.selectedCaseId = newCase.id;
+    let savedCase = newCase;
+    if (shouldUseApi(state)) {
+      try {
+        savedCase = normalizeCase(await saveCaseToApi({ ...newCase, id: "" }));
+      } catch (_error) {
+        showToast("Не вдалося створити справу в базі.", "danger");
+        return;
+      }
+    }
+    state.cases.unshift(savedCase);
+    state.selectedCaseId = savedCase.id;
     state.caseScreen = "detail";
     $("#case-dialog").close();
     renderAll();

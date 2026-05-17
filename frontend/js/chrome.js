@@ -1,3 +1,5 @@
+import { loginToApi, logoutFromApi, shouldUseApi } from "./api.js?v=auth-login-1";
+
 const DEMO_URL = "https://vonnabi.github.io/advocates-crm/";
 
 export function closeTopbarPanels($) {
@@ -76,9 +78,30 @@ function focusSettingsSection(sectionKey) {
   });
 }
 
-function ensureLogoutOverlay() {
+export function syncTopbarUser($, state) {
+  const user = state.currentUser || state.settingsUsers?.[0];
+  if (!user) return;
+  const initials = user.photo || user.name?.slice(0, 1) || "І";
+  const role = state.sessionAuthenticated ? user.role : `${user.role || "Адміністратор"} · демо`;
+  const toggleName = $("#admin-profile-toggle > div:nth-of-type(2) strong");
+  const toggleRole = $("#admin-profile-toggle > div:nth-of-type(2) span");
+  const panelName = $("#admin-profile-menu .profile-panel-head > div:nth-of-type(2) strong");
+  const panelRole = $("#admin-profile-menu .profile-panel-head > div:nth-of-type(2) span");
+  const avatars = document.querySelectorAll(".admin-photo span");
+  if (toggleName) toggleName.textContent = user.name;
+  if (toggleRole) toggleRole.textContent = role;
+  if (panelName) panelName.textContent = user.name;
+  if (panelRole) panelRole.textContent = state.sessionAuthenticated ? user.access || user.role : "Демо-доступ до CRM";
+  avatars.forEach((node) => {
+    node.textContent = initials.slice(0, 2);
+  });
+  document.documentElement.dataset.authenticated = state.sessionAuthenticated ? "true" : "false";
+}
+
+function ensureLogoutOverlay(ctx) {
   let overlay = document.querySelector("#logout-overlay");
   if (overlay) return overlay;
+  const { $, state, saveNavigationState, showToast } = ctx;
   overlay = document.createElement("div");
   overlay.id = "logout-overlay";
   overlay.className = "logout-overlay";
@@ -87,23 +110,80 @@ function ensureLogoutOverlay() {
     <section class="logout-card" role="dialog" aria-modal="true" aria-labelledby="logout-title">
       <div class="logout-mark">AB</div>
       <h2 id="logout-title">Сеанс завершено</h2>
-      <p>Ви вийшли з демо-кабінету Advocates Bureau. Для прототипу можна одразу повернутися назад.</p>
-      <button class="primary" type="button" data-login-return>Повернутися в демо</button>
+      <p>Увійдіть під роллю користувача бюро або поверніться в демо-режим.</p>
+      <form class="login-form" data-login-form>
+        <label>Email<input name="email" type="email" value="ivanenko@advocates.crm" autocomplete="username" required /></label>
+        <label>Пароль<input name="password" type="password" value="demo12345" autocomplete="current-password" required /></label>
+        <small>Демо-доступ: ivanenko@advocates.crm / demo12345</small>
+        <p class="login-error" data-login-error hidden></p>
+        <button class="primary" type="submit">Увійти</button>
+        <button class="secondary" type="button" data-login-return>Повернутися в демо</button>
+      </form>
     </section>
   `;
   document.body.append(overlay);
+  overlay.querySelector("[data-login-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const error = overlay.querySelector("[data-login-error]");
+    const form = event.currentTarget;
+    if (error) error.hidden = true;
+    if (!shouldUseApi(state)) {
+      if (error) {
+        error.textContent = "Логін доступний, коли CRM відкрита через Django-сервер.";
+        error.hidden = false;
+      }
+      return;
+    }
+    try {
+      const session = await loginToApi({
+        email: form.elements.email.value,
+        password: form.elements.password.value
+      });
+      state.currentUser = session.user;
+      state.sessionAuthenticated = Boolean(session.authenticated);
+      state.sessionPermissions = session.permissions || {};
+      syncTopbarUser($, state);
+      saveNavigationState();
+      overlay.hidden = true;
+      document.body.classList.remove("session-ended");
+      showToast(`Вхід виконано: ${session.user?.name || "користувач"}.`);
+    } catch (_error) {
+      if (error) {
+        error.textContent = "Невірний email або пароль.";
+        error.hidden = false;
+      }
+    }
+  });
   overlay.querySelector("[data-login-return]")?.addEventListener("click", () => {
+    state.currentUser = state.settingsUsers?.[0] || state.currentUser;
+    state.sessionAuthenticated = false;
+    syncTopbarUser($, state);
+    saveNavigationState();
     overlay.hidden = true;
     document.body.classList.remove("session-ended");
+    showToast("Демо-режим активний.");
   });
   return overlay;
 }
 
-function openLogoutOverlay() {
-  const overlay = ensureLogoutOverlay();
+async function openLogoutOverlay(ctx) {
+  const { $, state, saveNavigationState, showToast } = ctx;
+  if (shouldUseApi(state)) {
+    try {
+      const session = await logoutFromApi();
+      state.currentUser = session.user || state.settingsUsers?.[0] || state.currentUser;
+      state.sessionAuthenticated = false;
+      state.sessionPermissions = session.permissions || {};
+      syncTopbarUser($, state);
+      saveNavigationState();
+    } catch (_error) {
+      showToast("Не вдалося завершити серверну сесію.", "warning");
+    }
+  }
+  const overlay = ensureLogoutOverlay(ctx);
   document.body.classList.add("session-ended");
   overlay.hidden = false;
-  overlay.querySelector("[data-login-return]")?.focus();
+  overlay.querySelector("input[name='email']")?.focus();
 }
 
 async function copyDemoLink(showToast) {
@@ -116,6 +196,7 @@ async function copyDemoLink(showToast) {
 }
 
 export function setupTopbarControls({ $, state, switchView, saveNavigationState, showToast }) {
+  syncTopbarUser($, state);
   syncTopbarNotifications($, state);
 
   document.addEventListener("click", (event) => {
@@ -155,7 +236,7 @@ export function setupTopbarControls({ $, state, switchView, saveNavigationState,
   });
 
   document.querySelectorAll("[data-profile-action]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       const action = button.dataset.profileAction;
       closeTopbarPanels($);
       if (action === "settings") {
@@ -180,7 +261,7 @@ export function setupTopbarControls({ $, state, switchView, saveNavigationState,
         toggleSidebar({ saveNavigationState, showToast });
         return;
       }
-      openLogoutOverlay();
+      await openLogoutOverlay({ $, state, saveNavigationState, showToast });
     });
   });
 

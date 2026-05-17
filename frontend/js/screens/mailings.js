@@ -19,11 +19,10 @@ export function renderMailingsScreen(ctx) {
   const recipientMode = state.mailingRecipientMode || "segment";
   const manualRecipients = state.clients.filter((client) => state.mailingManualClientIds.includes(client.id));
   const recipients = recipientMode === "all" ? 1245 : recipientMode === "manual" ? manualRecipients.length : Math.max(120, 386 - Math.max(0, 3 - state.mailingFilters.length) * 58);
-  const telegramDelivered = 317;
-  const smsDelivered = Math.round(recipients * 0.62);
-  const emailDelivered = Math.round(recipients * 0.48);
   const estimatedTelegram = Math.round(recipients * 0.82);
-  const totalMessages = (state.mailingChannels.Telegram ? estimatedTelegram : 0) + (state.mailingChannels.SMS ? smsDelivered : 0) + (state.mailingChannels.Email ? emailDelivered : 0);
+  const smsDelivered = Math.round(recipients * 0.625);
+  const emailDelivered = Math.round(recipients * 0.482);
+  const totalMessages = estimatedTelegram + smsDelivered + emailDelivered;
   const mainTab = state.mailingMainTab || "new";
   const editorChannel = state.mailingEditorChannel || "Telegram";
   const previewChannel = state.mailingPreviewChannel || editorChannel;
@@ -41,6 +40,75 @@ export function renderMailingsScreen(ctx) {
     if (!campaignQuery) return true;
     return `${item.title} ${item.status} ${item.meta || ""} ${item.createdAt || ""}`.toLowerCase().includes(campaignQuery);
   });
+  const campaignStatusMeta = (status = "") => {
+    if (status === "Запланирована") return { icon: "calendar", tone: "violet", label: "Запланированные" };
+    if (status === "Тест отправлен") return { icon: "telegram", tone: "blue", label: "Тестовые" };
+    if (status === "Готова к отправке") return { icon: "clock", tone: "amber", label: "Готовые" };
+    if (status === "Відправлено" || status === "Отправлено") return { icon: "check", tone: "green", label: "Отправленные" };
+    return { icon: "file", tone: "blue", label: "Кампании" };
+  };
+  const campaignChannels = (item) => {
+    if (item.channels) return Object.entries(item.channels).filter(([, enabled]) => enabled).map(([name]) => name);
+    return ["Telegram", "SMS", "Email"].filter((name) => String(item.meta || "").includes(name));
+  };
+  const campaignStats = [
+    { label: "Всего", value: baseCampaignRows.length, icon: "file", tone: "blue" },
+    { label: "Запланированы", value: baseCampaignRows.filter((item) => item.status === "Запланирована").length, icon: "calendar", tone: "violet" },
+    { label: "Тестовые", value: baseCampaignRows.filter((item) => item.status === "Тест отправлен").length, icon: "telegram", tone: "blue" },
+    { label: "Готовые", value: baseCampaignRows.filter((item) => item.status === "Готова к отправке" || item.status === "Відправлено").length, icon: "check", tone: "green" }
+  ];
+  const campaignStatsMarkup = `<div class="mailing-campaign-kpis">${campaignStats.map((item) => `<article class="${item.tone}"><i>${icon(item.icon)}</i><div><strong>${item.value}</strong><span>${item.label}</span></div></article>`).join("")}</div>`;
+  const campaignRowsMarkup = campaignRows.length ? campaignRows.map((item) => {
+    const sourceIndex = state.mailingCampaigns.indexOf(item);
+    const rowIndex = sourceIndex >= 0 ? sourceIndex : 0;
+    const statusMeta = campaignStatusMeta(item.status);
+    const channels = campaignChannels(item);
+    return `<div class="mailing-history-row ${statusMeta.tone}">
+      <i class="mailing-campaign-icon">${icon(statusMeta.icon)}</i>
+      <div class="mailing-campaign-main">
+        <strong>${item.title}</strong>
+        <em>${item.meta || item.createdAt}</em>
+        <span>${channels.map((channel) => `<b class="mailing-channel-mini ${channel.toLowerCase()}">${icon(channel === "Telegram" ? "telegram" : channel === "SMS" ? "message" : "mail")}${channel}</b>`).join("") || `<b class="mailing-channel-mini muted">${statusMeta.label}</b>`}</span>
+      </div>
+      ${badge(item.status, statusMeta.tone)}
+      <div class="mailing-row-actions">${actionMenu([{ label: "Редактировать", icon: "edit", attrs: { "data-edit-mailing-campaign": rowIndex } }, { label: "Удалить", icon: "trash", danger: true, attrs: { "data-delete-mailing-campaign": rowIndex } }], { label: "Дії рассылки" })}</div>
+    </div>`;
+  }).join("") : `<p class="muted">По этому запросу рассылок не найдено.</p>`;
+  const channelIcon = (channel = "") => channel === "SMS" ? "message" : channel === "Email" ? "mail" : channel === "Telegram" ? "telegram" : channel === "Все каналы" ? "filter" : "file";
+  const channelClass = (channel = "") => ["Telegram", "SMS", "Email"].includes(channel) ? channel.toLowerCase() : "all";
+  const templateRowsMarkup = state.mailingTemplates.map((item, index) => `<div class="template-library-row">
+    <i class="template-channel-icon ${channelClass(item.type)}">${icon(channelIcon(item.type))}</i>
+    <div>
+      <strong>${item.title}</strong>
+      <em>${item.text}</em>
+    </div>
+    <span class="mailing-channel-mini ${channelClass(item.type)}">${icon(channelIcon(item.type))}${item.type}</span>
+    <div class="mailing-row-actions">${actionMenu([{ label: "Использовать", icon: "check", attrs: { "data-use-template": index } }, { label: "Редактировать", icon: "edit", attrs: { "data-edit-template": index } }, { label: "Удалить", icon: "trash", danger: true, attrs: { "data-delete-template": index } }], { label: "Дії шаблона" })}</div>
+  </div>`).join("");
+  const templateStats = [
+    { label: "Шаблонов", value: state.mailingTemplates.length, icon: "file", tone: "blue" },
+    { label: "Telegram", value: state.mailingTemplates.filter((item) => item.type === "Telegram" || item.type === "Нагадування").length, icon: "telegram", tone: "blue" },
+    { label: "С переменными", value: state.mailingTemplates.filter((item) => /\{\{.+?\}\}/.test(item.text)).length, icon: "tag", tone: "violet" },
+    { label: "Готовы", value: state.mailingTemplates.filter((item) => item.text.length > 30).length, icon: "check", tone: "green" }
+  ];
+  const templateStatsMarkup = `<div class="mailing-campaign-kpis mailing-template-kpis">${templateStats.map((item) => `<article class="${item.tone}"><i>${icon(item.icon)}</i><div><strong>${item.value}</strong><span>${item.label}</span></div></article>`).join("")}</div>`;
+  const automationRowsMarkup = state.mailingAutomationRules.map((rule, index) => `<article class="automation-rule ${rule.enabled ? "enabled" : "disabled"}">
+    <label>
+      <input type="checkbox" data-toggle-automation="${index}" ${rule.enabled ? "checked" : ""} />
+      <i class="automation-rule-icon ${rule.enabled ? "green" : "red"}">${icon(rule.enabled ? "check" : "bell")}</i>
+      <span><strong>${rule.title}</strong><em>${rule.description}</em></span>
+    </label>
+    <span class="mailing-channel-mini ${channelClass(rule.channel)}">${icon(channelIcon(rule.channel))}${rule.channel}</span>
+    <select data-automation-channel="${index}">${["Telegram", "SMS", "Email", "Все каналы"].map((channel) => `<option ${rule.channel === channel ? "selected" : ""}>${channel}</option>`).join("")}</select>
+    ${badge(rule.enabled ? "Включено" : "Выключено", rule.enabled ? "green" : "red")}
+  </article>`).join("");
+  const automationStats = [
+    { label: "Правил", value: state.mailingAutomationRules.length, icon: "filter", tone: "blue" },
+    { label: "Включено", value: state.mailingAutomationRules.filter((rule) => rule.enabled).length, icon: "check", tone: "green" },
+    { label: "Выключено", value: state.mailingAutomationRules.filter((rule) => !rule.enabled).length, icon: "bell", tone: "amber" },
+    { label: "Telegram", value: state.mailingAutomationRules.filter((rule) => rule.channel === "Telegram").length, icon: "telegram", tone: "blue" }
+  ];
+  const automationStatsMarkup = `<div class="mailing-campaign-kpis mailing-automation-kpis">${automationStats.map((item) => `<article class="${item.tone}"><i>${icon(item.icon)}</i><div><strong>${item.value}</strong><span>${item.label}</span></div></article>`).join("")}</div>`;
   $("#mailings").innerHTML = `
     <div class="mailing-screen">
       <div class="mailing-actionbar">
@@ -56,18 +124,18 @@ export function renderMailingsScreen(ctx) {
         </div>
       </div>
       ${state.mailingStatusNotice ? `<div class="mailing-notice">${state.mailingStatusNotice}</div>` : ""}
-      ${mainTab === "campaigns" ? `<section class="panel mailing-section"><div class="mailing-section-head"><h2>Мои рассылки</h2><div class="mailing-section-actions"><button type="button" class="secondary" data-export-mailings>${icon("file")} Экспорт CSV</button><button type="button" class="primary" data-new-mailing>${icon("telegram")} Новая рассылка</button></div></div><div class="mailing-list-tools"><div class="mailing-filter-tabs">${[{ id: "all", label: "Все" }, { id: "scheduled", label: "Запланированные" }, { id: "test", label: "Тестовые" }, { id: "ready", label: "Готовые" }].map((item) => `<button type="button" class="${campaignFilter === item.id ? "active" : ""}" data-campaign-filter="${item.id}">${item.label}</button>`).join("")}</div><label class="mailing-search">${icon("search")}<input type="search" value="${state.mailingCampaignQuery}" placeholder="Поиск по рассылкам..." data-campaign-search /></label></div>${campaignRows.length ? campaignRows.map((item) => { const sourceIndex = state.mailingCampaigns.indexOf(item); const rowIndex = sourceIndex >= 0 ? sourceIndex : 0; return `<div class="mailing-history-row"><span class="event-dot court"></span><div><strong>${item.title}</strong><em>${item.meta || item.createdAt}</em></div>${badge(item.status, semanticTone(item.status))}<div class="mailing-row-actions">${actionMenu([{ label: "Редактировать", icon: "edit", attrs: { "data-edit-mailing-campaign": rowIndex } }, { label: "Удалить", icon: "trash", danger: true, attrs: { "data-delete-mailing-campaign": rowIndex } }], { label: "Дії рассылки" })}</div></div>`; }).join("") : `<p class="muted">По этому запросу рассылок не найдено.</p>`}</section>` : ""}
-      ${mainTab === "templates" ? `<section class="panel mailing-section"><h2>Шаблоны сообщений</h2>${state.mailingTemplates.map((item, index) => `<div class="template-library-row"><div><strong>${item.title}</strong><em>${item.text}</em></div><span>${item.type}</span><div class="mailing-row-actions">${actionMenu([{ label: "Использовать", icon: "check", attrs: { "data-use-template": index } }, { label: "Редактировать", icon: "edit", attrs: { "data-edit-template": index } }, { label: "Удалить", icon: "trash", danger: true, attrs: { "data-delete-template": index } }], { label: "Дії шаблона" })}</div></div>`).join("")}</section>` : ""}
-      ${mainTab === "automation" ? `<section class="panel mailing-section"><h2>Автоматизация</h2><div class="automation-grid">${state.mailingAutomationRules.map((rule, index) => `<article class="automation-rule ${rule.enabled ? "enabled" : ""}"><label><input type="checkbox" data-toggle-automation="${index}" ${rule.enabled ? "checked" : ""} /><span><strong>${rule.title}</strong><em>${rule.description}</em></span></label><select data-automation-channel="${index}">${["Telegram", "SMS", "Email", "Все каналы"].map((channel) => `<option ${rule.channel === channel ? "selected" : ""}>${channel}</option>`).join("")}</select>${badge(rule.enabled ? "Включено" : "Выключено", rule.enabled ? "green" : "red")}</article>`).join("")}</div></section>` : ""}
+      ${mainTab === "campaigns" ? `<section class="panel mailing-section"><div class="mailing-section-head"><h2>Мои рассылки</h2><div class="mailing-section-actions"><button type="button" class="secondary" data-export-mailings>${icon("file")} Экспорт CSV</button><button type="button" class="primary" data-new-mailing>${icon("telegram")} Новая рассылка</button></div></div>${campaignStatsMarkup}<div class="mailing-list-tools"><div class="mailing-filter-tabs">${[{ id: "all", label: "Все" }, { id: "scheduled", label: "Запланированные" }, { id: "test", label: "Тестовые" }, { id: "ready", label: "Готовые" }].map((item) => `<button type="button" class="${campaignFilter === item.id ? "active" : ""}" data-campaign-filter="${item.id}">${item.label}</button>`).join("")}</div><label class="mailing-search">${icon("search")}<input type="search" value="${state.mailingCampaignQuery}" placeholder="Поиск по рассылкам..." data-campaign-search /></label></div><div class="mailing-history-list">${campaignRowsMarkup}</div></section>` : ""}
+      ${mainTab === "templates" ? `<section class="panel mailing-section"><div class="mailing-section-head"><h2>Шаблоны сообщений</h2><button type="button" class="secondary" data-new-mailing>${icon("telegram")} Создать из сообщения</button></div>${templateStatsMarkup}<div class="template-library-list">${templateRowsMarkup}</div></section>` : ""}
+      ${mainTab === "automation" ? `<section class="panel mailing-section"><div class="mailing-section-head"><h2>Автоматизация</h2><button type="button" class="secondary" data-mailing-main-tab="new">${icon("telegram")} Новая рассылка</button></div>${automationStatsMarkup}<div class="automation-grid">${automationRowsMarkup}</div></section>` : ""}
       ${mainTab === "new" ? `
       <div class="mailing-layout">
         <div class="mailing-left-stack">
           <section class="panel mailing-section mailing-recipients-section">
             <h2>1. Получатели</h2>
             <div class="recipient-mode-grid">
-              <button class="${recipientMode === "all" ? "selected" : ""}" data-recipient-mode="all">${icon("filter")}<span><strong>Все клиенты</strong><em>1245 клиентов</em></span></button>
-              <button class="${recipientMode === "segment" ? "selected" : ""}" data-recipient-mode="segment">${icon("check")}<span><strong>Сегмент клиентов</strong><em>Выбрано ${recipients} клиентов</em></span></button>
-              <button class="${recipientMode === "manual" ? "selected" : ""}" data-recipient-mode="manual">${icon("user")}<span><strong>Выбор вручную</strong><em>Выбрано ${manualRecipients.length} клиентов</em></span></button>
+              <button class="recipient-mode-card ${recipientMode === "all" ? "selected" : ""}" data-recipient-mode="all">${icon("filter")}<span><strong>Все клиенты</strong><em>1245 клиентов</em></span></button>
+              <button class="recipient-mode-card ${recipientMode === "segment" ? "selected" : ""}" data-recipient-mode="segment">${icon("check")}<span><strong>Сегмент клиентов</strong><em>Выбрано ${recipients} клиентов</em></span></button>
+              <button class="recipient-mode-card ${recipientMode === "manual" ? "selected" : ""}" data-recipient-mode="manual">${icon("user")}<span><strong>Выбор вручную</strong><em>Выбрано ${manualRecipients.length} клиентов</em></span></button>
             </div>
             ${recipientMode === "manual" ? `<div class="manual-recipient-box">
               <h3>Выберите клиентов</h3>
@@ -102,7 +170,7 @@ export function renderMailingsScreen(ctx) {
           <section class="panel mailing-section">
             <h2>2. Содержание сообщения</h2>
             <div class="message-channel-tabs">
-              ${["Telegram", "SMS", "Email"].map((channel) => `<button class="${editorChannel === channel ? "active" : ""}" data-message-channel="${channel}">${icon(channel === "Telegram" ? "telegram" : "mail")} ${channel}</button>`).join("")}
+              ${["Telegram", "SMS", "Email"].map((channel) => `<button class="${editorChannel === channel ? "active" : ""}" data-message-channel="${channel}">${icon(channel === "Telegram" ? "telegram" : channel === "SMS" ? "message" : "mail")} ${channel}</button>`).join("")}
             </div>
             <div class="message-editor-grid">
               <div class="message-editor">
@@ -164,7 +232,7 @@ export function renderMailingsScreen(ctx) {
             <h2>Предпросмотр сообщения</h2>
             <div class="preview-tabs">${["Telegram", "SMS", "Email"].map((channel) => `<button class="${previewChannel === channel ? "active" : ""}" data-preview-channel="${channel}">${channel}</button>`).join("")}</div>
             <div class="telegram-preview">
-              <div class="telegram-preview-head"><button type="button" data-preview-action="back">←</button><strong>${previewChannel === "Email" ? "Advocates Bureau" : previewChannel === "SMS" ? "SMS Alpha" : "Advocates Bureau"}<span>${previewChannel === "Telegram" ? "бот" : previewChannel}</span></strong><em><button type="button" data-preview-action="send">${icon(previewChannel === "Telegram" ? "telegram" : "mail")}</button><button type="button" data-preview-action="menu">⋮</button></em></div>
+              <div class="telegram-preview-head"><button type="button" data-preview-action="back">←</button><span class="telegram-preview-avatar">AB</span><strong>${previewChannel === "Email" ? "Advocates Bureau" : previewChannel === "SMS" ? "SMS Alpha" : "Advocates Bureau"}<span>${previewChannel === "Telegram" ? "бот" : previewChannel}</span></strong><em><button type="button" data-preview-action="send">${icon(previewChannel === "Telegram" ? "telegram" : previewChannel === "SMS" ? "message" : "mail")}</button><button type="button" data-preview-action="menu">⋮</button></em></div>
               <div class="telegram-preview-body">
                 <div class="telegram-bubble ${previewChannel.toLowerCase()}-bubble" id="mail-preview"></div>
               </div>

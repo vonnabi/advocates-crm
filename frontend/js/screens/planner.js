@@ -12,13 +12,21 @@ function dueTime(task, index) {
 
 function taskCategory(task) {
   const title = String(task.title || "").toLowerCase();
-  if (title.includes("суд")) return "Суд";
+  if (title.includes("суд") || title.includes("засідан")) return "Суд";
   if (title.includes("термін") || title.includes("строк")) return "Дедлайн";
   if (title.includes("клієнт") || title.includes("зустр")) return "Зустріч";
   if (title.includes("дзв")) return "Дзвінок";
-  if (title.includes("документ")) return "Документ";
+  if (
+    title.includes("документ") ||
+    title.includes("позов") ||
+    title.includes("клопот") ||
+    title.includes("претенз") ||
+    title.includes("запит") ||
+    title.includes("відповід") ||
+    title.includes("письмов")
+  ) return "Документ";
   if (title.includes("аналіз")) return "Аналіз";
-  return task.priority === "Низький" ? "Планове" : "Терміново";
+  return "Задача";
 }
 
 function taskIconName(task) {
@@ -27,6 +35,7 @@ function taskIconName(task) {
   if (category === "Дедлайн" || category === "Документ") return "file";
   if (category === "Зустріч" || category === "Аналіз") return "briefcase";
   if (category === "Дзвінок") return "phone";
+  if (category === "Задача") return "check";
   return "calendar";
 }
 
@@ -101,6 +110,7 @@ export function renderPlannerScreen(ctx) {
   }));
   const reminderCount = planItems.filter((task) => task.reminderEnabled).length;
   const calendarTomorrow = [...entries].sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`)).slice(0, 3);
+  state.plannerFocusedGroup ||= "all";
 
   $("#planner").innerHTML = `
     <div class="planner-screen">
@@ -116,10 +126,10 @@ export function renderPlannerScreen(ctx) {
       </div>
 
       <div class="planner-kpi-grid">
-        <article><div><span>Всього справ / подій</span><strong>${planItems.length}</strong></div><i>${icon("calendar")}</i></article>
-        <article><div><span>Термінові</span><strong>${groups[0].items.length}</strong></div><i class="red">!</i></article>
-        <article><div><span>Важливі</span><strong>${groups[1].items.length}</strong></div><i class="amber">${icon("tag")}</i></article>
-        <article><div><span>Планові / нагадування</span><strong>${groups[2].items.length} / ${reminderCount}</strong></div><i class="green">${icon("calendar")}</i></article>
+        <button class="planner-kpi-card ${state.plannerFocusedGroup === "all" ? "active" : ""}" type="button" data-planner-kpi="all" aria-pressed="${state.plannerFocusedGroup === "all"}"><div><span>Всього справ / подій</span><strong>${planItems.length}</strong></div><i>${icon("calendar")}</i></button>
+        <button class="planner-kpi-card ${state.plannerFocusedGroup === "urgent" ? "active" : ""}" type="button" data-planner-kpi="urgent" aria-pressed="${state.plannerFocusedGroup === "urgent"}"><div><span>Термінові</span><strong>${groups[0].items.length}</strong></div><i class="red">!</i></button>
+        <button class="planner-kpi-card ${state.plannerFocusedGroup === "important" ? "active" : ""}" type="button" data-planner-kpi="important" aria-pressed="${state.plannerFocusedGroup === "important"}"><div><span>Важливі</span><strong>${groups[1].items.length}</strong></div><i class="amber">${icon("tag")}</i></button>
+        <button class="planner-kpi-card ${state.plannerFocusedGroup === "planned" ? "active" : ""}" type="button" data-planner-kpi="planned" aria-pressed="${state.plannerFocusedGroup === "planned"}"><div><span>Планові / нагадування</span><strong>${groups[2].items.length} / ${reminderCount}</strong></div><i class="green">${icon("calendar")}</i></button>
       </div>
 
       <div class="planner-layout">
@@ -127,7 +137,7 @@ export function renderPlannerScreen(ctx) {
           <h2>План дня по пріоритетності</h2>
           <div class="planner-priority-list">
             ${groups.map((group) => group.items.length ? `
-              <section class="planner-priority-group ${group.tone}">
+              <section class="planner-priority-group ${group.tone} ${state.plannerFocusedGroup === group.key ? "is-focused" : ""}" data-planner-group="${group.key}">
                 <header>
                   <span>${icon(group.icon)}</span>
                   <strong>${group.title}</strong>
@@ -137,7 +147,7 @@ export function renderPlannerScreen(ctx) {
                   ${group.items.map((task, index) => `
                     <article class="planner-item">
                       <time><strong>${dueTime(task, index)}</strong><span>${icon("clock")}</span></time>
-                      <div class="planner-item-icon">${icon(taskIconName(task))}</div>
+                      <div class="planner-item-icon" data-tooltip="${taskCategory(task)}" tabindex="0" role="img" aria-label="Тип задачі: ${taskCategory(task)}">${icon(taskIconName(task))}</div>
                       <div class="planner-item-main">
                         <strong>${task.title}</strong>
                         <span>${task.caseTitle} · ${task.plannerReason || task.status}</span>
@@ -248,6 +258,16 @@ export function renderPlannerScreen(ctx) {
   });
   $("#add-plan-task")?.addEventListener("click", () => openTaskDialog(state.selectedCaseId || state.cases[0]?.id, null, "planner"));
   $("#add-plan-task-bottom")?.addEventListener("click", () => openTaskDialog(state.selectedCaseId || state.cases[0]?.id, null, "planner"));
+  document.querySelectorAll("[data-planner-kpi]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.plannerFocusedGroup = button.dataset.plannerKpi;
+      renderPlannerScreen(ctx);
+      if (state.plannerFocusedGroup === "all") return;
+      requestAnimationFrame(() => {
+        document.querySelector(`[data-planner-group="${state.plannerFocusedGroup}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+    });
+  });
   document.querySelectorAll("[data-open-planner-case]").forEach((button) => {
     button.addEventListener("click", () => {
       state.selectedCaseId = button.dataset.openPlannerCase;

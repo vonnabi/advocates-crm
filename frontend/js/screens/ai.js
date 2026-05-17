@@ -142,24 +142,50 @@ function statusTone(status) {
   return status === "На навчанні" ? "amber" : "green";
 }
 
+function statusMeta(status) {
+  if (status === "На навчанні") return { icon: "clock", tone: "amber", label: "На навчанні" };
+  return { icon: "check", tone: "green", label: "Активний" };
+}
+
 function selectedAssistant(state, rows) {
   return rows.find((row) => row.id === state.aiSelectedAssistantId) || rows[0];
 }
 
 function filterRows(state, rows) {
   const query = (state.aiSearchQuery || "").trim().toLowerCase();
+  const lawFilter = state.aiSelectedLaw || "all";
   return rows.filter((row) => {
     const caseItem = state.cases.find((item) => item.id === row.caseId);
     const matchesQuery = !query || [row.title, row.subtitle, row.description, caseItem?.responsible, caseItem?.id]
       .some((value) => String(value || "").toLowerCase().includes(query));
+    const matchesLaw = lawFilter === "all" || row.helper.key === lawFilter;
     const matchesStatus = state.aiCaseStatusFilter === "all" || row.status === state.aiCaseStatusFilter;
     const matchesResponsible = state.aiCaseResponsibleFilter === "all" || caseItem?.responsible === state.aiCaseResponsibleFilter;
-    return matchesQuery && matchesStatus && matchesResponsible;
+    return matchesQuery && matchesLaw && matchesStatus && matchesResponsible;
   });
 }
 
 function renderMessage(message) {
   return `<div class="bubble ${message.role === "user" ? "user" : ""}">${escapeHtml(message.text)}</div>`;
+}
+
+function inlineChatPanel(row, caseItem, helper, messages, icon) {
+  return `
+    <section class="panel ai-card-chat-panel">
+      <div class="toolbar compact">
+        <div>
+          <h2>Чат по справі</h2>
+          <p class="muted">№${escapeHtml(caseItem.id)} · ${escapeHtml(helper.label)} · ${escapeHtml(row.title)}</p>
+        </div>
+        <button class="ai-chat-close" type="button" data-ai-close-chat="${row.id}" aria-label="Згорнути чат" title="Згорнути чат">
+          ×
+        </button>
+      </div>
+      <div class="ai-chat">
+        ${messages.map(renderMessage).join("")}
+      </div>
+    </section>
+  `;
 }
 
 export function renderAIScreen(ctx) {
@@ -169,11 +195,14 @@ export function renderAIScreen(ctx) {
   state.aiCaseResponsibleFilter ||= "all";
   state.aiCustomAssistants ||= [];
   state.aiHiddenAssistantIds ||= [];
+  state.aiViewMode ||= "cards";
+  state.aiSelectedLaw ||= "all";
   const rows = assistantRows(state, clientById);
   const filteredRows = filterRows(state, rows);
   const selected = selectedAssistant(state, rows);
   const selectedCase = caseById(selected?.caseId || state.aiSelectedCaseId) || state.cases[0];
   const selectedHelper = selected?.helper || lawForCase(selectedCase);
+  state.aiSelectedAssistantId ||= selected?.id;
   if (!state.aiMessages.length || state.aiSelectedCaseId !== selectedCase.id) {
     state.aiSelectedCaseId = selectedCase.id;
     state.aiSelectedHelper = selectedHelper.label;
@@ -183,6 +212,7 @@ export function renderAIScreen(ctx) {
   const activeCount = rows.filter((row) => row.status === "Активний").length;
   const trainingCount = rows.filter((row) => row.status === "На навчанні").length;
   const requestCount = LAW_HELPERS.reduce((sum, helper) => sum + helper.requests, 0) + rows.length * 486;
+  const filteredCount = filteredRows.length;
 
   $("#ai").innerHTML = `
     <div class="ai-screen ai-directory-screen">
@@ -193,6 +223,29 @@ export function renderAIScreen(ctx) {
         </div>
         <button class="primary" type="button" data-ai-create-global>${icon("user")} Створити AI помічника</button>
       </div>
+
+      <section class="ai-summary-strip" aria-label="Стани AI помічників">
+        <button class="${state.aiCaseStatusFilter === "all" ? "active" : ""}" type="button" data-ai-summary-filter="all">
+          <i class="blue">${icon("message")}</i>
+          <strong>${rows.length}</strong>
+          <span>Всього</span>
+        </button>
+        <button class="${state.aiCaseStatusFilter === "Активний" ? "active" : ""}" type="button" data-ai-summary-filter="Активний">
+          <i class="green">${icon("check")}</i>
+          <strong>${activeCount}</strong>
+          <span>Активні</span>
+        </button>
+        <button class="${state.aiCaseStatusFilter === "На навчанні" ? "active" : ""}" type="button" data-ai-summary-filter="На навчанні">
+          <i class="amber">${icon("clock")}</i>
+          <strong>${trainingCount}</strong>
+          <span>Навчання</span>
+        </button>
+        <button type="button" data-ai-summary-filter="visible">
+          <i class="violet">${icon("search")}</i>
+          <strong>${filteredCount}</strong>
+          <span>У вибірці</span>
+        </button>
+      </section>
 
       <div class="ai-layout">
         <div class="ai-main">
@@ -205,11 +258,11 @@ export function renderAIScreen(ctx) {
             </div>
             <div class="ai-law-grid">
               ${LAW_HELPERS.map((helper) => `
-                <button class="panel ai-law-card ${state.aiSelectedHelper === helper.label ? "active" : ""}" type="button" data-ai-helper="${helper.label}">
+                <button class="panel ai-law-card ${state.aiSelectedLaw === helper.key ? "active" : ""}" type="button" data-ai-helper="${helper.key}" data-ai-helper-label="${helper.label}" aria-pressed="${state.aiSelectedLaw === helper.key}">
                   <span class="ai-law-icon ${helper.tone}">${icon(helper.icon)}</span>
                   <strong>${helper.label}</strong>
                   <em>${helper.description}</em>
-                  <small>${icon("message")} ${helper.requests.toLocaleString("uk-UA")}</small>
+                  <small>${icon("message")} ${rows.filter((row) => row.helper.key === helper.key).length} помічн. · ${helper.requests.toLocaleString("uk-UA")} запитів</small>
                 </button>
               `).join("")}
             </div>
@@ -222,14 +275,14 @@ export function renderAIScreen(ctx) {
                 <p class="muted">Персоналізовані помічники, навчені під конкретні справи</p>
               </div>
               <div class="ai-view-toggle" aria-label="Перемикання вигляду">
-                <button class="active" type="button" data-ai-view-mode="cards">${icon("filter")}</button>
-                <button type="button" data-ai-view-mode="list">${icon("file")}</button>
+                <button class="${state.aiViewMode === "cards" ? "active" : ""}" type="button" data-ai-view-mode="cards" title="Картки">${icon("filter")}</button>
+                <button class="${state.aiViewMode === "list" ? "active" : ""}" type="button" data-ai-view-mode="list" title="Список">${icon("file")}</button>
               </div>
             </div>
             <div class="ai-case-filters">
               <div class="search-field">
                 ${icon("search")}
-                <input data-ai-case-search type="search" placeholder="Пошук по делам..." value="${escapeHtml(state.aiSearchQuery)}">
+                <input data-ai-case-search type="search" placeholder="Пошук по справах..." value="${escapeHtml(state.aiSearchQuery)}">
               </div>
               <select data-ai-status-filter>
                 <option value="all" ${state.aiCaseStatusFilter === "all" ? "selected" : ""}>Всі статуси</option>
@@ -243,34 +296,38 @@ export function renderAIScreen(ctx) {
                 `).join("")}
               </select>
             </div>
-            <div class="ai-case-list">
-              ${filteredRows.map((row) => `
+            <div class="ai-case-list ${state.aiViewMode === "list" ? "list-mode" : "card-mode"}">
+              ${filteredRows.map((row) => {
+                const meta = statusMeta(row.status);
+                const isOpen = state.aiChatOpenId === row.id;
+                const rowCase = caseById(row.caseId) || selectedCase;
+                return `
                 <article class="ai-case-row ${selected?.id === row.id ? "selected" : ""}" data-ai-assistant-row="${row.id}">
                   <span class="ai-case-icon ${row.helper.tone}">${icon(row.icon)}</span>
-                  <div>
+                  <div class="ai-case-main">
                     <strong>${escapeHtml(row.title)}</strong>
                     <span>${escapeHtml(row.subtitle)}</span>
-                    <small>Створено: ${escapeHtml(row.created)}</small>
+                    <small>${icon("calendar")} ${escapeHtml(row.created)}</small>
                   </div>
                   <p>${escapeHtml(row.description)}</p>
-                  ${badge(row.status, statusTone(row.status))}
-                  <button class="secondary compact-button" type="button" data-ai-open-chat="${row.id}">${icon("message")} Відкрити чат</button>
                   <div class="ai-row-actions">
+                    <span class="ai-status-pill ${meta.tone}">${icon(meta.icon)} ${meta.label}</span>
                     <button class="icon-button" type="button" data-ai-row-menu="${row.id}" aria-label="Дії помічника">⋮</button>
                     ${state.aiOpenMenuId === row.id ? `
                       <div class="ai-row-menu">
-                        <button type="button" data-ai-row-action="train" data-ai-row-id="${row.id}">Навчити на матеріалах</button>
-                        <button type="button" data-ai-row-action="export" data-ai-row-id="${row.id}">Експорт висновку</button>
-                        <button type="button" data-ai-row-action="delete" data-ai-row-id="${row.id}">Видалити</button>
+                        <button type="button" data-ai-row-action="train" data-ai-row-id="${row.id}">${icon("file")} Навчити на матеріалах</button>
+                        <button type="button" data-ai-row-action="export" data-ai-row-id="${row.id}">${icon("briefcase")} Експорт висновку</button>
+                        <button type="button" data-ai-row-action="delete" data-ai-row-id="${row.id}">${icon("trash")} Видалити</button>
                       </div>
                     ` : ""}
                   </div>
                 </article>
-              `).join("")}
+                ${isOpen ? inlineChatPanel(row, rowCase, row.helper, state.aiMessages, icon) : ""}
+              `; }).join("")}
               <article class="ai-case-row ai-create-row">
                 <span class="ai-case-icon neutral">+</span>
                 <div>
-                  <strong>Створити AI помічника для нового дела</strong>
+                  <strong>Створити AI помічника для нової справи</strong>
                   <span>Навчіть помічника на матеріалах справи і отримуйте точні консультації</span>
                 </div>
                 <button class="secondary compact-button" type="button" data-ai-create-case>Створити</button>
@@ -311,18 +368,6 @@ export function renderAIScreen(ctx) {
             </div>
           </section>
 
-          <section class="panel ai-chat-card">
-            <div class="toolbar compact">
-              <div>
-                <h2>Чат по справі</h2>
-                <p class="muted">№${escapeHtml(selectedCase.id)} · ${escapeHtml(selectedHelper.label)}</p>
-              </div>
-            </div>
-            <div class="ai-chat">
-              ${state.aiMessages.map(renderMessage).join("")}
-            </div>
-          </section>
-
           <section class="panel ai-stats-card">
             <h2>Мої AI помічники</h2>
             <div><span>Всього помічників</span><strong>${rows.length}</strong></div>
@@ -333,7 +378,7 @@ export function renderAIScreen(ctx) {
 
           <section class="panel ai-actions-card">
             <h2>Швидкі дії</h2>
-            <button class="list-item action-list-button" type="button" data-ai-quick="case">${icon("tag")} Створити помічника для дела</button>
+            <button class="list-item action-list-button" type="button" data-ai-quick="case">${icon("tag")} Створити помічника для справи</button>
             <button class="list-item action-list-button" type="button" data-ai-quick="branch">${icon("briefcase")} Створити помічника по галузі</button>
             <button class="list-item action-list-button" type="button" data-ai-quick="knowledge">${icon("telegram")} Управління знаннями</button>
           </section>
@@ -354,12 +399,18 @@ export function renderAIScreen(ctx) {
     }
     state.aiMessages.push({ role: "user", text: prompt });
     state.aiMessages.push({ role: "assistant", text: assistantReply(prompt, selectedHelper.label, selectedCase) });
+    state.aiChatOpenId = state.aiSelectedAssistantId || selected?.id;
     state.aiDraftPrompt = "";
     rerender();
   };
 
   document.querySelectorAll("[data-ai-helper]").forEach((button) => button.addEventListener("click", () => {
-    state.aiSelectedHelper = button.dataset.aiHelper;
+    const nextLaw = button.dataset.aiHelper;
+    state.aiSelectedLaw = state.aiSelectedLaw === nextLaw ? "all" : nextLaw;
+    state.aiSelectedHelper = button.dataset.aiHelperLabel;
+    state.aiSelectedAssistantId = "";
+    state.aiChatOpenId = "";
+    state.aiOpenMenuId = "";
     state.aiMessages = defaultMessages(selectedCase, state.aiSelectedHelper);
     rerender();
   }));
@@ -371,12 +422,21 @@ export function renderAIScreen(ctx) {
     state.aiCaseStatusFilter = event.currentTarget.value;
     rerender();
   });
+  document.querySelectorAll("[data-ai-summary-filter]").forEach((button) => button.addEventListener("click", () => {
+    if (button.dataset.aiSummaryFilter === "visible") return;
+    state.aiCaseStatusFilter = button.dataset.aiSummaryFilter;
+    rerender();
+  }));
+  document.querySelectorAll("[data-ai-view-mode]").forEach((button) => button.addEventListener("click", () => {
+    state.aiViewMode = button.dataset.aiViewMode;
+    rerender();
+  }));
   document.querySelector("[data-ai-responsible-filter]")?.addEventListener("change", (event) => {
     state.aiCaseResponsibleFilter = event.currentTarget.value;
     rerender();
   });
   document.querySelectorAll("[data-ai-open-chat], [data-ai-assistant-row]").forEach((element) => element.addEventListener("click", (event) => {
-    if (event.target.closest("[data-ai-row-menu], [data-ai-row-action]")) return;
+    if (event.target.closest("[data-ai-row-menu], [data-ai-row-action], [data-ai-close-chat]")) return;
     if (element.dataset.aiAssistantRow && event.target.closest("[data-ai-open-chat]")) return;
     const id = element.dataset.aiOpenChat || element.dataset.aiAssistantRow;
     const row = rows.find((item) => item.id === id);
@@ -387,6 +447,14 @@ export function renderAIScreen(ctx) {
     state.aiSelectedHelper = row.helper.label;
     state.aiMessages = defaultMessages(caseItem, row.helper.label);
     state.aiOpenMenuId = "";
+    state.aiChatOpenId = row.id;
+    rerender();
+  }));
+  document.querySelectorAll("[data-ai-close-chat]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (state.aiChatOpenId === button.dataset.aiCloseChat) {
+      state.aiChatOpenId = "";
+    }
     rerender();
   }));
   document.querySelector("[data-ai-prompt]")?.addEventListener("input", (event) => {

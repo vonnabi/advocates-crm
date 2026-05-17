@@ -30,7 +30,7 @@ function isSameDay(left, right) {
 function allDashboardTasks(state) {
   return state.cases.flatMap((item) => (item.tasks || []).map((task, index) => ({
     ...task,
-    key: `${item.id}-${index}`,
+    key: `${item.id}:${index}`,
     caseId: item.id,
     caseTitle: item.title,
     client: clientName(state, item),
@@ -119,7 +119,7 @@ function eventRows(ctx, events) {
   return events.map((event) => {
     const client = clientById(event.clientId);
     return `
-      <button class="dashboard-row dashboard-row-button" type="button" data-view-link="calendar">
+      <button class="dashboard-row dashboard-row-button" type="button" data-dashboard-event="event-${event.id}">
         <i>${event.time || "10:00"}</i>
         <span>
           <strong>${event.title}</strong>
@@ -133,7 +133,7 @@ function eventRows(ctx, events) {
 
 function taskRows(tasks, icon) {
   return tasks.map((task) => `
-    <button class="dashboard-row dashboard-row-button" type="button" data-view-link="tasks">
+    <button class="dashboard-row dashboard-row-button" type="button" data-dashboard-task="${task.key}">
       <i>${formatDisplayDate(task.due)}</i>
       <span>
         <strong>${task.title}</strong>
@@ -148,7 +148,7 @@ function caseRows(state, cases, currency, icon) {
   return cases.map((item) => {
     const finance = caseFinancials(item);
     return `
-      <button class="dashboard-row dashboard-row-button" type="button" data-view-link="cases">
+      <button class="dashboard-row dashboard-row-button" type="button" data-dashboard-case="${item.id}">
         <i>№${item.id}</i>
         <span>
           <strong>${item.title}</strong>
@@ -163,6 +163,66 @@ function caseRows(state, cases, currency, icon) {
 
 function quickButton(view, label, iconName, icon) {
   return `<button class="dashboard-quick-button" type="button" data-view-link="${view}">${icon(iconName)} ${label}</button>`;
+}
+
+function resetTaskFilters(state) {
+  state.taskQuery = "";
+  state.taskTab = "all";
+  state.taskQuickFilter = "all";
+  state.taskStatusFilter = "all";
+  state.taskPriorityFilter = "all";
+  state.taskCaseFilter = "all";
+  state.taskResponsibleFilter = "all";
+  state.selectedTaskKeys = [];
+}
+
+function resetCalendarFilters(state) {
+  state.calendarQuery = "";
+  state.calendarFilter = "all";
+  state.calendarClientFilter = "all";
+  state.calendarCaseFilter = "all";
+  state.calendarResponsibleFilter = "all";
+  state.calendarStatusFilter = "all";
+  state.calendarAuthorityFilter = "";
+  state.calendarOverdueOnly = false;
+}
+
+function bindDashboardDeepLinks(ctx) {
+  const { state, renderCalendar, renderCases, renderTasks, switchView } = ctx;
+
+  document.querySelectorAll("[data-dashboard-event]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const eventId = button.dataset.dashboardEvent;
+      const rawEvent = state.events.find((event) => `event-${event.id}` === eventId);
+      resetCalendarFilters(state);
+      state.selectedEventId = eventId;
+      state.calendarDate = rawEvent?.date || state.calendarDate;
+      state.calendarMode = "list";
+      renderCalendar?.();
+      switchView?.("calendar");
+    });
+  });
+
+  document.querySelectorAll("[data-dashboard-task]").forEach((button) => {
+    button.addEventListener("click", () => {
+      resetTaskFilters(state);
+      state.selectedTaskKey = button.dataset.dashboardTask;
+      state.taskDetailOpen = true;
+      state.taskDetailTab = "info";
+      renderTasks?.();
+      switchView?.("tasks");
+    });
+  });
+
+  document.querySelectorAll("[data-dashboard-case]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedCaseId = button.dataset.dashboardCase;
+      state.caseScreen = "detail";
+      state.selectedCaseKeys = [];
+      renderCases?.();
+      switchView?.("cases");
+    });
+  });
 }
 
 export function renderDashboardScreen(ctx) {
@@ -241,7 +301,7 @@ export function renderDashboardScreen(ctx) {
             </div>
             <div class="dashboard-list dashboard-list-compact">
               ${(todayTasks.length ? todayTasks : overdueTasks).slice(0, 5).map((task) => `
-                <button class="dashboard-row dashboard-row-button" type="button" data-view-link="tasks">
+                <button class="dashboard-row dashboard-row-button" type="button" data-dashboard-task="${task.key}">
                   <i>${formatDisplayDate(task.due)}</i>
                   <span>
                     <strong>${task.title}</strong>
@@ -356,4 +416,5 @@ export function renderDashboardScreen(ctx) {
       </section>
     </div>
   `;
+  bindDashboardDeepLinks(ctx);
 }

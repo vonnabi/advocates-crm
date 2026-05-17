@@ -1,5 +1,8 @@
+import { saveClientToApi, shouldUseApi } from "../api.js";
+import { normalizeClient } from "../state.js";
+
 export function setupClientForm({ state, $, clientById, renderAll, switchView, showToast }) {
-  $("#client-form").addEventListener("submit", (event) => {
+  $("#client-form").addEventListener("submit", async (event) => {
     if (event.submitter?.value === "cancel") return;
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -33,6 +36,14 @@ export function setupClientForm({ state, $, clientById, renderAll, switchView, s
         },
         ...client.communications
       ];
+      if (shouldUseApi(state)) {
+        try {
+          Object.assign(client, normalizeClient(await saveClientToApi(client)));
+        } catch (_error) {
+          showToast("Не вдалося зберегти клієнта в базі.", "danger");
+          return;
+        }
+      }
       state.selectedClientId = client.id;
       $("#client-dialog").close();
       renderAll();
@@ -42,7 +53,7 @@ export function setupClientForm({ state, $, clientById, renderAll, switchView, s
     }
 
     const nextId = Math.max(...state.clients.map((client) => client.id)) + 1;
-    state.clients.push({
+    let newClient = {
       id: nextId,
       name: form.get("name"),
       phone: form.get("phone"),
@@ -66,8 +77,17 @@ export function setupClientForm({ state, $, clientById, renderAll, switchView, s
       communications: [
         { date: new Date().toLocaleDateString("uk-UA"), channel: "CRM", title: "Клієнт доданий до бази", status: "Створено" }
       ]
-    });
-    state.selectedClientId = nextId;
+    };
+    if (shouldUseApi(state)) {
+      try {
+        newClient = normalizeClient(await saveClientToApi({ ...newClient, id: "" }));
+      } catch (_error) {
+        showToast("Не вдалося додати клієнта в базу.", "danger");
+        return;
+      }
+    }
+    state.clients.push(newClient);
+    state.selectedClientId = newClient.id;
     $("#client-dialog").close();
     renderAll();
     switchView("clients");

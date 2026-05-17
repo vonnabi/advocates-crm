@@ -1,4 +1,8 @@
+import { deleteSettingsUserFromApi, saveSettingsUserToApi, shouldUseApi } from "../api.js";
+import { normalizeSettingsUser } from "../state.js";
+
 const roleAccessMap = {
+  "Адміністратор": "Повний доступ",
   "Адвокат": "Справи, клієнти, календар",
   "Помічник": "Задачі та документи",
   "Бухгалтер": "Фінанси та звіти"
@@ -69,7 +73,7 @@ function ensureInviteDialog(ctx) {
     form.elements.access.value = roleAccessMap[form.elements.role.value] || roleAccessMap["Помічник"];
   });
   dialog.querySelector("[data-settings-invite-close]")?.addEventListener("click", () => dialog.close());
-  form?.addEventListener("submit", (event) => {
+  form?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const { state, saveNavigationState, showToast } = ctx;
     const name = cleanSettingValue(form.elements.name.value);
@@ -77,13 +81,22 @@ function ensureInviteDialog(ctx) {
     const role = cleanSettingValue(form.elements.role.value);
     const access = cleanSettingValue(form.elements.access.value) || roleAccessMap[role] || roleAccessMap["Помічник"];
     if (!name || !email) return;
-    state.settingsUsers.push({
+    let user = {
       name,
       email,
       role,
       access,
       photo: userInitials(name)
-    });
+    };
+    if (shouldUseApi(state)) {
+      try {
+        user = normalizeSettingsUser(await saveSettingsUserToApi(user));
+      } catch (_error) {
+        showToast("Не вдалося зберегти користувача в базі.", "danger");
+        return;
+      }
+    }
+    state.settingsUsers.push(user);
     addSettingsAudit(state, `Запрошено користувача ${name} з роллю ${role}.`, "green");
     form.reset();
     form.elements.access.value = roleAccessMap["Адвокат"];
@@ -108,6 +121,7 @@ export function renderSettingsScreen(ctx) {
   const activeIntegrations = integrations.filter((item) => state.settingsIntegrations[item.key]).length;
   const enabledNotifications = Object.values(state.settingsNotifications || {}).filter(Boolean).length;
   const activeUsers = users.filter((user) => user.role !== "Видалений").length;
+  state.settingsFocusedSection ||= "profile";
   state.settingsAudit ||= [
     { date: "16.05.2024 09:30", text: "Синхронізовано канали Telegram та SMS.", tone: "green" },
     { date: "15.05.2024 18:10", text: "Оновлено профіль бюро для документів.", tone: "blue" },
@@ -117,25 +131,25 @@ export function renderSettingsScreen(ctx) {
   $("#settings").innerHTML = `
     <div class="settings-screen">
       <section class="settings-summary-grid">
-        <article class="panel settings-summary-card">
+        <button class="panel settings-summary-card ${state.settingsFocusedSection === "users" ? "active" : ""}" type="button" data-settings-focus="users" aria-pressed="${state.settingsFocusedSection === "users"}">
           <span>${icon("user")}</span>
           <div><strong>${activeUsers}</strong><em>користувачів</em></div>
-        </article>
-        <article class="panel settings-summary-card">
+        </button>
+        <button class="panel settings-summary-card ${state.settingsFocusedSection === "integrations" ? "active" : ""}" type="button" data-settings-focus="integrations" aria-pressed="${state.settingsFocusedSection === "integrations"}">
           <span>${icon("refresh")}</span>
           <div><strong>${activeIntegrations}/${integrations.length}</strong><em>інтеграцій активні</em></div>
-        </article>
-        <article class="panel settings-summary-card">
+        </button>
+        <button class="panel settings-summary-card ${state.settingsFocusedSection === "notifications" ? "active" : ""}" type="button" data-settings-focus="notifications" aria-pressed="${state.settingsFocusedSection === "notifications"}">
           <span>${icon("bell")}</span>
           <div><strong>${enabledNotifications}</strong><em>типи сповіщень</em></div>
-        </article>
-        <article class="panel settings-summary-card">
+        </button>
+        <button class="panel settings-summary-card ${state.settingsFocusedSection === "audit" ? "active" : ""}" type="button" data-settings-focus="audit" aria-pressed="${state.settingsFocusedSection === "audit"}">
           <span>${icon("check")}</span>
           <div><strong>Готово</strong><em>стан системи</em></div>
-        </article>
+        </button>
       </section>
 
-      <section class="panel settings-profile-card" data-settings-section="profile">
+      <section class="panel settings-profile-card ${state.settingsFocusedSection === "profile" ? "is-focused" : ""}" data-settings-section="profile">
         <div class="settings-section-head">
           <div>
             <h2>Профіль бюро</h2>
@@ -151,7 +165,7 @@ export function renderSettingsScreen(ctx) {
         </div>
       </section>
 
-      <section class="panel settings-users-card" data-settings-section="users">
+      <section class="panel settings-users-card ${state.settingsFocusedSection === "users" ? "is-focused" : ""}" data-settings-section="users">
         <div class="settings-section-head">
           <div>
             <h2>Користувачі</h2>
@@ -179,7 +193,7 @@ export function renderSettingsScreen(ctx) {
         </div>
       </section>
 
-      <section class="panel settings-integrations-card" data-settings-section="integrations">
+      <section class="panel settings-integrations-card ${state.settingsFocusedSection === "integrations" ? "is-focused" : ""}" data-settings-section="integrations">
         <div class="settings-section-head">
           <div>
             <h2>Інтеграції</h2>
@@ -205,7 +219,7 @@ export function renderSettingsScreen(ctx) {
         </div>
       </section>
 
-      <section class="panel settings-notifications-card" data-settings-section="notifications">
+      <section class="panel settings-notifications-card ${state.settingsFocusedSection === "notifications" ? "is-focused" : ""}" data-settings-section="notifications">
         <div class="settings-section-head">
           <div>
             <h2>Сповіщення</h2>
@@ -224,7 +238,7 @@ export function renderSettingsScreen(ctx) {
         </div>
       </section>
 
-      <section class="panel settings-audit-card" data-settings-section="audit">
+      <section class="panel settings-audit-card ${state.settingsFocusedSection === "audit" ? "is-focused" : ""}" data-settings-section="audit">
         <div class="settings-section-head">
           <div>
             <h2>Журнал змін</h2>
@@ -252,6 +266,13 @@ export function renderSettingsScreen(ctx) {
     renderSettingsScreen(ctx);
     showToast("Налаштування бюро збережено.");
   });
+  document.querySelectorAll("[data-settings-focus]").forEach((button) => button.addEventListener("click", () => {
+    state.settingsFocusedSection = button.dataset.settingsFocus;
+    renderSettingsScreen(ctx);
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-settings-section="${state.settingsFocusedSection}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }));
   document.querySelector("[data-settings-action='invite']")?.addEventListener("click", () => {
     const dialog = ensureInviteDialog(ctx);
     const form = dialog.querySelector("#settings-invite-form");
@@ -267,29 +288,56 @@ export function renderSettingsScreen(ctx) {
     state.settingsOpenUserMenu = state.settingsOpenUserMenu === key ? "" : key;
     renderSettingsScreen(ctx);
   }));
-  document.querySelectorAll("[data-settings-user-access]").forEach((button) => button.addEventListener("click", () => {
+  document.querySelectorAll("[data-settings-user-access]").forEach((button) => button.addEventListener("click", async () => {
     const user = state.settingsUsers[Number(button.dataset.settingsUserAccess)];
     if (!user) return;
     user.access = roleAccessMap[user.role] || user.access;
+    if (shouldUseApi(state)) {
+      try {
+        Object.assign(user, normalizeSettingsUser(await saveSettingsUserToApi(user)));
+      } catch (_error) {
+        showToast("Не вдалося оновити доступ у базі.", "danger");
+        return;
+      }
+    }
     state.settingsOpenUserMenu = "";
     addSettingsAudit(state, `Оновлено доступ користувача ${user.name}: ${user.access}.`, "blue");
     saveNavigationState();
     renderSettingsScreen(ctx);
     showToast(`Доступ користувача ${user.name} оновлено.`);
   }));
-  document.querySelectorAll("[data-settings-user-role]").forEach((button) => button.addEventListener("click", () => {
+  document.querySelectorAll("[data-settings-user-role]").forEach((button) => button.addEventListener("click", async () => {
     const user = state.settingsUsers[Number(button.dataset.settingsUserRole)];
     if (!user || user.role === "Адміністратор") return;
     user.role = user.role === "Адвокат" ? "Помічник" : "Адвокат";
     user.access = user.role === "Адвокат" ? "Справи, клієнти, календар" : "Задачі та документи";
+    if (shouldUseApi(state)) {
+      try {
+        Object.assign(user, normalizeSettingsUser(await saveSettingsUserToApi(user)));
+      } catch (_error) {
+        showToast("Не вдалося змінити роль у базі.", "danger");
+        return;
+      }
+    }
     state.settingsOpenUserMenu = "";
     addSettingsAudit(state, `Змінено роль користувача ${user.name}: ${user.role}.`, "amber");
     saveNavigationState();
     renderSettingsScreen(ctx);
     showToast(`Роль користувача змінено: ${user.role}.`);
   }));
-  document.querySelectorAll("[data-settings-user-delete]").forEach((button) => button.addEventListener("click", () => {
-    const [removed] = state.settingsUsers.splice(Number(button.dataset.settingsUserDelete), 1);
+  document.querySelectorAll("[data-settings-user-delete]").forEach((button) => button.addEventListener("click", async () => {
+    const index = Number(button.dataset.settingsUserDelete);
+    const removed = state.settingsUsers[index];
+    if (!removed) return;
+    if (shouldUseApi(state) && removed.id) {
+      try {
+        await deleteSettingsUserFromApi(removed.id);
+      } catch (_error) {
+        showToast("Не вдалося видалити користувача з бази.", "danger");
+        return;
+      }
+    }
+    state.settingsUsers.splice(index, 1);
     state.settingsOpenUserMenu = "";
     addSettingsAudit(state, `Видалено користувача ${removed.name}.`, "red");
     saveNavigationState();

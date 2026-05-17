@@ -1,3 +1,6 @@
+import { saveTaskToApi, shouldUseApi } from "../api.js";
+import { normalizeTask } from "../state.js";
+
 let state;
 let $;
 let icon;
@@ -80,6 +83,19 @@ function plannerAutoReason(priority, overdue, daysUntilDue) {
 
 function sourceTask(task) {
   return task ? caseById(task.caseId)?.tasks?.[task.taskIndex] : null;
+}
+
+async function persistTask(task, source = sourceTask(task)) {
+  if (!source || !shouldUseApi(state)) return source;
+  if (!source.id) return source;
+  const caseItem = caseById(task.caseId);
+  const saved = normalizeTask(await saveTaskToApi({
+    ...source,
+    caseId: task.caseId,
+    clientId: caseItem?.clientId || task.clientId
+  }));
+  Object.assign(source, saved);
+  return source;
 }
 
 function taskCoexecutors(task = {}) {
@@ -799,7 +815,7 @@ function renderTasks() {
     });
   });
   document.querySelectorAll("[data-task-bulk-action]").forEach((button) => {
-    button.addEventListener("click", (event) => {
+    button.addEventListener("click", async (event) => {
       event.stopPropagation();
       const action = button.dataset.taskBulkAction;
       if (action === "clear") {
@@ -811,6 +827,7 @@ function renderTasks() {
       const selectedTasks = tasks.filter((task) => (state.selectedTaskKeys || []).includes(task.key));
       if (!selectedTasks.length) return;
       const today = new Date().toLocaleDateString("uk-UA");
+      const changed = [];
       selectedTasks.forEach((task) => {
         const source = sourceTask(task);
         if (!source) return;
@@ -828,7 +845,16 @@ function renderTasks() {
           { date: today, text: "Застосовано масову дію зі списку задач." },
           ...(source.history || [])
         ];
+        changed.push({ task, source });
       });
+      if (shouldUseApi(state)) {
+        try {
+          await Promise.all(changed.map(({ task, source }) => persistTask(task, source)));
+        } catch (_error) {
+          showToast?.("Не вдалося зберегти масову дію задач у базі.", "danger");
+          return;
+        }
+      }
       const actionMessages = {
         done: "Обрані задачі позначено виконаними.",
         work: "Обрані задачі повернуто в роботу.",
@@ -943,7 +969,7 @@ function renderTasks() {
     });
   });
   document.querySelectorAll("[data-delete-subtask-task]").forEach((button) => {
-    button.addEventListener("click", (event) => {
+    button.addEventListener("click", async (event) => {
       event.stopPropagation();
       const task = tasks.find((item) => item.key === button.dataset.deleteSubtaskTask);
       const source = sourceTask(task);
@@ -954,6 +980,14 @@ function renderTasks() {
         { date: new Date().toLocaleDateString("uk-UA"), text: "Видалено підзадачу." },
         ...(source.history || [])
       ];
+      if (shouldUseApi(state)) {
+        try {
+          await persistTask(task, source);
+        } catch (_error) {
+          showToast?.("Не вдалося видалити підзадачу з бази.", "danger");
+          return;
+        }
+      }
       renderAll();
       switchView("tasks");
       showToast("Підзадачу видалено.");
@@ -961,7 +995,7 @@ function renderTasks() {
   });
   document.querySelectorAll("[data-toggle-subtask-task]").forEach((input) => {
     input.addEventListener("click", (event) => event.stopPropagation());
-    input.addEventListener("change", () => {
+    input.addEventListener("change", async () => {
       const task = tasks.find((item) => item.key === input.dataset.toggleSubtaskTask);
       const source = sourceTask(task);
       if (!source) return;
@@ -973,6 +1007,14 @@ function renderTasks() {
         { date: new Date().toLocaleDateString("uk-UA"), text: `Оновлено статус підзадачі: ${subtask.title}.` },
         ...(source.history || [])
       ];
+      if (shouldUseApi(state)) {
+        try {
+          await persistTask(task, source);
+        } catch (_error) {
+          showToast?.("Не вдалося зберегти підзадачу в базі.", "danger");
+          return;
+        }
+      }
       renderAll();
       switchView("tasks");
       showToast(input.checked ? "Підзадачу виконано." : "Підзадачу повернуто в роботу.");
@@ -980,59 +1022,99 @@ function renderTasks() {
   });
   document.querySelectorAll("[data-toggle-task-global]").forEach((input) => {
     input.addEventListener("click", (event) => event.stopPropagation());
-    input.addEventListener("change", () => {
+    input.addEventListener("change", async () => {
       const task = tasks.find((item) => item.key === input.dataset.toggleTaskGlobal);
       const source = task && caseById(task.caseId)?.tasks[task.taskIndex];
       if (!source) return;
       source.status = input.checked ? "Виконано" : "В роботі";
+      if (shouldUseApi(state)) {
+        try {
+          await persistTask(task, source);
+        } catch (_error) {
+          showToast?.("Не вдалося зберегти статус задачі в базі.", "danger");
+          return;
+        }
+      }
       renderAll();
       switchView("tasks");
     });
   });
   document.querySelectorAll("[data-toggle-side-task]").forEach((button) => {
-    button.addEventListener("click", (event) => {
+    button.addEventListener("click", async (event) => {
       event.stopPropagation();
       const task = tasks.find((item) => item.key === button.dataset.toggleSideTask);
       const source = sourceTask(task);
       if (!source) return;
       source.status = task.completed ? "В роботі" : "Виконано";
+      if (shouldUseApi(state)) {
+        try {
+          await persistTask(task, source);
+        } catch (_error) {
+          showToast?.("Не вдалося зберегти статус задачі в базі.", "danger");
+          return;
+        }
+      }
       renderAll();
       switchView("tasks");
     });
   });
   document.querySelectorAll("[data-plan-task]").forEach((button) => {
-    button.addEventListener("click", (event) => {
+    button.addEventListener("click", async (event) => {
       event.stopPropagation();
       const task = tasks.find((item) => item.key === button.dataset.planTask);
       const source = sourceTask(task);
       if (!source) return;
       source.plannerManual = !task.plannerManual;
       if (source.plannerManual) source.plannerSuppressed = false;
+      if (shouldUseApi(state)) {
+        try {
+          await persistTask(task, source);
+        } catch (_error) {
+          showToast?.("Не вдалося оновити Планер у базі.", "danger");
+          return;
+        }
+      }
       renderAll();
       switchView("tasks");
       showToast(source.plannerManual ? "Задачу додано в Планер." : "Задачу прибрано з ручного плану.");
     });
   });
   document.querySelectorAll("[data-important-task]").forEach((button) => {
-    button.addEventListener("click", (event) => {
+    button.addEventListener("click", async (event) => {
       event.stopPropagation();
       const task = tasks.find((item) => item.key === button.dataset.importantTask);
       const source = sourceTask(task);
       if (!source) return;
       source.plannerImportant = !task.plannerImportant;
       if (source.plannerImportant) source.plannerSuppressed = false;
+      if (shouldUseApi(state)) {
+        try {
+          await persistTask(task, source);
+        } catch (_error) {
+          showToast?.("Не вдалося оновити важливість задачі в базі.", "danger");
+          return;
+        }
+      }
       renderAll();
       switchView("tasks");
       showToast(source.plannerImportant ? "Задачу позначено важливою." : "Важливість задачі знято.");
     });
   });
   document.querySelectorAll("[data-task-status-pick]").forEach((button) => {
-    button.addEventListener("click", (event) => {
+    button.addEventListener("click", async (event) => {
       event.stopPropagation();
       const task = tasks.find((item) => item.key === button.dataset.taskStatusPick);
       const source = task && caseById(task.caseId)?.tasks[task.taskIndex];
       if (!source) return;
       source.status = button.dataset.taskStatusValue;
+      if (shouldUseApi(state)) {
+        try {
+          await persistTask(task, source);
+        } catch (_error) {
+          showToast?.("Не вдалося зберегти статус задачі в базі.", "danger");
+          return;
+        }
+      }
       renderAll();
       switchView("tasks");
       showToast?.("Статус задачі оновлено.");

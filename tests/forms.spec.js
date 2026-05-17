@@ -162,3 +162,88 @@ test("settings invite form adds a bureau user", async ({ page }) => {
   await expect(page.locator("#settings")).toContainText("Бухгалтер");
   await expect(page.locator("#settings")).toContainText(`Запрошено користувача ${userName}`);
 });
+
+test("mailing flow saves a template and creates campaigns", async ({ page }) => {
+  const message = "Автотестова розсилка для клієнтів {{client_name}}";
+
+  await openApp(page);
+  await page.locator('.nav-item[data-view="mailings"]').click();
+  await expect(page.locator("#mailings")).toHaveClass(/active/);
+
+  await page.locator("#mailing-text").fill(message);
+  await page.locator("[data-save-mailing-template]").click();
+  await page.locator('[data-mailing-main-tab="templates"]').click();
+  await expect(page.locator("#mailings")).toContainText(message);
+  await expect(page.locator("#mailings")).toContainText("Telegram");
+
+  await page.locator('[data-mailing-main-tab="new"]').click();
+  await page.locator('[data-mailing-action="test"]').click();
+  await expect(page.locator("#mailings")).toContainText("Тестовая отправка");
+  await expect(page.locator("#mailings")).toContainText("Тест отправлен");
+  await expect(page.locator("#mailings")).toContainText("@ivanenko_admin");
+
+  await page.locator("[data-new-mailing]").click();
+  await page.locator("#mailing-text").fill(`${message}\nЗапланований варіант.`);
+  await page.locator('input[name="send-time"][value="later"]').check();
+  await expect(page.locator("[data-mailing-schedule-date]")).toBeVisible();
+  await page.locator("[data-mailing-schedule-date]").fill("2026-06-22");
+  await page.locator("[data-mailing-schedule-time]").fill("11:30");
+  await page.locator('[data-mailing-action="schedule"]').click();
+
+  await expect(page.locator("#mailings")).toContainText("Информационное сообщение клиентам");
+  await expect(page.locator("#mailings")).toContainText("Запланирована");
+  await expect(page.locator("#mailings")).toContainText("22.06.2026 11:30");
+
+  await page.locator('[data-mailing-main-tab="automation"]').click();
+  await expect(page.locator(".mailing-automation-kpis")).toContainText("Правил");
+  const firstAutomationRule = page.locator(".automation-rule").first();
+  await firstAutomationRule.locator('[data-toggle-automation="0"]').uncheck();
+  await expect(page.locator(".automation-rule").first()).toContainText("Выключено");
+  await page.locator('[data-automation-channel="0"]').selectOption("Email");
+  await expect(page.locator('[data-automation-channel="0"]')).toHaveValue("Email");
+});
+
+test("analytics filters and date picker update the screen", async ({ page }) => {
+  await openApp(page);
+  await page.locator('.nav-item[data-view="analytics"]').click();
+  await expect(page.locator("#analytics")).toHaveClass(/active/);
+  await expect(page.locator("#analytics .analytics-date-range")).toContainText("01.05.2024 - 15.05.2024");
+
+  await page.locator("[data-analytics-status]").selectOption("debt");
+  await page.locator("[data-apply-analytics]").click();
+  await expect(page.locator("[data-analytics-status]")).toHaveValue("debt");
+  await expect(page.locator(".analytics-kpi-grid")).toContainText("Всього справ");
+
+  await page.locator("[data-analytics-date-toggle]").click();
+  await expect(page.locator("#analytics .analytics-date-popover")).toBeVisible();
+  await page.locator("[data-analytics-date-start]").fill("2024-05-10");
+  await page.locator("[data-analytics-date-end]").fill("2024-05-15");
+  await page.locator("[data-analytics-date-apply]").click();
+  await expect(page.locator("#analytics .analytics-date-range")).toContainText("10.05.2024 - 15.05.2024");
+
+  await page.locator("[data-reset-analytics]").click();
+  await expect(page.locator("[data-analytics-status]")).toHaveValue("all");
+  await expect(page.locator("#analytics .analytics-date-range")).toContainText("01.05.2024 - 15.05.2024");
+});
+
+test("finance tabs and date picker update the screen", async ({ page }) => {
+  await openApp(page);
+  await page.locator('.nav-item[data-view="finance"]').click();
+  await expect(page.locator("#finance")).toHaveClass(/active/);
+
+  await expect(page.locator("#finance .finance-date-range")).toContainText("01.05.2024 - 15.05.2024");
+  await expect(page.locator(".finance-kpi-grid")).toContainText("Загальний дохід");
+
+  await page.locator('[data-finance-tab="payments"]').click();
+  await expect(page.locator('.finance-tabs [data-finance-tab="payments"]')).toHaveClass(/active/);
+  await expect(page.locator(".finance-workspace-panel")).toContainText("Платежі");
+
+  await page.locator("[data-finance-date-toggle]").click();
+  await expect(page.locator("#finance .finance-date-popover")).toBeVisible();
+  await page.locator("[data-finance-date-start]").fill("2024-05-10");
+  await page.locator("[data-finance-date-end]").fill("2024-05-15");
+  await page.locator("[data-finance-date-apply]").click();
+
+  await expect(page.locator("#finance .finance-date-range")).toContainText("10.05.2024 - 15.05.2024");
+  await expect(page.locator("#finance .finance-date-popover")).toHaveCount(0);
+});

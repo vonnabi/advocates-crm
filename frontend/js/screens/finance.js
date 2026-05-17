@@ -1,9 +1,11 @@
+import { saveFinanceOperationToApi, shouldUseApi } from "../api.js";
 import {
   buildFinanceOperations,
   financeInsightsFromData,
   financeRowsFromCases,
   financeTotalsFromData
 } from "../derived-data.js";
+import { normalizeFinanceOperation } from "../state.js";
 
 const DEFAULT_START = "2024-05-01";
 const DEFAULT_END = "2024-05-15";
@@ -631,25 +633,38 @@ function ensureFinanceFolder(item, caseFolders) {
   return folder;
 }
 
-function addFinanceDocument(ctx, item, action, amount, title, date, comment) {
+function addFinanceDocument(ctx, item, action, amount, title, date, comment, apiDocument = null) {
   const { caseFolders, makeDocumentId } = ctx;
   const config = FINANCE_ACTIONS[action];
   const today = new Date().toLocaleDateString("uk-UA");
   const type = action === "invoice" ? "Рахунок" : "Акт";
-  const documentId = makeDocumentId();
-  const name = `${type}: ${title} · №${item.id}.docx`;
-  const documentData = {
-    documentId,
-    name,
-    type,
-    status: action === "invoice" ? "Подано" : "Чернетка",
-    submitted: date,
-    responseDue: "-",
-    comment: `${comment || config.hint} Сума: ${new Intl.NumberFormat("uk-UA").format(amount)} грн.`,
-    source: "Фінанси",
-    added: today
-  };
+  const documentId = apiDocument?.documentId || apiDocument?.id || makeDocumentId();
+  const documentData = apiDocument
+    ? {
+      ...apiDocument,
+      documentId,
+      name: apiDocument.name || `${type}: ${title} · №${item.id}.docx`,
+      type: apiDocument.type || type,
+      status: apiDocument.status || (action === "invoice" ? "Подано" : "Чернетка"),
+      submitted: date,
+      responseDue: apiDocument.responseDue && apiDocument.responseDue !== "-" ? financeDate(apiDocument.responseDue) : "-",
+      source: "Фінанси",
+      added: today
+    }
+    : {
+      documentId,
+      name: `${type}: ${title} · №${item.id}.docx`,
+      type,
+      status: action === "invoice" ? "Подано" : "Чернетка",
+      submitted: date,
+      responseDue: "-",
+      comment: `${comment || config.hint} Сума: ${new Intl.NumberFormat("uk-UA").format(amount)} грн.`,
+      source: "Фінанси",
+      added: today
+    };
   const folder = ensureFinanceFolder(item, caseFolders);
+  item.documents = (item.documents || []).filter((doc) => doc.documentId !== documentId);
+  folder.files = (folder.files || []).filter((file) => file.documentId !== documentId);
   item.documents.unshift(documentData);
   folder.files.unshift({ ...documentData, updated: today });
   folder.updated = today;
@@ -684,7 +699,7 @@ function openFinanceActionDialog(ctx, action) {
   document.querySelector("#finance-action-dialog").showModal();
 }
 
-function applyFinanceAction(ctx, formData) {
+async function applyFinanceAction(ctx, formData) {
   const {
     state,
     caseById,
@@ -723,6 +738,22 @@ function applyFinanceAction(ctx, formData) {
     method,
     custom: true
   };
+  let apiResult = null;
+  if (shouldUseApi(state)) {
+    try {
+      apiResult = await saveFinanceOperationToApi({
+        ...operation,
+        action,
+        date: dateIso,
+        amount,
+        comment
+      });
+      Object.assign(operation, normalizeFinanceOperation(apiResult.operation || operation));
+    } catch (_error) {
+      showToast("Не вдалося зберегти фінансову операцію в базі.", "danger");
+      return;
+    }
+  }
 
   state.financeOperations = state.financeOperations || [];
   state.financeOperations.unshift(operation);
@@ -743,7 +774,7 @@ function applyFinanceAction(ctx, formData) {
     item.paid = finance.paid;
     item.debt = Math.max(item.totalFee - item.paid, 0);
     item.nextPaymentDue = item.nextPaymentDue || formatDate(dateIso);
-    addFinanceDocument(ctx, item, action, amount, title, date, comment);
+    addFinanceDocument(ctx, item, action, amount, title, date, comment, apiResult?.document);
   }
 
   if (action === "expense") {
@@ -751,7 +782,7 @@ function applyFinanceAction(ctx, formData) {
   }
 
   if (action === "act") {
-    addFinanceDocument(ctx, item, action, amount, title, date, comment);
+    addFinanceDocument(ctx, item, action, amount, title, date, comment, apiResult?.document);
   }
 
   item.financeComment = comment || item.financeComment || "";
@@ -981,13 +1012,13 @@ export function renderFinanceScreen(ctx) {
     <div class="finance-screen finance-reference">
       <div class="finance-top-row">
         <div></div>
-        <div class="analytics-date-wrap">
-          <button class="analytics-date-range" type="button" data-finance-date-toggle aria-expanded="${state.financeDatePickerOpen}">
+        <div class="analytics-date-wrap finance-date-wrap">
+          <button class="analytics-date-range finance-date-range" type="button" data-finance-date-toggle aria-expanded="${state.financeDatePickerOpen}">
             <span>${financeDate(state.financeDateStart)} - ${financeDate(state.financeDateEnd)}</span>
             ${icon("calendar")}
           </button>
           ${state.financeDatePickerOpen ? `
-            <div class="analytics-date-popover">
+            <div class="analytics-date-popover finance-date-popover">
               <label>Початок
                 <input type="date" data-finance-date-start value="${state.financeDateStart}">
               </label>

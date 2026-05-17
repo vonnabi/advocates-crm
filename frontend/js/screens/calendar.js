@@ -1,3 +1,6 @@
+import { saveEventToApi, shouldUseApi } from "../api.js";
+import { normalizeEvent } from "../state.js";
+
 let state;
 let $;
 let icon;
@@ -21,6 +24,7 @@ let openTaskDialog;
 let openDeleteDocumentConfirm;
 let renderCases;
 let switchView;
+let showToast;
 
 function applyContext(ctx) {
   ({
@@ -46,7 +50,8 @@ function applyContext(ctx) {
     openTaskDialog,
     openDeleteDocumentConfirm,
     renderCases,
-    switchView
+    switchView,
+    showToast
   } = ctx);
 }
 
@@ -285,6 +290,7 @@ function renderCalendar() {
         <select id="calendar-status-filter" aria-label="Фільтр статусів"><option value="all">Усі статуси</option>${calendarStatuses().map((status) => `<option value="${status}" ${statusFilter === status ? "selected" : ""}>${status}</option>`).join("")}</select>
         <input id="calendar-authority-filter" value="${state.calendarAuthorityFilter || ""}" placeholder="Орган / суд / ТЦК" />
         <label class="calendar-overdue-filter"><input id="calendar-overdue-filter" type="checkbox" ${state.calendarOverdueOnly ? "checked" : ""} /> Прострочені</label>
+        <button class="secondary calendar-reset-filter" type="button" data-calendar-reset-filters>${icon("refresh")} Скинути</button>
       </div>
       <div class="calendar-layout">
         <div class="calendar-left-stack">
@@ -462,9 +468,22 @@ function renderCalendar() {
     state.calendarOverdueOnly = event.currentTarget.checked;
     renderCalendar();
   });
+  document.querySelector("[data-calendar-reset-filters]")?.addEventListener("click", () => {
+    state.calendarQuery = "";
+    state.calendarFilter = "all";
+    state.calendarClientFilter = "all";
+    state.calendarCaseFilter = "all";
+    state.calendarResponsibleFilter = "all";
+    state.calendarStatusFilter = "all";
+    state.calendarAuthorityFilter = "";
+    state.calendarOverdueOnly = false;
+    state.calendarMode = "month";
+    state.calendarPickerOpen = false;
+    renderCalendar();
+  });
 }
 
-function sendManualReminder(eventId) {
+async function sendManualReminder(eventId) {
   const target = state.events.find((item) => `event-${item.id}` === eventId);
   if (!target) return;
   const channels = calendarEventMeta({ ...target, id: eventId }).reminderChannels;
@@ -472,6 +491,14 @@ function sendManualReminder(eventId) {
     { date: new Date().toLocaleString("uk-UA"), text: `Нагадування відправлено вручну: ${channels}.` },
     ...(target.reminderLog || [])
   ];
+  if (shouldUseApi(state)) {
+    try {
+      Object.assign(target, normalizeEvent(await saveEventToApi(target)));
+    } catch (_error) {
+      showToast?.("Не вдалося зберегти нагадування в базі.", "danger");
+      return;
+    }
+  }
   renderCalendar();
 }
 
@@ -561,11 +588,19 @@ function renderEventCard(id) {
     }
     openEventDialog({ eventId: event.id });
   });
-  document.querySelector("[data-complete-calendar-event]")?.addEventListener("click", () => {
+  document.querySelector("[data-complete-calendar-event]")?.addEventListener("click", async () => {
     if (event.source === "task") return;
     const target = state.events.find((item) => `event-${item.id}` === event.id);
     if (!target) return;
     target.status = "Виконано";
+    if (shouldUseApi(state)) {
+      try {
+        Object.assign(target, normalizeEvent(await saveEventToApi(target)));
+      } catch (_error) {
+        showToast?.("Не вдалося зберегти статус події в базі.", "danger");
+        return;
+      }
+    }
     renderCalendar();
   });
   document.querySelector("[data-send-calendar-reminder]")?.addEventListener("click", () => {

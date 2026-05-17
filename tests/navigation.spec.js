@@ -41,6 +41,32 @@ test("topbar back closes the task detail panel before leaving tasks", async ({ p
   await expect(page.locator("#topbar-back")).not.toHaveAttribute("aria-label", "Назад к списку задач");
 });
 
+test("dashboard rows open the exact event, task, and case", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+
+  const eventRow = page.locator("#dashboard [data-dashboard-event]").first();
+  const eventTitle = await eventRow.locator("strong").innerText();
+  await eventRow.click();
+  await expect(page.locator("#calendar")).toHaveClass(/active/);
+  await expect(page.locator(".calendar-mode-group [data-calendar-mode='list']")).toHaveClass(/active/);
+  await expect(page.locator("#calendar")).toContainText(eventTitle);
+
+  await page.locator('.nav-item[data-view="dashboard"]').click();
+  const taskRow = page.locator("#dashboard [data-dashboard-task]").first();
+  const taskTitle = await taskRow.locator("strong").innerText();
+  await taskRow.click();
+  await expect(page.locator("#tasks")).toHaveClass(/active/);
+  await expect(page.locator("#tasks .task-side-card:not(.empty)")).toContainText(taskTitle);
+
+  await page.locator('.nav-item[data-view="dashboard"]').click();
+  const caseRow = page.locator("#dashboard [data-dashboard-case]").first();
+  const caseId = await caseRow.getAttribute("data-dashboard-case");
+  await caseRow.click();
+  await expect(page.locator("#cases")).toHaveClass(/active/);
+  await expect(page.locator("#case-detail")).toContainText(`Справа № ${caseId}`);
+});
+
 for (const view of ["tasks", "planner"]) {
   test(`mobile topbar back returns from a restored ${view} screen to dashboard`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -102,10 +128,15 @@ test("settings integrations update summary and audit trail", async ({ page }) =>
   await page.locator('.nav-item[data-view="settings"]').click();
 
   await expect(page.locator(".settings-summary-grid")).toContainText("3/4");
+  await page.locator('[data-settings-focus="integrations"]').click();
+  await expect(page.locator('[data-settings-section="integrations"]')).toHaveClass(/is-focused/);
+  await expect(page.locator('[data-settings-focus="integrations"]')).toHaveClass(/active/);
   await page.locator('[data-settings-integration="Email"]').check();
   await expect(page.locator(".settings-summary-grid")).toContainText("4/4");
   await expect(page.locator(".settings-audit-card")).toContainText("Email: інтеграцію увімкнено");
 
+  await page.locator('[data-settings-focus="audit"]').click();
+  await expect(page.locator('[data-settings-section="audit"]')).toHaveClass(/is-focused/);
   await page.locator("[data-settings-clear-audit]").click();
   await expect(page.locator(".settings-audit-card")).toContainText("Журнал змін очищено");
 });
@@ -188,12 +219,87 @@ test("AI assistants search, open chat, and answer quick questions", async ({ pag
   await page.locator('.nav-item[data-view="ai"]').click();
 
   await expect(page.locator("#ai")).toContainText("Помічники по галузях права");
+  await expect(page.locator(".ai-summary-strip")).toContainText("Активні");
+  await page.locator('[data-ai-helper="military"]').click();
+  await expect(page.locator('[data-ai-helper="military"]')).toHaveClass(/active/);
+  await expect(page.locator("[data-ai-assistant-row]").first()).toContainText("Військове право");
+  await page.locator('[data-ai-helper="military"]').click();
+  await expect(page.locator('[data-ai-helper="military"]')).not.toHaveClass(/active/);
+  await page.locator('[data-ai-view-mode="list"]').click();
+  await expect(page.locator(".ai-case-list")).toHaveClass(/list-mode/);
+  await page.locator('[data-ai-summary-filter="На навчанні"]').click();
+  await expect(page.locator("[data-ai-status-filter]")).toHaveValue("На навчанні");
+  await page.locator('[data-ai-summary-filter="all"]').click();
   await page.locator("[data-ai-case-search]").fill("ТЦК");
   await expect(page.locator("[data-ai-assistant-row]").first()).toContainText(/тцк/i);
 
-  await page.locator("[data-ai-open-chat]").first().click();
-  await expect(page.locator(".ai-chat-card")).toContainText("Чат по справі");
+  await page.locator("[data-ai-assistant-row]").first().click();
+  await expect(page.locator(".ai-card-chat-panel")).toContainText("Чат по справі");
+  await page.locator("[data-ai-close-chat]").click();
+  await expect(page.locator(".ai-card-chat-panel")).toHaveCount(0);
+  await page.locator("[data-ai-assistant-row]").first().click();
+  await expect(page.locator(".ai-card-chat-panel")).toContainText("Чат по справі");
 
   await page.locator("[data-ai-question]").first().click();
   await expect(page.locator(".ai-chat .bubble.user").last()).toContainText("Які підстави");
+});
+
+test("OSINT metric cards open the relevant workspace slices", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+  await page.locator('.nav-item[data-view="osint"]').click();
+
+  await expect(page.locator("#osint")).toContainText("OSINT перевірки");
+  await page.locator('[data-osint-metric="risks"]').click();
+  await expect(page.locator('[data-osint-subtab="risks"]')).toHaveClass(/active/);
+  await expect(page.locator('[data-osint-metric="risks"]')).toHaveClass(/active/);
+
+  await page.locator('[data-osint-metric="monitoring"]').click();
+  await expect(page.locator('[data-osint-tab="monitoring"]')).toHaveClass(/active/);
+  await expect(page.locator("#osint")).toContainText("Активний моніторинг");
+
+  await page.locator('[data-osint-metric="sources"]').click();
+  await expect(page.locator('[data-osint-tab="overview"]')).toHaveClass(/active/);
+  await expect(page.locator(".osint-source-manager")).toBeVisible();
+
+  await page.locator("[data-osint-date-toggle]").click();
+  await expect(page.locator("#osint .osint-date-popover")).toBeVisible();
+  await page.locator("[data-osint-date-start]").fill("2024-05-12");
+  await page.locator("[data-osint-date-end]").fill("2024-05-16");
+  await page.locator("[data-osint-date-apply]").click();
+  await expect(page.locator("#osint .osint-date-range")).toContainText("12.05.2024 - 16.05.2024");
+  await expect(page.locator("#osint .osint-date-popover")).toHaveCount(0);
+});
+
+test("calendar filters can narrow events and reset cleanly", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+  await page.locator('.nav-item[data-view="calendar"]').click();
+
+  await page.locator("#calendar-filter").selectOption("court");
+  await expect(page.locator("#calendar-filter")).toHaveValue("court");
+  await page.locator("#calendar-overdue-filter").check();
+  await expect(page.locator("#calendar-overdue-filter")).toBeChecked();
+  await page.locator("[data-calendar-show-list]").click();
+  await expect(page.locator(".calendar-mode-group [data-calendar-mode='list']")).toHaveClass(/active/);
+
+  await page.locator("[data-calendar-reset-filters]").click();
+  await expect(page.locator("#calendar-filter")).toHaveValue("all");
+  await expect(page.locator("#calendar-overdue-filter")).not.toBeChecked();
+  await expect(page.locator(".calendar-mode-group [data-calendar-mode='month']")).toHaveClass(/active/);
+});
+
+test("planner KPI cards focus the matching priority group", async ({ page }) => {
+  await page.goto("/");
+  await waitForAppReady(page);
+  await page.locator('.nav-item[data-view="planner"]').click();
+
+  await page.locator('[data-planner-kpi="urgent"]').click();
+  await expect(page.locator('[data-planner-kpi="urgent"]')).toHaveClass(/active/);
+  await expect(page.locator('[data-planner-group="urgent"]')).toHaveClass(/is-focused/);
+
+  await page.locator('[data-planner-kpi="all"]').click();
+  await expect(page.locator('[data-planner-kpi="all"]')).toHaveClass(/active/);
+  await expect(page.locator('[data-planner-group="urgent"]')).not.toHaveClass(/is-focused/);
+  await expect(page.locator(".planner-item-icon").first()).toHaveAttribute("data-tooltip", /^(?!.* · ).+/);
 });

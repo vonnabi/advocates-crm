@@ -1,3 +1,6 @@
+import { deleteCaseFromApi, saveCaseToApi, saveTaskToApi, shouldUseApi } from "../api.js";
+import { normalizeCase, normalizeTask } from "../state.js";
+
 let state;
 let $;
 let icon;
@@ -1039,7 +1042,7 @@ function renderCaseList() {
     });
   });
   document.querySelectorAll("[data-case-bulk-action]").forEach((button) => {
-    button.addEventListener("click", (event) => {
+    button.addEventListener("click", async (event) => {
       event.stopPropagation();
       const action = button.dataset.caseBulkAction;
       if (action === "clear") {
@@ -1051,6 +1054,14 @@ function renderCaseList() {
       const selectedCases = state.cases.filter((item) => selectedIds.has(item.id));
       if (!selectedCases.length) return;
       if (action === "delete") {
+        if (shouldUseApi(state)) {
+          try {
+            await Promise.all([...selectedIds].map((id) => deleteCaseFromApi(id)));
+          } catch (_error) {
+            showToast?.("Не вдалося видалити вибрані справи з бази.", "danger");
+            return;
+          }
+        }
         state.cases = state.cases.filter((item) => !selectedIds.has(item.id));
         state.events = state.events.filter((event) => !selectedIds.has(event.caseId));
         state.selectedCaseKeys = [];
@@ -1074,6 +1085,16 @@ function renderCaseList() {
           ...(item.history || [])
         ];
       });
+      if (shouldUseApi(state)) {
+        try {
+          await Promise.all(selectedCases.map(async (item) => {
+            Object.assign(item, normalizeCase(await saveCaseToApi(item)));
+          }));
+        } catch (_error) {
+          showToast?.("Не вдалося зберегти статус справ у базі.", "danger");
+          return;
+        }
+      }
       state.selectedCaseKeys = [];
       renderCaseList();
     });
@@ -1469,21 +1490,38 @@ function renderCaseProfile(id) {
     event.stopPropagation();
     openFolderDialog(item.id);
   }));
-  document.querySelectorAll("[data-toggle-task-done]").forEach((input) => input.addEventListener("change", () => {
+  document.querySelectorAll("[data-toggle-task-done]").forEach((input) => input.addEventListener("change", async () => {
     const task = item.tasks[Number(input.dataset.toggleTaskDone)];
     if (!task) return;
     task.status = input.checked ? "Виконано" : "Очікує";
+    if (shouldUseApi(state) && task.id) {
+      try {
+        Object.assign(task, normalizeTask(await saveTaskToApi({ ...task, caseId: item.id, clientId: item.clientId })));
+      } catch (_error) {
+        showToast?.("Не вдалося зберегти статус задачі в базі.", "danger");
+        return;
+      }
+    }
     item.history.unshift({
       date: new Date().toLocaleDateString("uk-UA"),
       text: input.checked ? `Задачу виконано: ${task.title}.` : `Задачу повернуто в роботу: ${task.title}.`
     });
     renderCaseProfile(item.id);
   }));
-  document.querySelectorAll("[data-toggle-task-reminder]").forEach((button) => button.addEventListener("click", (event) => {
+  document.querySelectorAll("[data-toggle-task-reminder]").forEach((button) => button.addEventListener("click", async (event) => {
     event.stopPropagation();
     const task = item.tasks[Number(button.dataset.toggleTaskReminder)];
     if (!task) return;
     task.reminder = !task.reminder;
+    task.reminderEnabled = task.reminder;
+    if (shouldUseApi(state) && task.id) {
+      try {
+        Object.assign(task, normalizeTask(await saveTaskToApi({ ...task, caseId: item.id, clientId: item.clientId })));
+      } catch (_error) {
+        showToast?.("Не вдалося зберегти нагадування задачі в базі.", "danger");
+        return;
+      }
+    }
     item.history.unshift({
       date: new Date().toLocaleDateString("uk-UA"),
       text: task.reminder ? `Увімкнено нагадування по задачі: ${task.title}.` : `Вимкнено нагадування по задачі: ${task.title}.`

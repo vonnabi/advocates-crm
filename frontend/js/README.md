@@ -11,7 +11,7 @@ This folder is for small JavaScript modules that are split out of the main proto
 - `forms/clients.js` wires client create/edit form submission.
 - `forms/documents.js` wires document create/edit submission, folder placement, file metadata, and history updates.
 - `forms/events.js` wires calendar event and case procedural action form submissions.
-- `state.js` loads static JSON demo data and creates the initial application state.
+- `state.js` loads `/api/bootstrap/` when the app is opened through Django or `crmApiBase` is configured, otherwise it falls back to static JSON demo data.
 - `navigation.js` persists and restores the active view, view history, selected cards, and sidebar state.
 - `ui.js` contains shared formatting helpers, status tones, badges, profile photos, and SVG icons.
 - `screens/ai.js` renders AI helper cards, the case assistant chat, and the knowledge base summary.

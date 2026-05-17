@@ -14,6 +14,9 @@ const OSINT_TABS = [
   ["settings", "Налаштування"]
 ];
 
+const OSINT_DEFAULT_START = "2024-05-01";
+const OSINT_DEFAULT_END = "2024-05-16";
+
 const OSINT_SUBTABS = [
   ["mentions", "Останні згадки"],
   ["risks", "Виявлені ризики"],
@@ -91,6 +94,17 @@ function osintTone(value = "") {
   return "blue";
 }
 
+function dateFromAny(value) {
+  const clean = String(value || OSINT_DEFAULT_START);
+  if (clean.includes("-")) return new Date(clean);
+  const [day, month, year] = clean.split(".");
+  return new Date(`${year}-${month}-${day}`);
+}
+
+function osintDate(value) {
+  return String(value || OSINT_DEFAULT_START).split("-").reverse().join(".");
+}
+
 function filteredChecks(state) {
   const query = (state.osintQuery || "").trim().toLowerCase();
   return state.osintChecks.filter((check) => {
@@ -104,12 +118,12 @@ function filteredChecks(state) {
 function osintMetrics(state) {
   const summary = osintSummaryFromData(state);
   return [
-    { label: "Зібрано даних", value: new Intl.NumberFormat("uk-UA").format(summary.collected), trend: "+18%", icon: "briefcase", tone: "blue" },
-    { label: "Нові згадки", value: new Intl.NumberFormat("uk-UA").format(summary.mentions), trend: "+12%", icon: "file", tone: "green" },
-    { label: "Проаналізовано справ", value: summary.analyzedCases, trend: "+8%", icon: "check", tone: "green" },
-    { label: "Виявлено ризиків", value: summary.risks, trend: "+20%", icon: "tag", tone: "red" },
-    { label: "Моніторинг активний", value: summary.monitoring, trend: "справ / людей / подій", icon: "refresh", tone: "blue" },
-    { label: "Джерел у роботі", value: summary.sources, trend: "підключено", icon: "search", tone: "blue" }
+    { action: "overview", label: "Зібрано даних", value: new Intl.NumberFormat("uk-UA").format(summary.collected), trend: "+18%", icon: "briefcase", tone: "blue" },
+    { action: "mentions", label: "Нові згадки", value: new Intl.NumberFormat("uk-UA").format(summary.mentions), trend: "+12%", icon: "file", tone: "green" },
+    { action: "cases", label: "Проаналізовано справ", value: summary.analyzedCases, trend: "+8%", icon: "check", tone: "green" },
+    { action: "risks", label: "Виявлено ризиків", value: summary.risks, trend: "+20%", icon: "tag", tone: "red" },
+    { action: "monitoring", label: "Моніторинг активний", value: summary.monitoring, trend: "справ / людей / подій", icon: "refresh", tone: "blue" },
+    { action: "sources", label: "Джерел у роботі", value: summary.sources, trend: "підключено", icon: "search", tone: "blue" }
   ];
 }
 
@@ -188,16 +202,16 @@ function exportOsintReport(ctx) {
   ctx.showToast("OSINT звіт підготовлено до експорту.");
 }
 
-function metricCard(item, icon) {
+function metricCard(item, icon, activeAction = "overview") {
   return `
-    <article class="osint-kpi-card">
+    <button class="osint-kpi-card ${activeAction === item.action ? "active" : ""}" type="button" data-osint-metric="${item.action}" aria-pressed="${activeAction === item.action}">
       <div>
         <span>${item.label}</span>
         <strong>${item.value}</strong>
         <small class="${item.tone === "red" ? "danger" : ""}">${item.trend}</small>
       </div>
       <em class="${item.tone}">${icon(item.icon)}</em>
-    </article>
+    </button>
   `;
 }
 
@@ -632,8 +646,10 @@ export function renderOSINTScreen(ctx) {
     { title: "Звіт по згадках", description: "Публічні згадки з Facebook, Telegram, ЗМІ та реєстрів.", created: "16.05.2024 09:45" },
     { title: "Звіт по реєстрах", description: "Зміни по компаніях, судових рішеннях і відкритих базах.", created: "15.05.2024 18:30" }
   ];
-  state.osintDateStart = state.osintDateStart || "2024-05-01";
-  state.osintDateEnd = state.osintDateEnd || "2024-05-16";
+  state.osintDateStart = state.osintDateStart || OSINT_DEFAULT_START;
+  state.osintDateEnd = state.osintDateEnd || OSINT_DEFAULT_END;
+  state.osintMetricFocus = state.osintMetricFocus || "overview";
+  state.osintDatePickerOpen = Boolean(state.osintDatePickerOpen);
   const filtered = filteredChecks(state);
   if (!filtered.some((check) => check.id === state.selectedOsintId)) {
     state.selectedOsintId = filtered[0]?.id || state.osintChecks[0]?.id || "";
@@ -651,13 +667,32 @@ export function renderOSINTScreen(ctx) {
             ${icon("search")}
             <input data-osint-query placeholder="Пошук по OSINT..." value="${state.osintQuery || ""}">
           </label>
-          <button class="secondary" type="button" data-osint-date>${state.osintDateStart.split("-").reverse().join(".")} - ${state.osintDateEnd.split("-").reverse().join(".")} ${icon("calendar")}</button>
+          <div class="analytics-date-wrap osint-date-wrap">
+            <button class="analytics-date-range finance-date-range osint-date-range" type="button" data-osint-date-toggle aria-expanded="${state.osintDatePickerOpen}">
+              <span>${osintDate(state.osintDateStart)} - ${osintDate(state.osintDateEnd)}</span>
+              ${icon("calendar")}
+            </button>
+            ${state.osintDatePickerOpen ? `
+              <div class="analytics-date-popover finance-date-popover osint-date-popover">
+                <label>Початок
+                  <input type="date" data-osint-date-start value="${state.osintDateStart}">
+                </label>
+                <label>Кінець
+                  <input type="date" data-osint-date-end value="${state.osintDateEnd}">
+                </label>
+                <div>
+                  <button class="secondary" type="button" data-osint-date-preset>1-16 травня</button>
+                  <button class="primary" type="button" data-osint-date-apply>Застосувати</button>
+                </div>
+              </div>
+            ` : ""}
+          </div>
           <button class="primary" type="button" data-create-osint>${icon("file")} Створити звіт</button>
         </div>
       </div>
 
       <section class="osint-kpi-grid">
-        ${osintMetrics(state).map((item) => metricCard(item, icon)).join("")}
+        ${osintMetrics(state).map((item) => metricCard(item, icon, state.osintMetricFocus)).join("")}
       </section>
 
       ${state.osintTab === "overview" ? overviewWorkspace(state, badge, icon) : secondaryWorkspace(state, badge, icon)}
@@ -670,7 +705,30 @@ export function renderOSINTScreen(ctx) {
   });
   document.querySelectorAll("[data-osint-tab]").forEach((button) => button.addEventListener("click", () => {
     state.osintTab = button.dataset.osintTab;
+    state.osintMetricFocus = state.osintTab === "overview" ? "overview" : state.osintTab;
     showToast(`Відкрито розділ: ${button.textContent.trim()}.`);
+    renderOSINTScreen(ctx);
+  }));
+  document.querySelectorAll("[data-osint-metric]").forEach((button) => button.addEventListener("click", () => {
+    const focus = button.dataset.osintMetric;
+    state.osintMetricFocus = focus;
+    if (focus === "mentions" || focus === "risks") {
+      state.osintTab = "overview";
+      state.osintSubtab = focus;
+      state.osintSourceManagerOpen = false;
+    } else if (focus === "sources") {
+      state.osintTab = "overview";
+      state.osintSubtab = "mentions";
+      state.osintSourceManagerOpen = true;
+    } else if (focus === "cases" || focus === "monitoring") {
+      state.osintTab = focus;
+      state.osintSourceManagerOpen = false;
+    } else {
+      state.osintTab = "overview";
+      state.osintSubtab = "mentions";
+      state.osintSourceManagerOpen = false;
+    }
+    showToast(`OSINT: ${button.querySelector("span")?.textContent || "розділ"} відкрито.`);
     renderOSINTScreen(ctx);
   }));
   document.querySelectorAll("[data-create-osint]").forEach((button) => button.addEventListener("click", () => {
@@ -740,7 +798,32 @@ export function renderOSINTScreen(ctx) {
     source.status = "Активне";
     renderOSINTScreen(ctx);
   }));
-  document.querySelectorAll("[data-osint-sync], [data-osint-date], [data-osint-chart-scale]").forEach((control) => {
+  document.querySelector("[data-osint-date-toggle]")?.addEventListener("click", () => {
+    state.osintDatePickerOpen = !state.osintDatePickerOpen;
+    renderOSINTScreen(ctx);
+  });
+  document.querySelector("[data-osint-date-start]")?.addEventListener("change", (event) => {
+    state.osintDateStart = event.currentTarget.value || OSINT_DEFAULT_START;
+  });
+  document.querySelector("[data-osint-date-end]")?.addEventListener("change", (event) => {
+    state.osintDateEnd = event.currentTarget.value || OSINT_DEFAULT_END;
+  });
+  document.querySelector("[data-osint-date-preset]")?.addEventListener("click", () => {
+    state.osintDateStart = OSINT_DEFAULT_START;
+    state.osintDateEnd = OSINT_DEFAULT_END;
+    state.osintDatePickerOpen = false;
+    showToast("Період OSINT повернуто до 1-16 травня.", "warning");
+    renderOSINTScreen(ctx);
+  });
+  document.querySelector("[data-osint-date-apply]")?.addEventListener("click", () => {
+    if (dateFromAny(state.osintDateStart) > dateFromAny(state.osintDateEnd)) {
+      [state.osintDateStart, state.osintDateEnd] = [state.osintDateEnd, state.osintDateStart];
+    }
+    state.osintDatePickerOpen = false;
+    showToast("Період OSINT застосовано.");
+    renderOSINTScreen(ctx);
+  });
+  document.querySelectorAll("[data-osint-sync], [data-osint-chart-scale]").forEach((control) => {
     control.addEventListener("click", () => showToast("OSINT дані оновлено."));
     control.addEventListener("change", () => showToast("Параметри OSINT оновлено."));
   });

@@ -1,18 +1,172 @@
+import { apiBaseUrl } from "./api.js?v=auth-login-1";
+
 async function readDataFile(path) {
   const response = await fetch(new URL(path, import.meta.url));
   if (!response.ok) throw new Error(`Не удалось загрузить файл данных: ${path}`);
   return response.json();
 }
 
+async function readApiBootstrap(timeoutMs = 700) {
+  const baseUrl = apiBaseUrl();
+  if (!baseUrl) return null;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${baseUrl}/api/bootstrap/`, {
+      cache: "no-store",
+      credentials: "include",
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error("Backend API is not available");
+    return response.json();
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+function isoDatePart(value) {
+  if (!value || value === "-") return "";
+  const clean = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(clean)) return clean.slice(0, 10);
+  if (/^\d{2}\.\d{2}\.\d{4}/.test(clean)) {
+    const [day, month, year] = clean.slice(0, 10).split(".");
+    return `${year}-${month}-${day}`;
+  }
+  return "";
+}
+
+function timePart(value) {
+  if (!value || value === "-") return "";
+  return String(value).match(/\b\d{2}:\d{2}\b/)?.[0] || "";
+}
+
+function displayDate(value, fallback = "") {
+  const iso = isoDatePart(value);
+  if (!iso) return fallback;
+  const [year, month, day] = iso.split("-");
+  return `${day}.${month}.${year}`;
+}
+
+function displayDateTime(value, fallback = "") {
+  const date = displayDate(value);
+  if (!date) return fallback;
+  const time = timePart(value);
+  return time ? `${date} ${time}` : date;
+}
+
+export function normalizeClient(client) {
+  return {
+    ...client,
+    added: displayDate(client.added, client.added || ""),
+    lastContact: displayDate(client.lastContact, client.lastContact || ""),
+    communications: (client.communications || []).map(normalizeClientCommunication)
+  };
+}
+
+export function normalizeClientCommunication(item) {
+  return {
+    ...item,
+    date: displayDate(item.date, item.date || "")
+  };
+}
+
+export function normalizeDocument(document) {
+  return {
+    ...document,
+    documentId: document.documentId || document.id || document.documentId,
+    folder: document.folder || "Процесуальні документи",
+    submitted: displayDate(document.submitted, document.submitted || "-"),
+    responseDue: displayDate(document.responseDue, document.responseDue || "-")
+  };
+}
+
+export function normalizeTask(task) {
+  const plannerDate = isoDatePart(task.plannerAt);
+  return {
+    ...task,
+    due: displayDateTime(task.due, task.due || "Не вказано"),
+    dueText: displayDateTime(task.due, task.due || "Не вказано"),
+    plannerDate,
+    plannerDateText: plannerDate ? displayDate(plannerDate) : "",
+    subtasks: (task.subtasks || []).map((subtask) => ({
+      ...subtask,
+      due: displayDate(subtask.due, subtask.due || "Не вказано")
+    }))
+  };
+}
+
+export function normalizeCase(caseItem) {
+  return {
+    ...caseItem,
+    opened: displayDate(caseItem.opened, caseItem.opened || ""),
+    deadline: displayDate(caseItem.deadline, caseItem.deadline || "Без строку"),
+    documents: (caseItem.documents || []).map(normalizeDocument),
+    tasks: (caseItem.tasks || []).map(normalizeTask)
+  };
+}
+
+export function normalizeEvent(event) {
+  const date = isoDatePart(event.date || event.startsAt);
+  return {
+    ...event,
+    date: date || event.date || "",
+    time: timePart(event.startsAt) || event.time || "09:00",
+    endTime: timePart(event.endsAt) || event.endTime || "",
+  };
+}
+
+export function normalizeFinanceOperation(operation) {
+  return {
+    ...operation,
+    date: displayDate(operation.date, operation.date || ""),
+    amount: Number(operation.amount || 0)
+  };
+}
+
+export function normalizeSettingsUser(user) {
+  return {
+    ...user,
+    name: user.name || "",
+    email: user.email || "",
+    role: user.role || "Помічник",
+    access: user.access || "Задачі та документи",
+    photo: user.photo || (user.name || "К").slice(0, 1)
+  };
+}
+
+function normalizeBackendPayload(payload) {
+  if (!payload?.clients || !payload?.cases || !payload?.events) return null;
+  return {
+    session: payload.session || {},
+    currentUser: payload.session?.user ? normalizeSettingsUser(payload.session.user) : payload.currentUser ? normalizeSettingsUser(payload.currentUser) : null,
+    settingsUsers: (payload.settingsUsers || []).map(normalizeSettingsUser),
+    clients: payload.clients.map(normalizeClient),
+    cases: payload.cases.map(normalizeCase),
+    events: payload.events.map(normalizeEvent),
+    financeOperations: (payload.financeOperations || []).map(normalizeFinanceOperation),
+    finance: payload.finance || {},
+    meta: payload.meta || {},
+    source: "api"
+  };
+}
+
 async function loadDemoData() {
-  const [clients, cases, events, mailing, settings] = await Promise.all([
-    readDataFile("../data/clients.json"),
-    readDataFile("../data/cases.json"),
-    readDataFile("../data/events.json"),
+  const [mailing, settings] = await Promise.all([
     readDataFile("../data/mailing.json"),
     readDataFile("../data/settings.json")
   ]);
-  return { clients, cases, events, mailing, settings };
+  try {
+    const apiData = normalizeBackendPayload(await readApiBootstrap());
+    if (apiData) return { ...apiData, mailing, settings };
+  } catch (_error) {
+    // The static prototype must keep working when Django is not running.
+  }
+  const [clients, cases, events] = await Promise.all([
+    readDataFile("../data/clients.json"),
+    readDataFile("../data/cases.json"),
+    readDataFile("../data/events.json")
+  ]);
+  return { clients, cases, events, mailing, settings, source: "json" };
 }
 
 export async function createInitialState() {
@@ -25,6 +179,12 @@ export async function createInitialState() {
     clients: demoData.clients,
     cases: demoData.cases,
     events: demoData.events,
+    dataSource: demoData.source,
+    currentUser: demoData.currentUser || null,
+    sessionAuthenticated: Boolean(demoData.session?.authenticated),
+    sessionPermissions: demoData.session?.permissions || {},
+    backendMeta: demoData.meta || {},
+    backendFinance: demoData.finance || {},
     selectedClientId: 1,
     selectedClientKeys: [],
     selectedCaseId: "2024/12345",
@@ -77,7 +237,7 @@ export async function createInitialState() {
     financeDateStart: "2024-05-01",
     financeDateEnd: "2024-05-15",
     financeDatePickerOpen: false,
-    financeOperations: [],
+    financeOperations: demoData.financeOperations || [],
     salaryRows: [],
     salaryFilter: "all",
     salaryMenuId: "",
@@ -138,7 +298,7 @@ export async function createInitialState() {
         status: "Активний"
       }
     ],
-    settingsUsers: [
+    settingsUsers: demoData.settingsUsers || [
       { name: "Іваненко А.Ю.", role: "Адміністратор", access: "Повний доступ", photo: "І" },
       { name: "Мельник Н.П.", role: "Адвокат", access: "Справи, клієнти, календар", photo: "М" },
       { name: "Кравчук А.В.", role: "Помічник", access: "Задачі та документи", photo: "К" }

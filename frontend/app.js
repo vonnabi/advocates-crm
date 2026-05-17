@@ -1,10 +1,10 @@
-import { createInitialState } from "./js/state.js";
+import { createInitialState } from "./js/state.js?v=auth-login-1";
 import {
   closeTopbarPanels as closeTopbarPanelsInChrome,
   isTopbarPanelOpen,
   setupTopbarControls,
   syncTopbarNotifications
-} from "./js/chrome.js";
+} from "./js/chrome.js?v=auth-login-1";
 import { createDialogOpeners } from "./js/dialog-openers.js";
 import { setupDialogControls } from "./js/dialogs.js";
 import { setupCaseDetailForms } from "./js/forms/case-details.js";
@@ -83,6 +83,7 @@ import {
 } from "./js/ui.js";
 
 const state = await createInitialState();
+document.documentElement.dataset.dataSource = state.dataSource || "json";
 
 const titles = {
   dashboard: "Дашборд",

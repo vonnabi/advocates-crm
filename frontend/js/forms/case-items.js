@@ -1,3 +1,6 @@
+import { saveTaskToApi, shouldUseApi } from "../api.js";
+import { normalizeTask } from "../state.js";
+
 export function setupCaseItemForms({ state, $, caseById, caseFolders, formatDate, renderAll, switchView, showToast }) {
   function defaultSubtasksForTask(task = {}, fallbackResponsible = "") {
     return [
@@ -78,7 +81,7 @@ export function setupCaseItemForms({ state, $, caseById, caseFolders, formatDate
     };
   }
 
-  $("#task-form").addEventListener("submit", (event) => {
+  $("#task-form").addEventListener("submit", async (event) => {
     if (event.submitter?.value === "cancel") return;
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -89,7 +92,20 @@ export function setupCaseItemForms({ state, $, caseById, caseFolders, formatDate
     if (taskIndex !== null) {
       const task = item.tasks[taskIndex];
       if (!task) return;
-      item.tasks[taskIndex] = taskPayloadFromForm(form, due, task);
+      let nextTask = {
+        ...taskPayloadFromForm(form, due, task),
+        caseId: item.id,
+        clientId: item.clientId
+      };
+      if (shouldUseApi(state)) {
+        try {
+          nextTask = normalizeTask(await saveTaskToApi(nextTask));
+        } catch (_error) {
+          showToast("Не вдалося зберегти задачу в базі.", "danger");
+          return;
+        }
+      }
+      item.tasks[taskIndex] = nextTask;
       item.history.unshift({
         date: new Date().toLocaleDateString("uk-UA"),
         text: `Оновлено задачу: ${title}.`
@@ -101,7 +117,20 @@ export function setupCaseItemForms({ state, $, caseById, caseFolders, formatDate
       showToast("Задачу оновлено.");
       return;
     }
-    item.tasks.unshift(taskPayloadFromForm(form, due));
+    let nextTask = {
+      ...taskPayloadFromForm(form, due),
+      caseId: item.id,
+      clientId: item.clientId
+    };
+    if (shouldUseApi(state)) {
+      try {
+        nextTask = normalizeTask(await saveTaskToApi(nextTask));
+      } catch (_error) {
+        showToast("Не вдалося створити задачу в базі.", "danger");
+        return;
+      }
+    }
+    item.tasks.unshift(nextTask);
     item.history.unshift({
       date: new Date().toLocaleDateString("uk-UA"),
       text: `Додано задачу: ${title}.`
@@ -114,7 +143,7 @@ export function setupCaseItemForms({ state, $, caseById, caseFolders, formatDate
     showToast("Задачу додано.");
   });
 
-  $("#subtask-form").addEventListener("submit", (event) => {
+  $("#subtask-form").addEventListener("submit", async (event) => {
     if (event.submitter?.value === "cancel") return;
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -138,12 +167,34 @@ export function setupCaseItemForms({ state, $, caseById, caseFolders, formatDate
       responsible,
       due: due ? formatDate(due) : previous.due || task.due || "Не вказано"
     };
+    const nextSubtasks = [...subtasks];
     if (subtaskIndex === null) {
-      subtasks.push(payload);
+      nextSubtasks.push(payload);
     } else {
-      subtasks[subtaskIndex] = payload;
+      nextSubtasks[subtaskIndex] = payload;
     }
-    task.subtasks = subtasks;
+    let nextTask = {
+      ...task,
+      caseId: item.id,
+      clientId: item.clientId,
+      subtasks: nextSubtasks,
+      history: [
+        {
+          date: new Date().toLocaleDateString("uk-UA"),
+          text: subtaskIndex === null ? `Додано підзадачу: ${title}.` : `Оновлено підзадачу: ${title}.`
+        },
+        ...(task.history || [])
+      ]
+    };
+    if (shouldUseApi(state)) {
+      try {
+        nextTask = normalizeTask(await saveTaskToApi(nextTask));
+      } catch (_error) {
+        showToast("Не вдалося зберегти підзадачу в базі.", "danger");
+        return;
+      }
+    }
+    Object.assign(task, nextTask);
     item.history.unshift({
       date: new Date().toLocaleDateString("uk-UA"),
       text: subtaskIndex === null ? `Додано підзадачу: ${title}.` : `Оновлено підзадачу: ${title}.`
