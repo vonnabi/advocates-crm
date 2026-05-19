@@ -115,7 +115,12 @@ class DemoApiTests(TestCase):
         self.assertTrue(Client.objects.filter(pk=manual_client.pk, is_demo=False).exists())
         self.assertTrue(Case.objects.filter(number=manual_case.number, is_demo=False).exists())
         self.assertTrue(Task.objects.filter(title="Реальна задача", is_demo=False).exists())
-        self.assertGreater(get_user_model().objects.count(), 0)
+        self.assertTrue(get_user_model().objects.filter(email="ivanenko@advocates.crm").exists())
+        self.assertFalse(get_user_model().objects.filter(email__in=[
+            "melnyk@advocates.crm",
+            "kravchuk@advocates.crm",
+            "petrenko@advocates.crm",
+        ]).exists())
 
         empty_bootstrap = self.client.get("/api/bootstrap/")
         self.assertEqual(empty_bootstrap.status_code, 200)
@@ -137,6 +142,9 @@ class DemoApiTests(TestCase):
         self.assertEqual(Task.objects.count(), 10)
         self.assertEqual(CalendarEvent.objects.count(), 6)
         self.assertGreater(ClientCommunication.objects.count(), 0)
+        self.assertTrue(get_user_model().objects.filter(email="melnyk@advocates.crm").exists())
+        self.assertTrue(get_user_model().objects.filter(email="kravchuk@advocates.crm").exists())
+        self.assertTrue(get_user_model().objects.filter(email="petrenko@advocates.crm").exists())
 
     def test_demo_clear_preserves_user_records_attached_to_demo_parent(self):
         demo_case = Case.objects.get(number="2024/12345")

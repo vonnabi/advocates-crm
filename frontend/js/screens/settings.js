@@ -43,6 +43,10 @@ function cleanSettingValue(value) {
   return String(value || "").trim().replace(/[<>]/g, "");
 }
 
+function cleanAttribute(value) {
+  return cleanSettingValue(value).replace(/["'`]/g, "");
+}
+
 function userInitials(name) {
   const initials = cleanSettingValue(name)
     .split(/\s+/)
@@ -138,20 +142,38 @@ function permissionLabel(key) {
   return permissionOptions.find((item) => item.key === key)?.label || key;
 }
 
+function permissionTone(key) {
+  if (key.includes("finance") || key === "manage_mailings") return "green";
+  if (key.includes("analytics") || key.includes("osint") || key === "manage_ai") return "violet";
+  if (key.includes("tasks") || key.includes("calendar") || key === "view_planner") return "amber";
+  if (key === "manage_users") return "red";
+  return "blue";
+}
+
 function renderPermissionSummary(user, icon) {
   const keys = userPermissionKeys(user);
-  const visible = keys.slice(0, 4);
+  const visible = keys.slice(0, 6);
   const rest = Math.max(0, keys.length - visible.length);
   if (!keys.length) {
-    return `<span class="settings-user-permission-chip muted-chip">${icon("home")} Базовий доступ</span>`;
+    return `<span class="settings-user-permission-icon muted-chip" data-tooltip="Базовий доступ" tabindex="0" role="img" aria-label="Базовий доступ">${icon("home")}</span>`;
   }
   return [
     ...visible.map((key) => {
       const option = permissionOptions.find((item) => item.key === key);
-      return `<span class="settings-user-permission-chip">${icon(option?.icon || "check")} ${permissionLabel(key)}</span>`;
+      const label = permissionLabel(key);
+      return `<span class="settings-user-permission-icon ${permissionTone(key)}" data-tooltip="${label}" tabindex="0" role="img" aria-label="${label}">${icon(option?.icon || "check")}</span>`;
     }),
-    rest ? `<span class="settings-user-permission-chip more-chip">+${rest}</span>` : ""
+    rest ? `<span class="settings-user-permission-icon more-chip" data-tooltip="Ще ${rest} модулів доступу" tabindex="0" role="img" aria-label="Ще ${rest} модулів доступу">${icon("filter")}</span>` : ""
   ].join("");
+}
+
+function renderUserAvatar(user) {
+  const photo = cleanAttribute(user?.photo || "");
+  const name = cleanSettingValue(user?.name || "");
+  if (/^(https?:\/\/|\/|assets\/)/i.test(photo)) {
+    return `<div class="avatar settings-user-avatar has-photo"><img src="${photo}" alt="${name || "Користувач"}" /></div>`;
+  }
+  return `<div class="avatar settings-user-avatar">${photo || userInitials(name)}</div>`;
 }
 
 function userCaseSummary(user) {
@@ -280,6 +302,7 @@ function fillUserDialog(dialog, ctx, userIndex = "") {
   dialog.querySelector("[data-settings-user-submit]").textContent = user ? "Зберегти користувача" : "Створити користувача";
   form.elements.name.value = user?.name || "";
   form.elements.email.value = user?.email || "";
+  form.elements.photo.value = user?.photo || userInitials(user?.name || "");
   form.elements.password.value = user ? "" : "demo12345";
   form.elements.passwordTemporary.checked = user ? Boolean(user.passwordTemporary || user.mustChangePassword) : true;
   form.elements.role.value = user?.role || "Адвокат";
@@ -421,6 +444,7 @@ function ensureInviteDialog(ctx) {
       <div class="settings-user-form-grid">
         <label>Ім'я та прізвище<input name="name" required placeholder="Наприклад, Шевченко Марія Ігорівна"></label>
         <label>Email<input name="email" type="email" required placeholder="user@example.com"></label>
+        <label>Аватар / фото<input name="photo" placeholder="Ініціали або URL фото"></label>
         <label>Пароль<input name="password" type="text" placeholder="Залишити без змін"></label>
         <label>Роль
           <select name="role">
@@ -501,6 +525,7 @@ function ensureInviteDialog(ctx) {
     const email = cleanSettingValue(form.elements.email.value).toLowerCase();
     const role = cleanSettingValue(form.elements.role.value);
     const access = cleanSettingValue(form.elements.access.value) || roleAccessMap[role] || roleAccessMap["Помічник"];
+    const photo = cleanSettingValue(form.elements.photo.value);
     const password = cleanSettingValue(form.elements.password.value);
     const userIndex = form.dataset.userIndex;
     const existing = userIndex === "" ? null : state.settingsUsers[Number(userIndex)];
@@ -513,7 +538,7 @@ function ensureInviteDialog(ctx) {
       email,
       role,
       access,
-      photo: existing?.photo || userInitials(name),
+      photo: photo || existing?.photo || userInitials(name),
       permissionKeys,
       assignedCaseIds
     };
@@ -612,7 +637,7 @@ export function renderSettingsScreen(ctx) {
         <div class="settings-users-list">
           ${users.map((user, index) => `<article class="settings-user-row">
             <div class="settings-user-identity">
-              <div class="avatar settings-user-avatar">${user.photo}</div>
+              ${renderUserAvatar(user)}
               <div class="settings-user-main">
                 <strong>${user.name}</strong>
                 <span>${user.email || "email не вказано"}</span>

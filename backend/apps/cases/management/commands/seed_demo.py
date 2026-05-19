@@ -100,18 +100,15 @@ def ensure_team_user(name, email, role_label):
     user.is_superuser = role == "admin"
     user.is_active = True
     user.save(update_fields=["email", "password", "is_staff", "is_superuser", "is_active"])
-    UserProfile.objects.update_or_create(
-        user=user,
-        defaults={
-            "role": role,
-            "access_scope": access,
-            "module_permissions": [],
-            "photo_label": initials_from_name(name),
-            "is_active_member": True,
-            "password_temporary": False,
-            "last_login_at": timezone.now(),
-        },
-    )
+    profile, _created = UserProfile.objects.get_or_create(user=user)
+    profile.role = role
+    profile.access_scope = access
+    profile.module_permissions = []
+    profile.photo_label = profile.photo_label or initials_from_name(name)
+    profile.is_active_member = True
+    profile.password_temporary = False
+    profile.last_login_at = timezone.now()
+    profile.save()
     return user
 
 

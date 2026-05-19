@@ -13,7 +13,7 @@ class UserProfile(models.Model):
     role = models.CharField(max_length=32, choices=Role.choices, default=Role.ASSISTANT)
     access_scope = models.CharField(max_length=255, blank=True)
     module_permissions = models.JSONField(default=list, blank=True)
-    photo_label = models.CharField(max_length=8, blank=True)
+    photo_label = models.CharField(max_length=255, blank=True)
     is_active_member = models.BooleanField(default=True)
     password_temporary = models.BooleanField(default=False)
     password_updated_at = models.DateTimeField(null=True, blank=True)

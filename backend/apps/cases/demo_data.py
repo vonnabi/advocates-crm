@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.contrib.auth import get_user_model
 
 from apps.calendar_app.models import CalendarEvent, Reminder
 from apps.cases.models import Case, CaseDocument, CaseMember
@@ -6,6 +7,14 @@ from apps.clients.models import Client, ClientCommunication
 from apps.communications.models import Campaign, MessageDelivery, MessageTemplate
 from apps.finance.models import Expense, Invoice, Payment
 from apps.tasks.models import Task
+
+DEMO_OWNER_EMAIL = "ivanenko@advocates.crm"
+DEMO_TEAM_EMAILS = (
+    DEMO_OWNER_EMAIL,
+    "melnyk@advocates.crm",
+    "kravchuk@advocates.crm",
+    "petrenko@advocates.crm",
+)
 
 
 def demo_data_counts():
@@ -78,3 +87,5 @@ def clear_demo_business_data():
                 client.save(update_fields=["is_demo"])
             else:
                 client.delete()
+
+        get_user_model().objects.filter(email__in=DEMO_TEAM_EMAILS).exclude(email=DEMO_OWNER_EMAIL).delete()
