@@ -15,6 +15,9 @@ class UserProfile(models.Model):
     module_permissions = models.JSONField(default=list, blank=True)
     photo_label = models.CharField(max_length=8, blank=True)
     is_active_member = models.BooleanField(default=True)
+    password_temporary = models.BooleanField(default=False)
+    password_updated_at = models.DateTimeField(null=True, blank=True)
+    last_login_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

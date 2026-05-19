@@ -78,6 +78,13 @@ export function logoutFromApi() {
   return apiRequest("/api/auth/logout/", { method: "POST" });
 }
 
+export function changePasswordInApi(password) {
+  return apiRequest("/api/auth/change-password/", {
+    method: "POST",
+    body: { password }
+  });
+}
+
 export function getSessionFromApi() {
   return apiRequest("/api/session/");
 }

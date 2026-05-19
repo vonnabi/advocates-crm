@@ -4,7 +4,7 @@ from datetime import datetime, time
 from decimal import Decimal
 from hashlib import sha1
 
-from django.contrib.auth import authenticate, get_user_model, login as auth_login, logout as auth_logout
+from django.contrib.auth import authenticate, get_user_model, login as auth_login, logout as auth_logout, update_session_auth_hash
 from django.core.management import call_command
 from django.db.models import Q, Sum
 from django.http import Http404, HttpResponse, JsonResponse
@@ -183,6 +183,18 @@ def profile_for_user(user):
     return profile
 
 
+def iso_datetime(value):
+    return value.isoformat() if value else None
+
+
+def access_status_for_profile(profile):
+    if profile.password_temporary:
+        return "Пароль тимчасовий"
+    if profile.last_login_at:
+        return "Активний"
+    return "Запрошено"
+
+
 def serialize_system_user(user):
     profile = profile_for_user(user)
     name = user_name(user)
@@ -200,6 +212,11 @@ def serialize_system_user(user):
         "permissions": permission_flags(permission_keys),
         "photo": profile.photo_label or initials_from_name(name),
         "active": user.is_active and profile.is_active_member,
+        "accessStatus": access_status_for_profile(profile),
+        "passwordTemporary": profile.password_temporary,
+        "mustChangePassword": profile.password_temporary,
+        "passwordUpdatedAt": iso_datetime(profile.password_updated_at),
+        "lastLoginAt": iso_datetime(profile.last_login_at),
         "caseScope": "all" if profile.role == "admin" else "assigned",
         "assignedCaseIds": [case.number for case in assigned_cases],
         "assignedCases": [
@@ -231,6 +248,7 @@ def upsert_system_user(data, user=None):
     user.is_staff = role == "admin"
     user.is_superuser = role == "admin"
     user.is_active = True
+    password_changed = bool(data.get("password"))
     if data.get("password"):
         user.set_password(data["password"])
     user.save()
@@ -246,6 +264,11 @@ def upsert_system_user(data, user=None):
         ])
     elif "role" in data:
         profile.module_permissions = []
+    if password_changed:
+        profile.password_temporary = bool(data.get("passwordTemporary", data.get("mustChangePassword", True)))
+        profile.password_updated_at = timezone.now()
+    elif "passwordTemporary" in data or "mustChangePassword" in data:
+        profile.password_temporary = bool(data.get("passwordTemporary", data.get("mustChangePassword")))
     profile.is_active_member = True
     profile.save()
     update_user_case_members(user, data)
@@ -1161,6 +1184,7 @@ def session_payload(request):
         "authenticated": bool(request.user.is_authenticated),
         "user": serialize_system_user(user) if user else None,
         "permissions": permission_flags(permissions),
+        "mustChangePassword": bool(request.user.is_authenticated and profile and profile.password_temporary),
     }
 
 
@@ -1181,6 +1205,9 @@ def login_api(request):
     if not authenticated:
         return json_response({"error": "Invalid credentials", "message": "Невірний email або пароль."}, status=401)
     auth_login(request, authenticated)
+    profile = profile_for_user(authenticated)
+    profile.last_login_at = timezone.now()
+    profile.save(update_fields=["last_login_at", "updated_at"])
     return json_response(session_payload(request))
 
 
@@ -1190,6 +1217,29 @@ def logout_api(request):
     if request.method == "OPTIONS":
         return empty_response()
     auth_logout(request)
+    return json_response(session_payload(request))
+
+
+@csrf_exempt
+@require_http_methods(["POST", "OPTIONS"])
+def change_password_api(request):
+    if request.method == "OPTIONS":
+        return empty_response()
+    if not request.user.is_authenticated:
+        return json_response({"error": "Unauthorized", "message": "Потрібно увійти в систему."}, status=401)
+    data = parse_body(request)
+    password = str(data.get("password") or "").strip()
+    if len(password) < 8:
+        return json_response({"error": "Invalid password", "message": "Пароль має містити щонайменше 8 символів."}, status=400)
+    request.user.set_password(password)
+    request.user.save(update_fields=["password"])
+    profile = profile_for_user(request.user)
+    now = timezone.now()
+    profile.password_temporary = False
+    profile.password_updated_at = now
+    profile.last_login_at = now
+    profile.save(update_fields=["password_temporary", "password_updated_at", "last_login_at", "updated_at"])
+    update_session_auth_hash(request, request.user)
     return json_response(session_payload(request))
 
 

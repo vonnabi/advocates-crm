@@ -1210,6 +1210,18 @@ h3 {
   min-width: 210px;
 }
 
+.password-change-overlay {
+  z-index: 230;
+}
+
+.password-change-card {
+  text-align: center;
+}
+
+.password-change-card .login-form {
+  margin-top: 4px;
+}
+
 .demo-data-overlay {
   position: fixed;
   inset: 0;
@@ -1547,7 +1559,7 @@ h3 {
 }
 
 .settings-user-row {
-  grid-template-columns: auto minmax(0, 1.2fr) minmax(150px, 0.8fr) minmax(120px, auto) auto;
+  grid-template-columns: auto minmax(0, 1.2fr) minmax(150px, 0.8fr) minmax(120px, auto) minmax(160px, auto);
 }
 
 .settings-user-row strong,
@@ -1602,6 +1614,43 @@ h3 {
   color: var(--muted);
   font-size: 11px;
   font-weight: 900;
+}
+
+.settings-access-status {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.settings-access-status .ui-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.settings-access-status.green {
+  border-color: var(--semantic-green-border);
+  background: var(--semantic-green-soft);
+  color: var(--semantic-green);
+}
+
+.settings-access-status.amber {
+  border-color: var(--semantic-amber-border);
+  background: var(--semantic-amber-soft);
+  color: var(--semantic-amber);
+}
+
+.settings-access-status.blue {
+  border-color: var(--action-border);
+  background: var(--action-soft);
+  color: var(--action-dark);
 }
 
 .settings-user-row span,
@@ -7632,6 +7681,10 @@ button {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.settings-password-temporary {
+  width: fit-content;
 }
 
 .settings-user-editor-section {

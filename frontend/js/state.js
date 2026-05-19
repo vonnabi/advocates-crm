@@ -124,6 +124,7 @@ export function normalizeFinanceOperation(operation) {
 }
 
 export function normalizeSettingsUser(user) {
+  const passwordTemporary = Boolean(user.passwordTemporary || user.mustChangePassword);
   return {
     ...user,
     name: user.name || "",
@@ -136,7 +137,12 @@ export function normalizeSettingsUser(user) {
     assignedCaseIds: Array.isArray(user.assignedCaseIds) ? user.assignedCaseIds : [],
     assignedCases: Array.isArray(user.assignedCases) ? user.assignedCases : [],
     assignedCasesCount: Number(user.assignedCasesCount || user.assignedCaseIds?.length || 0),
-    caseScope: user.caseScope || (user.role === "Адміністратор" ? "all" : "assigned")
+    caseScope: user.caseScope || (user.role === "Адміністратор" ? "all" : "assigned"),
+    accessStatus: user.accessStatus || (passwordTemporary ? "Пароль тимчасовий" : user.lastLoginAt ? "Активний" : "Запрошено"),
+    passwordTemporary,
+    mustChangePassword: passwordTemporary,
+    passwordUpdatedAt: user.passwordUpdatedAt || "",
+    lastLoginAt: user.lastLoginAt || ""
   };
 }
 
@@ -201,6 +207,7 @@ export async function createInitialState() {
     cases: demoData.cases,
     events: demoData.events,
     dataSource: demoData.source,
+    session: demoData.session || {},
     currentUser: demoData.currentUser || null,
     sessionAuthenticated: Boolean(demoData.session?.authenticated),
     sessionPermissions: demoData.session?.permissions || (demoData.source === "api" ? {} : defaultPermissions),

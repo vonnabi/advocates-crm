@@ -108,6 +108,8 @@ def ensure_team_user(name, email, role_label):
             "module_permissions": [],
             "photo_label": initials_from_name(name),
             "is_active_member": True,
+            "password_temporary": False,
+            "last_login_at": timezone.now(),
         },
     )
     return user

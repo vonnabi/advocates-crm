@@ -224,6 +224,60 @@ class DemoApiTests(TestCase):
         self.assertEqual(delete_response.status_code, 200)
         self.assertEqual(delete_response.json(), {"deleted": created["id"]})
 
+    def test_temporary_password_requires_change_after_login(self):
+        create_response = self.client.post(
+            "/api/users/",
+            {
+                "name": "Тимчасовий Користувач",
+                "email": "temporary@example.com",
+                "password": "start12345",
+                "passwordTemporary": True,
+                "role": "Помічник",
+                "access": "Задачі та документи",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(create_response.status_code, 200)
+        created = create_response.json()
+        self.assertTrue(created["passwordTemporary"])
+        self.assertEqual(created["accessStatus"], "Пароль тимчасовий")
+
+        self.client.post("/api/auth/logout/", {}, content_type="application/json")
+        login_response = self.client.post(
+            "/api/auth/login/",
+            {"email": "temporary@example.com", "password": "start12345"},
+            content_type="application/json",
+        )
+        self.assertEqual(login_response.status_code, 200)
+        self.assertTrue(login_response.json()["mustChangePassword"])
+        self.assertTrue(login_response.json()["user"]["passwordTemporary"])
+
+        change_response = self.client.post(
+            "/api/auth/change-password/",
+            {"password": "newstrong123"},
+            content_type="application/json",
+        )
+        self.assertEqual(change_response.status_code, 200)
+        changed = change_response.json()
+        self.assertFalse(changed["mustChangePassword"])
+        self.assertFalse(changed["user"]["passwordTemporary"])
+        self.assertEqual(changed["user"]["accessStatus"], "Активний")
+
+        self.client.post("/api/auth/logout/", {}, content_type="application/json")
+        old_password = self.client.post(
+            "/api/auth/login/",
+            {"email": "temporary@example.com", "password": "start12345"},
+            content_type="application/json",
+        )
+        self.assertEqual(old_password.status_code, 401)
+        new_password = self.client.post(
+            "/api/auth/login/",
+            {"email": "temporary@example.com", "password": "newstrong123"},
+            content_type="application/json",
+        )
+        self.assertEqual(new_password.status_code, 200)
+        self.assertFalse(new_password.json()["mustChangePassword"])
+
     def test_user_card_saves_custom_permissions_and_case_scope(self):
         payload = {
             "name": "Доступ Тест",

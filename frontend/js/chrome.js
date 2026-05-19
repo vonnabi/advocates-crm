@@ -1,4 +1,4 @@
-import { clearDemoDataInApi, loginToApi, logoutFromApi, restoreDemoDataInApi, shouldUseApi } from "./api.js?v=demo-data-2";
+import { changePasswordInApi, clearDemoDataInApi, loginToApi, logoutFromApi, restoreDemoDataInApi, shouldUseApi } from "./api.js?v=password-access-1";
 
 const DEMO_URL = "https://vonnabi.github.io/advocates-crm/";
 
@@ -204,6 +204,96 @@ export function syncTopbarUser($, state) {
   document.documentElement.dataset.authenticated = state.sessionAuthenticated ? "true" : "false";
 }
 
+function applySessionState(state, session) {
+  state.session = session || {};
+  state.currentUser = session?.user || state.settingsUsers?.[0] || state.currentUser;
+  state.sessionAuthenticated = Boolean(session?.authenticated);
+  state.sessionPermissions = session?.permissions || {};
+}
+
+function sessionRequiresPasswordChange(state) {
+  return shouldUseApi(state)
+    && state.sessionAuthenticated
+    && Boolean(state.session?.mustChangePassword || state.currentUser?.mustChangePassword || state.currentUser?.passwordTemporary);
+}
+
+function ensurePasswordChangeOverlay(ctx) {
+  let overlay = document.querySelector("#password-change-overlay");
+  if (overlay) return overlay;
+  const { $, state, saveNavigationState, showToast, onSessionChange } = ctx;
+  overlay = document.createElement("div");
+  overlay.id = "password-change-overlay";
+  overlay.className = "logout-overlay password-change-overlay";
+  overlay.hidden = true;
+  overlay.innerHTML = `
+    <section class="logout-card password-change-card" role="dialog" aria-modal="true" aria-labelledby="password-change-title">
+      <div class="logout-mark">AB</div>
+      <h2 id="password-change-title">Змініть тимчасовий пароль</h2>
+      <p>Цей пароль виданий адміністратором. Щоб продовжити роботу, створіть власний пароль.</p>
+      <form class="login-form" data-password-change-form>
+        <label>Новий пароль<input name="password" type="password" autocomplete="new-password" minlength="8" required /></label>
+        <label>Повторіть пароль<input name="passwordRepeat" type="password" autocomplete="new-password" minlength="8" required /></label>
+        <small>Мінімум 8 символів. Адміністратор зможе тільки скинути пароль, але не побачить ваш новий.</small>
+        <p class="login-error" data-password-change-error hidden></p>
+        <button class="primary" type="submit">Зберегти пароль</button>
+        <button class="secondary" type="button" data-password-change-logout>Вийти</button>
+      </form>
+    </section>
+  `;
+  document.body.append(overlay);
+  overlay.querySelector("[data-password-change-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const error = overlay.querySelector("[data-password-change-error]");
+    const password = form.elements.password.value;
+    const repeat = form.elements.passwordRepeat.value;
+    if (error) error.hidden = true;
+    if (password.length < 8) {
+      if (error) {
+        error.textContent = "Пароль має містити щонайменше 8 символів.";
+        error.hidden = false;
+      }
+      return;
+    }
+    if (password !== repeat) {
+      if (error) {
+        error.textContent = "Паролі не збігаються.";
+        error.hidden = false;
+      }
+      return;
+    }
+    try {
+      const session = await changePasswordInApi(password);
+      applySessionState(state, session);
+      const userIndex = state.settingsUsers?.findIndex((user) => user.id === session.user?.id);
+      if (userIndex >= 0) state.settingsUsers[userIndex] = session.user;
+      syncTopbarUser($, state);
+      saveNavigationState();
+      onSessionChange?.();
+      form.reset();
+      overlay.hidden = true;
+      showToast("Пароль змінено. Доступ активний.");
+    } catch (_error) {
+      if (error) {
+        error.textContent = "Не вдалося змінити пароль. Спробуйте ще раз.";
+        error.hidden = false;
+      }
+    }
+  });
+  overlay.querySelector("[data-password-change-logout]")?.addEventListener("click", async () => {
+    overlay.hidden = true;
+    await openLogoutOverlay(ctx);
+  });
+  return overlay;
+}
+
+function openPasswordChangeOverlay(ctx) {
+  if (!sessionRequiresPasswordChange(ctx.state)) return;
+  const overlay = ensurePasswordChangeOverlay(ctx);
+  overlay.hidden = false;
+  overlay.querySelector("input[name='password']")?.focus();
+}
+
 function ensureLogoutOverlay(ctx) {
   let overlay = document.querySelector("#logout-overlay");
   if (overlay) return overlay;
@@ -245,15 +335,14 @@ function ensureLogoutOverlay(ctx) {
         email: form.elements.email.value,
         password: form.elements.password.value
       });
-      state.currentUser = session.user;
-      state.sessionAuthenticated = Boolean(session.authenticated);
-      state.sessionPermissions = session.permissions || {};
+      applySessionState(state, session);
       syncTopbarUser($, state);
       saveNavigationState();
       onSessionChange?.();
       overlay.hidden = true;
       document.body.classList.remove("session-ended");
       showToast(`Вхід виконано: ${session.user?.name || "користувач"}.`);
+      openPasswordChangeOverlay(ctx);
     } catch (_error) {
       if (error) {
         error.textContent = "Невірний email або пароль.";
@@ -263,6 +352,7 @@ function ensureLogoutOverlay(ctx) {
   });
   overlay.querySelector("[data-login-return]")?.addEventListener("click", () => {
     state.currentUser = state.settingsUsers?.[0] || state.currentUser;
+    state.session = { authenticated: false, user: state.currentUser, permissions: {} };
     state.sessionAuthenticated = false;
     syncTopbarUser($, state);
     saveNavigationState();
@@ -279,9 +369,8 @@ async function openLogoutOverlay(ctx) {
   if (shouldUseApi(state)) {
     try {
       const session = await logoutFromApi();
-      state.currentUser = session.user || state.settingsUsers?.[0] || state.currentUser;
+      applySessionState(state, session);
       state.sessionAuthenticated = false;
-      state.sessionPermissions = session.permissions || {};
       syncTopbarUser($, state);
       saveNavigationState();
       onSessionChange?.();
@@ -378,4 +467,5 @@ export function setupTopbarControls({ $, state, switchView, saveNavigationState,
   $(".collapse-menu")?.addEventListener("click", () => toggleSidebar({ saveNavigationState, showToast }));
   $(".sidebar-restore")?.addEventListener("click", () => toggleSidebar({ saveNavigationState, showToast }));
   $("[data-demo-data-toggle]")?.addEventListener("click", () => openDemoDataOverlay({ state, showToast }));
+  window.setTimeout(() => openPasswordChangeOverlay({ $, state, saveNavigationState, showToast, onSessionChange }), 0);
 }

@@ -74,6 +74,19 @@ function generateTemporaryPassword() {
   return `crm${Math.random().toString(36).slice(2, 8)}${Math.floor(10 + Math.random() * 89)}`;
 }
 
+function accessStatusMeta(user) {
+  const label = user.accessStatus || (user.passwordTemporary ? "Пароль тимчасовий" : "Активний");
+  if (user.passwordTemporary || label === "Пароль тимчасовий") return { label: "Тимчасовий пароль", tone: "amber" };
+  if (label === "Запрошено") return { label: "Запрошено", tone: "blue" };
+  return { label: "Активний", tone: "green" };
+}
+
+function renderAccessStatus(user, icon) {
+  const status = accessStatusMeta(user);
+  const iconName = status.tone === "amber" ? "clock" : status.tone === "blue" ? "mail" : "check";
+  return `<span class="settings-access-status ${status.tone}">${icon(iconName)} ${status.label}</span>`;
+}
+
 function crmAccessUrl() {
   return `${window.location.origin}/`;
 }
@@ -88,7 +101,7 @@ function buildAccessMessage(user, password, channel = "email") {
     `Логін: ${user.email || "email не вказано"}`,
     `Тимчасовий пароль: ${password}`,
     "",
-    "Після входу рекомендуємо змінити пароль у профілі."
+    "Після першого входу система попросить змінити пароль."
   ].join("\n");
 }
 
@@ -227,6 +240,7 @@ function fillUserDialog(dialog, ctx, userIndex = "") {
   form.elements.name.value = user?.name || "";
   form.elements.email.value = user?.email || "";
   form.elements.password.value = user ? "" : "demo12345";
+  form.elements.passwordTemporary.checked = user ? Boolean(user.passwordTemporary || user.mustChangePassword) : true;
   form.elements.role.value = user?.role || "Адвокат";
   form.elements.access.value = user?.access || roleAccessMap[form.elements.role.value] || roleAccessMap["Помічник"];
   form.querySelector("[data-settings-permissions-grid]").innerHTML = renderPermissionCheckboxes(icon, userPermissionKeys(user || { role: form.elements.role.value }));
@@ -268,7 +282,7 @@ async function persistAccessDelivery(dialog, ctx) {
   const user = ctx.state.settingsUsers[index];
   const password = cleanSettingValue(form.elements.password.value);
   if (!user || !password) return null;
-  let updatedUser = { ...user, password };
+  let updatedUser = { ...user, password, passwordTemporary: true };
   if (shouldUseApi(ctx.state)) {
     updatedUser = normalizeSettingsUser(await saveSettingsUserToApi(updatedUser));
   } else {
@@ -376,6 +390,10 @@ function ensureInviteDialog(ctx) {
           </select>
         </label>
       </div>
+      <label class="checkline settings-password-temporary">
+        <input name="passwordTemporary" type="checkbox">
+        <span>Вимагати зміну пароля при вході</span>
+      </label>
       <label>Доступ
         <select name="access">
           ${Object.keys(accessPermissionMap).map((access) => `<option>${access}</option>`).join("")}
@@ -458,6 +476,7 @@ function ensureInviteDialog(ctx) {
       permissionKeys,
       assignedCaseIds
     };
+    user.passwordTemporary = Boolean(form.elements.passwordTemporary?.checked);
     if (password) user.password = password;
     if (shouldUseApi(state)) {
       try {
@@ -565,7 +584,7 @@ export function renderSettingsScreen(ctx) {
               <small>${userPermissionKeys(user).length} доступів</small>
             </div>
             <div class="settings-user-actions">
-              ${badge(user.role === "Адміністратор" ? "Owner" : "Active", user.role === "Адміністратор" ? "blue" : "green")}
+              ${renderAccessStatus(user, icon)}
               <div class="settings-user-menu-wrap">
                 <button type="button" class="icon-button compact" data-settings-user-menu="${index}" aria-label="Дії користувача" aria-expanded="${state.settingsOpenUserMenu === String(index) ? "true" : "false"}">⋮</button>
                 <div class="settings-user-menu" data-settings-user-menu-panel="${index}" ${state.settingsOpenUserMenu === String(index) ? "" : "hidden"}>
