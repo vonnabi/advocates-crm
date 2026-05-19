@@ -8,23 +8,36 @@ const roleAccessMap = {
   "Бухгалтер": "Фінанси та звіти"
 };
 
-const rolePermissionMap = {
-  "Адміністратор": ["manage_users", "manage_clients", "manage_cases", "manage_tasks", "manage_documents", "manage_calendar", "view_finance", "manage_finance"],
-  "Адвокат": ["manage_clients", "manage_cases", "manage_tasks", "manage_documents", "manage_calendar"],
-  "Помічник": ["manage_tasks", "manage_documents", "manage_calendar"],
-  "Бухгалтер": ["view_finance", "manage_finance"]
+const permissionOptions = [
+  { key: "", label: "Дашборд", icon: "home", note: "базовий огляд", locked: true },
+  { key: "manage_cases", label: "Справи", icon: "briefcase", note: "список і картки справ" },
+  { key: "manage_clients", label: "Клієнти", icon: "user", note: "клієнтська база" },
+  { key: "manage_calendar", label: "Календар", icon: "calendar", note: "події та дедлайни" },
+  { key: "manage_tasks", label: "Задачі", icon: "check", note: "задачі і підзадачі" },
+  { key: "manage_documents", label: "Документи", icon: "file", note: "архів і файли" },
+  { key: "manage_mailings", label: "Розсилка", icon: "telegram", note: "кампанії і шаблони" },
+  { key: "manage_ai", label: "AI помічники", icon: "bot", note: "чати і навчання" },
+  { key: "view_planner", label: "Планер", icon: "planner", note: "план дня" },
+  { key: "view_analytics", label: "Аналітика", icon: "chart", note: "звіти і метрики" },
+  { key: "view_finance", label: "Фінанси", icon: "dollar", note: "перегляд фінансів" },
+  { key: "manage_finance", label: "Платежі та зарплата", icon: "wallet", note: "операції у фінансах" },
+  { key: "view_osint", label: "OSINT", icon: "search", note: "перевірки ризиків" },
+  { key: "manage_users", label: "Налаштування", icon: "gear", note: "користувачі і доступ" }
+];
+
+const allPermissionKeys = permissionOptions.map((item) => item.key).filter(Boolean);
+
+const accessPermissionMap = {
+  "Повний доступ": allPermissionKeys,
+  "Справи, клієнти, календар": ["manage_cases", "manage_clients", "manage_calendar"],
+  "Задачі та документи": ["manage_tasks", "manage_documents", "manage_calendar", "view_planner", "manage_ai"],
+  "Фінанси та звіти": ["view_finance", "manage_finance", "view_analytics"],
+  "Індивідуальний доступ": []
 };
 
-const permissionOptions = [
-  ["manage_users", "Користувачі", "user"],
-  ["manage_clients", "Клієнти", "user"],
-  ["manage_cases", "Справи", "briefcase"],
-  ["manage_tasks", "Задачі", "check"],
-  ["manage_documents", "Документи", "file"],
-  ["manage_calendar", "Календар", "calendar"],
-  ["view_finance", "Фінанси", "briefcase"],
-  ["manage_finance", "Операції", "edit"]
-];
+const rolePermissionMap = Object.fromEntries(
+  Object.entries(roleAccessMap).map(([role, access]) => [role, accessPermissionMap[access] || []])
+);
 
 function cleanSettingValue(value) {
   return String(value || "").trim().replace(/[<>]/g, "");
@@ -58,7 +71,9 @@ function addSettingsAudit(state, text, tone = "blue") {
 }
 
 function userPermissionKeys(user) {
-  return user?.permissionKeys?.length ? user.permissionKeys : rolePermissionMap[user?.role] || rolePermissionMap["Помічник"];
+  if (Array.isArray(user?.permissionKeys) && user.permissionKeys.length) return user.permissionKeys;
+  if (user?.access && accessPermissionMap[user.access]?.length) return accessPermissionMap[user.access];
+  return rolePermissionMap[user?.role] || rolePermissionMap["Помічник"];
 }
 
 function selectedCaseIds(user) {
@@ -69,11 +84,14 @@ function selectedCaseIds(user) {
 
 function renderPermissionCheckboxes(icon, checkedKeys = []) {
   const checked = new Set(checkedKeys);
-  return permissionOptions.map(([key, label, iconName]) => `
-    <label class="settings-permission-tile">
-      <input type="checkbox" name="permissionKeys" value="${key}" ${checked.has(key) ? "checked" : ""} />
-      <span>${icon(iconName)}</span>
-      <strong>${label}</strong>
+  return permissionOptions.map((item) => `
+    <label class="settings-permission-tile ${item.locked ? "is-locked" : ""}">
+      ${item.locked
+        ? `<input type="checkbox" checked disabled aria-label="${item.label}" />`
+        : `<input type="checkbox" name="permissionKeys" value="${item.key}" ${checked.has(item.key) ? "checked" : ""} />`}
+      <span class="settings-permission-icon">${icon(item.icon)}</span>
+      <strong>${item.label}</strong>
+      <small>${item.note}</small>
     </label>
   `).join("");
 }
@@ -94,8 +112,13 @@ function renderCaseCheckboxes(state, checkedIds = new Set()) {
 function applyRoleDefaultsToForm(form, icon) {
   const role = form.elements.role.value;
   form.elements.access.value = roleAccessMap[role] || roleAccessMap["Помічник"];
-  const keys = new Set(rolePermissionMap[role] || rolePermissionMap["Помічник"]);
-  form.querySelector("[data-settings-permissions-grid]").innerHTML = renderPermissionCheckboxes(icon, keys);
+  form.querySelector("[data-settings-permissions-grid]").innerHTML = renderPermissionCheckboxes(icon, rolePermissionMap[role] || rolePermissionMap["Помічник"]);
+}
+
+function applyAccessPresetToForm(form, icon) {
+  const access = form.elements.access.value;
+  if (access === "Індивідуальний доступ") return;
+  form.querySelector("[data-settings-permissions-grid]").innerHTML = renderPermissionCheckboxes(icon, accessPermissionMap[access] || []);
 }
 
 function fillUserDialog(dialog, ctx, userIndex = "") {
@@ -144,7 +167,7 @@ function ensureInviteDialog(ctx) {
       </div>
       <label>Доступ
         <select name="access">
-          ${Object.values(roleAccessMap).map((access) => `<option>${access}</option>`).join("")}
+          ${Object.keys(accessPermissionMap).map((access) => `<option>${access}</option>`).join("")}
         </select>
       </label>
       <section class="settings-user-editor-section">
@@ -171,6 +194,12 @@ function ensureInviteDialog(ctx) {
     const isAdmin = form.elements.role.value === "Адміністратор";
     form.querySelector("[data-settings-case-scope]").textContent = isAdmin ? "Повний доступ до всіх справ" : "Доступ тільки до вибраних справ";
     form.querySelector("[data-settings-cases-grid]").toggleAttribute("hidden", isAdmin);
+  });
+  form?.elements.access?.addEventListener("change", () => applyAccessPresetToForm(form, icon));
+  form?.addEventListener("change", (event) => {
+    if (event.target?.name === "permissionKeys") {
+      form.elements.access.value = "Індивідуальний доступ";
+    }
   });
   dialog.querySelector("[data-settings-role-defaults]")?.addEventListener("click", () => applyRoleDefaultsToForm(form, icon));
   dialog.querySelector("[data-settings-invite-close]")?.addEventListener("click", () => dialog.close());

@@ -185,7 +185,12 @@ export async function createInitialState() {
     canManageClients: true,
     canManageTasks: true,
     canManageDocuments: true,
-    canManageCalendar: true
+    canManageCalendar: true,
+    canManageMailings: true,
+    canUseAi: true,
+    canViewPlanner: true,
+    canViewAnalytics: true,
+    canUseOsint: true
   };
 
   return {

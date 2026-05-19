@@ -155,6 +155,12 @@ test("settings invite form adds a bureau user", async ({ page }) => {
   await page.locator('#settings-invite-form [name="email"]').fill("team.autotest@example.com");
   await page.locator('#settings-invite-form [name="role"]').selectOption("Бухгалтер");
   await expect(page.locator('#settings-invite-form [name="access"]')).toHaveValue("Фінанси та звіти");
+  await expect(page.locator('.settings-permission-tile:has(input[name="permissionKeys"]:checked)')).toHaveCount(3);
+  await expect(page.locator('.settings-permission-tile:has(input[name="permissionKeys"]:checked)')).toContainText([
+    "Аналітика",
+    "Фінанси",
+    "Платежі та зарплата"
+  ]);
   await page.locator('#settings-invite-form button[type="submit"]').click();
 
   await expect(page.locator("#settings-invite-dialog")).toHaveJSProperty("open", false);

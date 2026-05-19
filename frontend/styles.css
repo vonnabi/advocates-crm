@@ -7582,15 +7582,18 @@ button {
 }
 
 .settings-permission-tile {
-  min-height: 58px;
+  position: relative;
+  min-height: 66px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
   align-items: center;
-  gap: 8px;
-  border: 1px solid #dbe8f6;
+  column-gap: 9px;
+  row-gap: 2px;
+  border: 1px solid #e3ebf4;
   border-radius: 8px;
   background: white;
-  padding: 9px;
+  padding: 9px 10px;
   color: var(--text);
   cursor: pointer;
 }
@@ -7601,20 +7604,30 @@ button {
   pointer-events: none;
 }
 
-.settings-permission-tile > span {
+.settings-permission-icon {
   width: 30px;
   height: 30px;
   display: grid;
   place-items: center;
+  grid-row: 1 / span 2;
   border-radius: 50%;
-  background: #eef6ff;
-  color: var(--action-dark);
+  background: #f3f6fa;
+  color: #71839b;
 }
 
 .settings-permission-tile strong {
-  color: #172033;
+  color: #253348;
   font-size: 12px;
   line-height: 1.2;
+}
+
+.settings-permission-tile small {
+  display: block;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: 700;
 }
 
 .settings-permission-tile:has(input:checked) {
@@ -7623,9 +7636,13 @@ button {
   box-shadow: inset 0 0 0 1px rgba(31, 94, 150, 0.08);
 }
 
-.settings-permission-tile:has(input:checked) > span {
+.settings-permission-tile:has(input:checked) .settings-permission-icon {
   background: var(--action-dark);
   color: white;
+}
+
+.settings-permission-tile.is-locked {
+  cursor: default;
 }
 
 .settings-cases-grid {

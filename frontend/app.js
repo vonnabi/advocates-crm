@@ -112,7 +112,27 @@ const defaultPermissions = {
   canManageClients: true,
   canManageTasks: true,
   canManageDocuments: true,
-  canManageCalendar: true
+  canManageCalendar: true,
+  canManageMailings: true,
+  canUseAi: true,
+  canViewPlanner: true,
+  canViewAnalytics: true,
+  canUseOsint: true
+};
+
+const viewPermissionMap = {
+  cases: "canManageCases",
+  clients: "canManageClients",
+  calendar: "canManageCalendar",
+  tasks: "canManageTasks",
+  documents: "canManageDocuments",
+  mailings: "canManageMailings",
+  ai: "canUseAi",
+  planner: "canViewPlanner",
+  analytics: "canViewAnalytics",
+  finance: "canSeeFinance",
+  osint: "canUseOsint",
+  settings: "canManageUsers"
 };
 
 const permissionControlRules = [
@@ -213,22 +233,30 @@ function permissions() {
 }
 
 function can(permission) {
-  return Boolean(permissions()[permission]);
+  const currentPermissions = permissions();
+  if (Object.prototype.hasOwnProperty.call(currentPermissions, permission)) {
+    return Boolean(currentPermissions[permission]);
+  }
+  return Boolean(defaultPermissions[permission]);
 }
 
 function canOpenView(view) {
-  return view !== "finance" || can("canSeeFinance");
+  const permission = viewPermissionMap[view];
+  return !permission || can(permission);
 }
 
 function restrictedViewMessage(view) {
   if (view === "finance") return "Фінанси доступні адміністратору або бухгалтеру.";
+  if (view === "settings") return "Налаштування користувачів доступні адміністратору.";
   return "Для цього розділу недостатньо прав.";
 }
 
 function syncRoleNavigation() {
-  const financeVisible = can("canSeeFinance");
-  document.querySelectorAll('[data-view="finance"], [data-view-link="finance"]').forEach((node) => {
-    node.hidden = !financeVisible;
+  Object.entries(viewPermissionMap).forEach(([view, permission]) => {
+    const visible = can(permission);
+    document.querySelectorAll(`[data-view="${view}"], [data-view-link="${view}"]`).forEach((node) => {
+      node.hidden = !visible;
+    });
   });
 }
 

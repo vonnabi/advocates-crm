@@ -114,24 +114,30 @@ ROLE_PERMISSIONS = {
         "manage_tasks",
         "manage_documents",
         "manage_calendar",
+        "manage_mailings",
+        "manage_ai",
+        "view_planner",
+        "view_analytics",
         "view_finance",
         "manage_finance",
+        "view_osint",
     },
     "lawyer": {
         "manage_clients",
         "manage_cases",
-        "manage_tasks",
-        "manage_documents",
         "manage_calendar",
     },
     "assistant": {
         "manage_tasks",
         "manage_documents",
         "manage_calendar",
+        "view_planner",
+        "manage_ai",
     },
     "accountant": {
         "view_finance",
         "manage_finance",
+        "view_analytics",
     },
 }
 
@@ -143,8 +149,13 @@ PERMISSION_KEYS = (
     "manage_tasks",
     "manage_documents",
     "manage_calendar",
+    "manage_mailings",
+    "manage_ai",
+    "view_planner",
+    "view_analytics",
     "view_finance",
     "manage_finance",
+    "view_osint",
 )
 ROLE_LABELS = {value: label for label, (value, _access) in ROLE_ACCESS.items()}
 CASE_MEMBER_ROLES = {
@@ -959,8 +970,13 @@ def permission_flags(keys):
         "canManageTasks": "manage_tasks" in permissions,
         "canManageDocuments": "manage_documents" in permissions,
         "canManageCalendar": "manage_calendar" in permissions,
+        "canManageMailings": "manage_mailings" in permissions,
+        "canUseAi": "manage_ai" in permissions,
+        "canViewPlanner": "view_planner" in permissions,
+        "canViewAnalytics": "view_analytics" in permissions,
         "canSeeFinance": "view_finance" in permissions,
         "canManageFinance": "manage_finance" in permissions,
+        "canUseOsint": "view_osint" in permissions,
     }
 
 

@@ -246,14 +246,20 @@ export function bindActionMenus(root = document) {
 
 export function icon(name) {
   const icons = {
+    home: `<svg viewBox="0 0 24 24"><path d="m3 11 9-8 9 8"></path><path d="M5 10v10h5v-6h4v6h5V10"></path></svg>`,
     search: `<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>`,
     filter: `<svg viewBox="0 0 24 24"><path d="M4 5h16l-6.5 7.2V18l-3 1.5v-7.3L4 5Z"></path></svg>`,
     telegram: `<svg viewBox="0 0 24 24"><path d="M21 4 3.8 10.8c-.8.3-.8 1.4.1 1.6l4.3 1.3 1.7 5.1c.2.7 1.1.9 1.6.3l2.5-2.9 4.5 3.4c.6.5 1.5.1 1.7-.7L22.5 5c.2-.7-.7-1.3-1.5-1Z"></path><path d="m8.4 13.6 8.2-5.2-6.4 7.4"></path></svg>`,
+    bot: `<svg viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="10" rx="3"></rect><path d="M12 8V4"></path><circle cx="9" cy="13" r="1"></circle><circle cx="15" cy="13" r="1"></circle><path d="M9 18v2M15 18v2"></path></svg>`,
     user: `<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"></circle><path d="M4.5 21a7.5 7.5 0 0 1 15 0"></path></svg>`,
     phone: `<svg viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.7 19.7 0 0 1-8.6-3.1 19.3 19.3 0 0 1-6-6A19.7 19.7 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.5c1 .3 1.9.6 2.9.7A2 2 0 0 1 22 16.9Z"></path></svg>`,
     message: `<svg viewBox="0 0 24 24"><path d="M5 5h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-5 3v-3H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"></path></svg>`,
     mail: `<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m4 7 8 6 8-6"></path></svg>`,
     calendar: `<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 11h18"></path></svg>`,
+    planner: `<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="16" rx="2"></rect><path d="M9 3v4M15 3v4M8 13h8M8 17h4"></path><path d="m15 17 2 2 4-5"></path></svg>`,
+    chart: `<svg viewBox="0 0 24 24"><path d="M4 20V10"></path><path d="M9 20V4"></path><path d="M14 20v-7"></path><path d="M19 20V8"></path></svg>`,
+    dollar: `<svg viewBox="0 0 24 24"><path d="M12 3v18"></path><path d="M17 7.5A4 4 0 0 0 12 6c-2.2 0-4 1-4 2.8s1.8 2.5 4 3 4 1.2 4 3-1.8 3.2-4 3.2a5 5 0 0 1-5-2"></path></svg>`,
+    wallet: `<svg viewBox="0 0 24 24"><path d="M4 7h15a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h13"></path><path d="M16 13h.01"></path></svg>`,
     clock: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>`,
     building: `<svg viewBox="0 0 24 24"><path d="M3 21h18"></path><path d="M5 21V9l7-4 7 4v12"></path><path d="M9 21v-6h6v6"></path><path d="M9 10h.01M12 10h.01M15 10h.01"></path></svg>`,
     briefcase: `<svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path><path d="M3 12h18"></path></svg>`,
@@ -266,7 +272,8 @@ export function icon(name) {
     edit: `<svg viewBox="0 0 24 24"><path d="M16.9 3.7a2.1 2.1 0 0 1 3 3L8.4 18.2l-4.1 1.2 1.2-4.1L16.9 3.7Z"></path><path d="m15.5 5.1 3.4 3.4"></path></svg>`,
     trash: `<svg viewBox="0 0 24 24"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="m19 6-1 15H6L5 6"></path><path d="M10 11v6M14 11v6"></path></svg>`,
     refresh: `<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 1-14.6 4.5"></path><path d="M4 12A8 8 0 0 1 18.6 7.5"></path><path d="M18 3v5h-5"></path><path d="M6 21v-5h5"></path></svg>`,
-    check: `<svg viewBox="0 0 24 24"><path d="m20 6-11 11-5-5"></path></svg>`
+    check: `<svg viewBox="0 0 24 24"><path d="m20 6-11 11-5-5"></path></svg>`,
+    gear: `<svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"></path><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 0 1 4.2 17l.1-.1A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.6-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.3 7A2 2 0 0 1 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 0 1 19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1a2 2 0 0 1 0 4H21a1.7 1.7 0 0 0-1.6 1Z"></path></svg>`
   };
   return `<span class="ui-icon">${icons[name] || ""}</span>`;
 }
