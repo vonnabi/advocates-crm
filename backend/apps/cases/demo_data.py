@@ -1,7 +1,7 @@
 from django.db import transaction
 
 from apps.calendar_app.models import CalendarEvent, Reminder
-from apps.cases.models import Case, CaseDocument
+from apps.cases.models import Case, CaseDocument, CaseMember
 from apps.clients.models import Client, ClientCommunication
 from apps.communications.models import Campaign, MessageDelivery, MessageTemplate
 from apps.finance.models import Expense, Invoice, Payment
@@ -62,6 +62,7 @@ def clear_demo_business_data():
         CalendarEvent.objects.filter(is_demo=True).delete()
         Task.objects.filter(is_demo=True).delete()
         CaseDocument.objects.filter(is_demo=True).delete()
+        CaseMember.objects.filter(is_demo=True).delete()
         ClientCommunication.objects.filter(is_demo=True).delete()
 
         for case in Case.objects.filter(is_demo=True).order_by("id"):

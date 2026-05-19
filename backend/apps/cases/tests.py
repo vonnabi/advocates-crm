@@ -1,11 +1,12 @@
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
+from django.db.models import Q
 from django.test import TestCase
 from django.utils import timezone
 
 from apps.accounts.models import UserProfile
 from apps.calendar_app.models import CalendarEvent
-from apps.cases.models import Case, CaseDocument
+from apps.cases.models import Case, CaseDocument, CaseMember
 from apps.clients.models import Client, ClientCommunication
 from apps.finance.models import Expense, Invoice, Payment
 from apps.tasks.models import Task
@@ -27,10 +28,46 @@ class DemoApiTests(TestCase):
         self.assertEqual(Case.objects.filter(is_demo=True).count(), 4)
         self.assertEqual(Task.objects.filter(is_demo=True).count(), 9)
         self.assertEqual(CalendarEvent.objects.filter(is_demo=True).count(), 6)
+        self.assertGreater(CaseMember.objects.filter(is_demo=True).count(), 0)
         self.assertEqual(payload["finance"]["income"], 107000.0)
         self.assertEqual(payload["finance"]["debt"], 23500.0)
         self.assertTrue(payload["clients"])
         self.assertTrue(payload["cases"])
+
+    def test_case_scope_limits_non_admin_bootstrap_and_details(self):
+        assistant = get_user_model().objects.get(email="kravchuk@advocates.crm")
+        login_response = self.client.post(
+            "/api/auth/login/",
+            {"email": "kravchuk@advocates.crm", "password": "demo12345"},
+            content_type="application/json",
+        )
+        self.assertEqual(login_response.status_code, 200)
+
+        bootstrap = self.client.get("/api/bootstrap/").json()
+        visible_numbers = {item["id"] for item in bootstrap["cases"]}
+        assistant_name = assistant.get_full_name() or assistant.username
+        expected_numbers = set(
+            Case.objects.filter(
+                Q(responsible=assistant)
+                | Q(team_members__user=assistant)
+                | Q(tasks__responsible=assistant)
+                | Q(events__responsible=assistant)
+                | Q(documents__responsible_name=assistant_name)
+            ).distinct().values_list("number", flat=True)
+        )
+        self.assertEqual(visible_numbers, expected_numbers)
+        self.assertLess(len(visible_numbers), Case.objects.count())
+
+        hidden_case = Case.objects.exclude(number__in=visible_numbers).first()
+        self.assertIsNotNone(hidden_case)
+        detail_response = self.client.get(f"/api/cases/{hidden_case.number}/")
+        self.assertEqual(detail_response.status_code, 403)
+        hidden_task_response = self.client.post(
+            "/api/tasks/",
+            {"caseId": hidden_case.number, "clientId": hidden_case.client_id, "title": "Прихована задача"},
+            content_type="application/json",
+        )
+        self.assertEqual(hidden_task_response.status_code, 403)
 
     def test_demo_data_api_clears_and_restores_business_data(self):
         manual_client = Client.objects.create(
@@ -72,6 +109,7 @@ class DemoApiTests(TestCase):
         self.assertEqual(Case.objects.filter(is_demo=True).count(), 0)
         self.assertEqual(Task.objects.filter(is_demo=True).count(), 0)
         self.assertEqual(CaseDocument.objects.filter(is_demo=True).count(), 0)
+        self.assertEqual(CaseMember.objects.filter(is_demo=True).count(), 0)
         self.assertEqual(CalendarEvent.objects.filter(is_demo=True).count(), 0)
         self.assertEqual(Payment.objects.filter(is_demo=True).count() + Invoice.objects.filter(is_demo=True).count() + Expense.objects.filter(is_demo=True).count(), 0)
         self.assertTrue(Client.objects.filter(pk=manual_client.pk, is_demo=False).exists())
@@ -204,11 +242,13 @@ class DemoApiTests(TestCase):
         )
         self.assertEqual(client_response.status_code, 403)
 
+        assistant_case = Case.objects.filter(team_members__user__email="kravchuk@advocates.crm").first()
+        self.assertIsNotNone(assistant_case)
         task_response = self.client.post(
             "/api/tasks/",
             {
-                "caseId": "2024/12345",
-                "clientId": 1,
+                "caseId": assistant_case.number,
+                "clientId": assistant_case.client_id,
                 "title": "Помічник може створити задачу",
                 "status": "Нова",
                 "priority": "Середній",
@@ -270,6 +310,11 @@ class DemoApiTests(TestCase):
             role="accountant",
             access_scope="Фінанси та звіти",
             photo_label="БА",
+        )
+        CaseMember.objects.create(
+            case=Case.objects.get(number="2024/12345"),
+            user=accountant,
+            role=CaseMember.Role.ACCOUNTANT,
         )
         self.client.post("/api/auth/logout/", {}, content_type="application/json")
         accountant_login = self.client.post(

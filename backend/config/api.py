@@ -6,7 +6,7 @@ from hashlib import sha1
 
 from django.contrib.auth import authenticate, get_user_model, login as auth_login, logout as auth_logout
 from django.core.management import call_command
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.http import Http404, HttpResponse, JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -15,7 +15,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 from apps.accounts.models import UserProfile
 from apps.calendar_app.models import CalendarEvent
 from apps.cases.demo_data import clear_demo_business_data, demo_data_counts
-from apps.cases.models import Case, CaseDocument
+from apps.cases.models import Case, CaseDocument, CaseMember
 from apps.clients.models import Client, ClientCommunication
 from apps.finance.models import Expense, Invoice, Payment
 from apps.tasks.models import Task
@@ -137,6 +137,12 @@ ROLE_PERMISSIONS = {
 
 
 ROLE_LABELS = {value: label for label, (value, _access) in ROLE_ACCESS.items()}
+CASE_MEMBER_ROLES = {
+    "lawyer": CaseMember.Role.LAWYER,
+    "assistant": CaseMember.Role.ASSISTANT,
+    "accountant": CaseMember.Role.ACCOUNTANT,
+    "admin": CaseMember.Role.OBSERVER,
+}
 
 
 def initials_from_name(name):
@@ -298,6 +304,7 @@ def upsert_case(data, case=None):
     case.finance_comment = data.get("financeComment", case.finance_comment or "")
     case.history = data.get("history", case.history or [])
     case.save()
+    sync_case_members_from_payload(case, data)
     return case
 
 
@@ -334,6 +341,7 @@ def upsert_task(data, task=None):
     task.comments = data.get("comments", task.comments or [])
     task.history = data.get("history", task.history or [])
     task.save()
+    assign_task_case_members(task)
     return task
 
 
@@ -355,6 +363,7 @@ def upsert_document(data, document=None):
     document.comment = data.get("comment", document.comment or "")
     document.history = data.get("history", document.history or [])
     document.save()
+    ensure_case_member(case, user_for_name(document.responsible_name))
     return document
 
 
@@ -393,6 +402,7 @@ def upsert_event(data, event=None):
     event.reminder_log = data.get("reminderLog", event.reminder_log or [])
     event.status = data.get("status", event.status or "Заплановано")
     event.save()
+    ensure_case_member(case, event.responsible)
     return event
 
 
@@ -492,13 +502,34 @@ def serialize_finance_act(document):
     }
 
 
-def finance_operations_payload():
-    payments = [serialize_finance_payment(item) for item in Payment.objects.select_related("case", "client").all()]
-    expenses = [serialize_finance_expense(item) for item in Expense.objects.select_related("case", "client").all()]
-    invoices = [serialize_finance_invoice(item) for item in Invoice.objects.select_related("case", "client").all()]
+def finance_cases_scope(request):
+    user = current_demo_user(request)
+    return None if user_can_see_all_cases(user) else accessible_case_queryset(request)
+
+
+def scoped_case_queryset(queryset, cases_queryset):
+    return queryset if cases_queryset is None else queryset.filter(case__in=cases_queryset)
+
+
+def finance_operations_payload(cases_queryset=None):
+    payments = [
+        serialize_finance_payment(item)
+        for item in scoped_case_queryset(Payment.objects.select_related("case", "client"), cases_queryset)
+    ]
+    expenses = [
+        serialize_finance_expense(item)
+        for item in scoped_case_queryset(Expense.objects.select_related("case", "client"), cases_queryset)
+    ]
+    invoices = [
+        serialize_finance_invoice(item)
+        for item in scoped_case_queryset(Invoice.objects.select_related("case", "client"), cases_queryset)
+    ]
     acts = [
         serialize_finance_act(item)
-        for item in CaseDocument.objects.select_related("case", "case__client").filter(document_type="Акт", folder="Фінансові документи")
+        for item in scoped_case_queryset(
+            CaseDocument.objects.select_related("case", "case__client").filter(document_type="Акт", folder="Фінансові документи"),
+            cases_queryset,
+        )
     ]
     return sorted(
         [*payments, *expenses, *invoices, *acts],
@@ -627,6 +658,21 @@ def delete_finance_operation(operation_id):
     raise Http404("Finance operation not found")
 
 
+def finance_operation_case(operation_id):
+    prefix, _, raw_id = str(operation_id).partition("-")
+    if not raw_id:
+        raise Http404("Finance operation not found")
+    if prefix == "payment":
+        return Payment.objects.select_related("case").get(pk=raw_id).case
+    if prefix == "expense":
+        return Expense.objects.select_related("case").get(pk=raw_id).case
+    if prefix == "invoice":
+        return Invoice.objects.select_related("case").get(pk=raw_id).case
+    if prefix == "document":
+        return CaseDocument.objects.select_related("case").get(pk=raw_id, document_type="Акт", folder="Фінансові документи").case
+    raise Http404("Finance operation not found")
+
+
 def money(value):
     return float(value or 0)
 
@@ -730,6 +776,19 @@ def serialize_task(item):
     }
 
 
+def serialize_case_member(item):
+    return {
+        "id": item.id,
+        "userId": item.user_id,
+        "name": user_name(item.user),
+        "email": item.user.email,
+        "role": item.get_role_display(),
+        "roleKey": item.role,
+        "canEdit": item.can_edit,
+        "photo": profile_for_user(item.user).photo_label or initials_from_name(user_name(item.user)),
+    }
+
+
 def serialize_case(item, include_finance=True):
     finance_payload = {
         "income": money(item.income_amount),
@@ -761,6 +820,7 @@ def serialize_case(item, include_finance=True):
         **finance_payload,
         "description": item.description,
         "history": item.history,
+        "teamMembers": [serialize_case_member(member) for member in item.team_members.select_related("user", "user__crm_profile").all()],
         "documents": [serialize_document(document) for document in item.documents.all()],
         "tasks": [serialize_task(task) for task in item.tasks.all()],
         "documentsCount": item.documents.count(),
@@ -792,8 +852,11 @@ def serialize_event(item):
     }
 
 
-def finance_summary_payload():
-    totals = Case.objects.aggregate(
+def finance_summary_payload(cases_queryset=None):
+    cases = cases_queryset if cases_queryset is not None else Case.objects.all()
+    documents = CaseDocument.objects if cases_queryset is None else CaseDocument.objects.filter(case__in=cases_queryset)
+    tasks = Task.objects if cases_queryset is None else Task.objects.filter(case__in=cases_queryset)
+    totals = cases.aggregate(
         income=Sum("income_amount"),
         paid=Sum("paid_amount"),
         debt=Sum("debt_amount"),
@@ -802,9 +865,9 @@ def finance_summary_payload():
         "income": money(totals["income"]),
         "paid": money(totals["paid"]),
         "debt": money(totals["debt"]),
-        "activeCases": Case.objects.exclude(status__in=["Закрито", "Завершено", "Архів"]).count(),
-        "documents": CaseDocument.objects.count(),
-        "tasks": Task.objects.count(),
+        "activeCases": cases.exclude(status__in=["Закрито", "Завершено", "Архів"]).count(),
+        "documents": documents.count(),
+        "tasks": tasks.count(),
     }
 
 
@@ -813,9 +876,9 @@ def empty_finance_summary_payload():
         "income": 0,
         "paid": 0,
         "debt": 0,
-        "activeCases": Case.objects.exclude(status__in=["Закрито", "Завершено", "Архів"]).count(),
-        "documents": CaseDocument.objects.count(),
-        "tasks": Task.objects.count(),
+        "activeCases": 0,
+        "documents": 0,
+        "tasks": 0,
     }
 
 
@@ -845,6 +908,15 @@ def permissions_for_user(user):
     return set(ROLE_PERMISSIONS.get(profile.role if profile else "", set()))
 
 
+def role_for_user(user):
+    profile = profile_for_user(user) if user else None
+    return profile.role if profile else ""
+
+
+def user_can_see_all_cases(user):
+    return role_for_user(user) == "admin"
+
+
 def request_permissions(request):
     return permissions_for_user(current_demo_user(request))
 
@@ -860,6 +932,109 @@ def sanitize_case_payload_for_permissions(request, data):
     for key in ("income", "paid", "debt", "totalFee", "financeComment"):
         sanitized.pop(key, None)
     return sanitized
+
+
+def case_member_role(user):
+    return CASE_MEMBER_ROLES.get(role_for_user(user), CaseMember.Role.OBSERVER)
+
+
+def ensure_case_member(case, user, role=None, is_demo=False):
+    if not case or not user:
+        return None
+    member, _created = CaseMember.objects.update_or_create(
+        case=case,
+        user=user,
+        defaults={
+            "role": role or case_member_role(user),
+            "can_edit": True,
+            "is_demo": is_demo,
+        },
+    )
+    return member
+
+
+def sync_case_members_from_payload(case, data, is_demo=False):
+    ensure_case_member(case, case.responsible, is_demo=is_demo)
+    for row in data.get("teamMembers") or data.get("members") or []:
+        name = row.get("name") if isinstance(row, dict) else row
+        user = user_for_name(name)
+        ensure_case_member(case, user, role=case_member_role(user), is_demo=is_demo)
+
+
+def assign_task_case_members(task, is_demo=False):
+    ensure_case_member(task.case, task.responsible, is_demo=is_demo)
+    for name in task.coexecutors or []:
+        ensure_case_member(task.case, user_for_name(name), is_demo=is_demo)
+
+
+def accessible_case_filter_for_user(user):
+    if not user:
+        return Q(pk__in=[])
+    if user_can_see_all_cases(user):
+        return Q()
+    name = user_name(user)
+    return (
+        Q(responsible=user)
+        | Q(team_members__user=user)
+        | Q(tasks__responsible=user)
+        | Q(events__responsible=user)
+        | Q(documents__responsible_name=name)
+    )
+
+
+def accessible_case_queryset(request):
+    user = current_demo_user(request)
+    queryset = Case.objects.all()
+    if user_can_see_all_cases(user):
+        return queryset
+    return queryset.filter(accessible_case_filter_for_user(user)).distinct()
+
+
+def accessible_client_queryset(request):
+    user = current_demo_user(request)
+    if user_can_see_all_cases(user):
+        return Client.objects.all()
+    return Client.objects.filter(
+        Q(responsible=user) | Q(cases__in=accessible_case_queryset(request))
+    ).distinct()
+
+
+def accessible_task_queryset(request):
+    user = current_demo_user(request)
+    if user_can_see_all_cases(user):
+        return Task.objects.all()
+    return Task.objects.filter(
+        Q(case__in=accessible_case_queryset(request)) | Q(responsible=user)
+    ).distinct()
+
+
+def accessible_document_queryset(request):
+    user = current_demo_user(request)
+    if user_can_see_all_cases(user):
+        return CaseDocument.objects.all()
+    return CaseDocument.objects.filter(case__in=accessible_case_queryset(request)).distinct()
+
+
+def accessible_event_queryset(request):
+    user = current_demo_user(request)
+    if user_can_see_all_cases(user):
+        return CalendarEvent.objects.all()
+    return CalendarEvent.objects.filter(
+        Q(case__in=accessible_case_queryset(request)) | Q(responsible=user)
+    ).distinct()
+
+
+def require_case_access(request, case):
+    if not case:
+        return json_response({"error": "Forbidden", "message": "Справу не знайдено або немає доступу."}, status=403)
+    if accessible_case_queryset(request).filter(pk=case.pk).exists():
+        return None
+    return json_response({"error": "Forbidden", "message": "Немає доступу до цієї справи."}, status=403)
+
+
+def case_from_payload(data, fallback=None):
+    number = data.get("caseId") or data.get("id") or data.get("number") or (fallback.number if fallback else "")
+    return Case.objects.filter(number=number).first() if number else None
 
 
 def require_permission(request, permission, message="Недостатньо прав для цієї дії."):
@@ -990,7 +1165,7 @@ def clients_api(request):
             return forbidden
         client = upsert_client(parse_body(request))
         return json_response(serialize_client(client))
-    items = Client.objects.prefetch_related("communications", "cases").order_by("full_name")
+    items = accessible_client_queryset(request).prefetch_related("communications", "cases").order_by("full_name")
     return json_response({"results": [serialize_client(item) for item in items]})
 
 
@@ -1003,6 +1178,8 @@ def client_detail_api(request, client_id):
         client = Client.objects.get(pk=client_id)
     except Client.DoesNotExist as exc:
         raise Http404("Client not found") from exc
+    if not accessible_client_queryset(request).filter(pk=client.pk).exists():
+        return json_response({"error": "Forbidden", "message": "Немає доступу до цього клієнта."}, status=403)
     if request.method == "GET":
         return json_response(serialize_client(client))
     if request.method == "DELETE":
@@ -1029,6 +1206,8 @@ def client_communications_api(request, client_id):
         client = Client.objects.get(pk=client_id)
     except Client.DoesNotExist as exc:
         raise Http404("Client not found") from exc
+    if not accessible_client_queryset(request).filter(pk=client.pk).exists():
+        return json_response({"error": "Forbidden", "message": "Немає доступу до цього клієнта."}, status=403)
     if request.method == "POST":
         forbidden = require_permission(request, "manage_clients", "Комунікації клієнта можуть змінювати адміністратор або адвокат.")
         if forbidden:
@@ -1048,6 +1227,8 @@ def client_communication_detail_api(request, communication_id):
         item = ClientCommunication.objects.select_related("client", "author", "case").get(pk=communication_id)
     except ClientCommunication.DoesNotExist as exc:
         raise Http404("Client communication not found") from exc
+    if item.client_id and not accessible_client_queryset(request).filter(pk=item.client_id).exists():
+        return json_response({"error": "Forbidden", "message": "Немає доступу до цієї комунікації."}, status=403)
     if request.method == "GET":
         return json_response(serialize_client_communication(item))
     if request.method == "DELETE":
@@ -1072,9 +1253,14 @@ def cases_api(request):
         forbidden = require_permission(request, "manage_cases", "Справами можуть керувати адміністратор або адвокат.")
         if forbidden:
             return forbidden
-        item = upsert_case(sanitize_case_payload_for_permissions(request, parse_body(request)))
+        data = sanitize_case_payload_for_permissions(request, parse_body(request))
+        current_user = current_demo_user(request)
+        if not user_can_see_all_cases(current_user) and not data.get("responsible"):
+            data["responsible"] = user_name(current_user)
+        item = upsert_case(data)
+        ensure_case_member(item, current_user)
         return json_response(serialize_case(item, include_finance=include_finance))
-    items = Case.objects.select_related("client", "responsible").prefetch_related("documents", "tasks", "events").order_by("client__full_name", "opened_at")
+    items = accessible_case_queryset(request).select_related("client", "responsible").prefetch_related("documents", "tasks", "events", "team_members").order_by("client__full_name", "opened_at")
     return json_response({"results": [serialize_case(item, include_finance=include_finance) for item in items]})
 
 
@@ -1088,6 +1274,9 @@ def case_detail_api(request, case_number):
     except Case.DoesNotExist as exc:
         raise Http404("Case not found") from exc
     include_finance = request_can(request, "view_finance")
+    forbidden = require_case_access(request, item)
+    if forbidden:
+        return forbidden
     if request.method == "GET":
         return json_response(serialize_case(item, include_finance=include_finance))
     if request.method == "DELETE":
@@ -1101,7 +1290,8 @@ def case_detail_api(request, case_number):
     forbidden = require_permission(request, "manage_cases", "Справами можуть керувати адміністратор або адвокат.")
     if forbidden:
         return forbidden
-    return json_response(serialize_case(upsert_case(sanitize_case_payload_for_permissions(request, parse_body(request)), item), include_finance=include_finance))
+    data = sanitize_case_payload_for_permissions(request, parse_body(request))
+    return json_response(serialize_case(upsert_case(data, item), include_finance=include_finance))
 
 
 @csrf_exempt
@@ -1113,9 +1303,13 @@ def tasks_api(request):
         forbidden = require_permission(request, "manage_tasks", "Задачами можуть керувати адміністратор, адвокат або помічник.")
         if forbidden:
             return forbidden
-        item = upsert_task(parse_body(request))
+        data = parse_body(request)
+        forbidden = require_case_access(request, case_from_payload(data))
+        if forbidden:
+            return forbidden
+        item = upsert_task(data)
         return json_response(serialize_task(item))
-    items = Task.objects.select_related("client", "case", "responsible").order_by("due_at", "id")
+    items = accessible_task_queryset(request).select_related("client", "case", "responsible").order_by("due_at", "id")
     return json_response({"results": [serialize_task(item) for item in items]})
 
 
@@ -1128,9 +1322,13 @@ def documents_api(request):
         forbidden = require_permission(request, "manage_documents", "Документами можуть керувати адміністратор, адвокат або помічник.")
         if forbidden:
             return forbidden
-        item = upsert_document(parse_body(request))
+        data = parse_body(request)
+        forbidden = require_case_access(request, case_from_payload(data))
+        if forbidden:
+            return forbidden
+        item = upsert_document(data)
         return json_response(serialize_document(item))
-    items = CaseDocument.objects.select_related("case").order_by("case__number", "folder", "title")
+    items = accessible_document_queryset(request).select_related("case").order_by("case__number", "folder", "title")
     return json_response({"results": [serialize_document(item) for item in items]})
 
 
@@ -1143,6 +1341,9 @@ def document_detail_api(request, document_id):
         item = CaseDocument.objects.select_related("case").get(pk=document_id)
     except CaseDocument.DoesNotExist as exc:
         raise Http404("Document not found") from exc
+    forbidden = require_case_access(request, item.case)
+    if forbidden:
+        return forbidden
     if request.method == "GET":
         return json_response(serialize_document(item))
     if request.method == "DELETE":
@@ -1154,7 +1355,11 @@ def document_detail_api(request, document_id):
     forbidden = require_permission(request, "manage_documents", "Документами можуть керувати адміністратор, адвокат або помічник.")
     if forbidden:
         return forbidden
-    return json_response(serialize_document(upsert_document(parse_body(request), item)))
+    data = parse_body(request)
+    forbidden = require_case_access(request, case_from_payload(data, fallback=item.case))
+    if forbidden:
+        return forbidden
+    return json_response(serialize_document(upsert_document(data, item)))
 
 
 @csrf_exempt
@@ -1166,6 +1371,8 @@ def task_detail_api(request, task_id):
         item = Task.objects.select_related("client", "case", "responsible").get(pk=task_id)
     except Task.DoesNotExist as exc:
         raise Http404("Task not found") from exc
+    if not accessible_task_queryset(request).filter(pk=item.pk).exists():
+        return json_response({"error": "Forbidden", "message": "Немає доступу до цієї задачі."}, status=403)
     if request.method == "GET":
         return json_response(serialize_task(item))
     if request.method == "DELETE":
@@ -1177,7 +1384,11 @@ def task_detail_api(request, task_id):
     forbidden = require_permission(request, "manage_tasks", "Задачами можуть керувати адміністратор, адвокат або помічник.")
     if forbidden:
         return forbidden
-    return json_response(serialize_task(upsert_task(parse_body(request), item)))
+    data = parse_body(request)
+    forbidden = require_case_access(request, case_from_payload(data, fallback=item.case))
+    if forbidden:
+        return forbidden
+    return json_response(serialize_task(upsert_task(data, item)))
 
 
 @csrf_exempt
@@ -1189,9 +1400,14 @@ def events_api(request):
         forbidden = require_permission(request, "manage_calendar", "Календарем можуть керувати адміністратор, адвокат або помічник.")
         if forbidden:
             return forbidden
-        item = upsert_event(parse_body(request))
+        data = parse_body(request)
+        if data.get("caseId"):
+            forbidden = require_case_access(request, case_from_payload(data))
+            if forbidden:
+                return forbidden
+        item = upsert_event(data)
         return json_response(serialize_event(item))
-    items = CalendarEvent.objects.select_related("client", "case", "responsible").order_by("starts_at", "id")
+    items = accessible_event_queryset(request).select_related("client", "case", "responsible").order_by("starts_at", "id")
     return json_response({"results": [serialize_event(item) for item in items]})
 
 
@@ -1204,6 +1420,8 @@ def event_detail_api(request, event_id):
         item = CalendarEvent.objects.select_related("client", "case", "responsible").get(pk=event_id)
     except CalendarEvent.DoesNotExist as exc:
         raise Http404("Event not found") from exc
+    if not accessible_event_queryset(request).filter(pk=item.pk).exists():
+        return json_response({"error": "Forbidden", "message": "Немає доступу до цієї події."}, status=403)
     if request.method == "GET":
         return json_response(serialize_event(item))
     if request.method == "DELETE":
@@ -1215,7 +1433,13 @@ def event_detail_api(request, event_id):
     forbidden = require_permission(request, "manage_calendar", "Календарем можуть керувати адміністратор, адвокат або помічник.")
     if forbidden:
         return forbidden
-    return json_response(serialize_event(upsert_event(parse_body(request), item)))
+    data = parse_body(request)
+    target_case = case_from_payload(data, fallback=item.case) if data.get("caseId") or item.case_id else None
+    if target_case:
+        forbidden = require_case_access(request, target_case)
+        if forbidden:
+            return forbidden
+    return json_response(serialize_event(upsert_event(data, item)))
 
 
 @csrf_exempt
@@ -1227,11 +1451,15 @@ def finance_operations_api(request):
         forbidden = require_permission(request, "manage_finance", "Фінансами можуть керувати адміністратор або бухгалтер.")
         if forbidden:
             return forbidden
-        return json_response(create_finance_operation(parse_body(request)))
+        data = parse_body(request)
+        forbidden = require_case_access(request, case_from_payload(data))
+        if forbidden:
+            return forbidden
+        return json_response(create_finance_operation(data))
     forbidden = require_permission(request, "view_finance", "Фінанси доступні адміністратору або бухгалтеру.")
     if forbidden:
         return forbidden
-    return json_response({"results": finance_operations_payload()})
+    return json_response({"results": finance_operations_payload(finance_cases_scope(request))})
 
 
 @csrf_exempt
@@ -1243,6 +1471,13 @@ def finance_operation_detail_api(request, operation_id):
     if forbidden:
         return forbidden
     try:
+        operation_case = finance_operation_case(operation_id)
+        if operation_case:
+            forbidden = require_case_access(request, operation_case)
+            if forbidden:
+                return forbidden
+        elif not user_can_see_all_cases(current_demo_user(request)):
+            return json_response({"error": "Forbidden", "message": "Немає доступу до цієї фінансової операції."}, status=403)
         delete_finance_operation(operation_id)
     except (Payment.DoesNotExist, Expense.DoesNotExist, Invoice.DoesNotExist, CaseDocument.DoesNotExist) as exc:
         raise Http404("Finance operation not found") from exc
@@ -1254,7 +1489,7 @@ def finance_summary_api(request):
     forbidden = require_permission(request, "view_finance", "Фінанси доступні адміністратору або бухгалтеру.")
     if forbidden:
         return forbidden
-    return json_response(finance_summary_payload())
+    return json_response(finance_summary_payload(finance_cases_scope(request)))
 
 
 @csrf_exempt
@@ -1284,21 +1519,31 @@ def demo_data_api(request):
 def bootstrap_api(_request):
     current_user = current_demo_user(_request)
     can_see_finance = "view_finance" in permissions_for_user(current_user)
+    clients = accessible_client_queryset(_request).prefetch_related("communications", "cases").order_by("full_name")
+    cases = accessible_case_queryset(_request).select_related("client", "responsible").prefetch_related(
+        "documents",
+        "tasks",
+        "events",
+        "team_members",
+    ).order_by("client__full_name", "opened_at")
+    tasks = accessible_task_queryset(_request).select_related("client", "case", "responsible").order_by("due_at", "id")
+    events = accessible_event_queryset(_request).select_related("client", "case", "responsible").order_by("starts_at", "id")
+    finance_cases = finance_cases_scope(_request)
     return json_response({
         "session": session_payload(_request),
         "currentUser": serialize_system_user(current_user) if current_user else None,
         "settingsUsers": [serialize_system_user(user) for user in system_users_queryset()],
-        "clients": [serialize_client(item) for item in Client.objects.prefetch_related("communications", "cases").order_by("full_name")],
-        "cases": [serialize_case(item, include_finance=can_see_finance) for item in Case.objects.select_related("client", "responsible").prefetch_related("documents", "tasks", "events").order_by("client__full_name", "opened_at")],
-        "tasks": [serialize_task(item) for item in Task.objects.select_related("client", "case", "responsible").order_by("due_at", "id")],
-        "events": [serialize_event(item) for item in CalendarEvent.objects.select_related("client", "case", "responsible").order_by("starts_at", "id")],
-        "financeOperations": finance_operations_payload() if can_see_finance else [],
-        "finance": finance_summary_payload() if can_see_finance else empty_finance_summary_payload(),
+        "clients": [serialize_client(item) for item in clients],
+        "cases": [serialize_case(item, include_finance=can_see_finance) for item in cases],
+        "tasks": [serialize_task(item) for item in tasks],
+        "events": [serialize_event(item) for item in events],
+        "financeOperations": finance_operations_payload(finance_cases) if can_see_finance else [],
+        "finance": finance_summary_payload(finance_cases) if can_see_finance else empty_finance_summary_payload(),
         "meta": {
-            "clients": Client.objects.count(),
-            "cases": Case.objects.count(),
-            "tasks": Task.objects.count(),
-            "events": CalendarEvent.objects.count(),
+            "clients": clients.count(),
+            "cases": cases.count(),
+            "tasks": tasks.count(),
+            "events": events.count(),
             "demoData": demo_data_status_payload(),
         },
     })

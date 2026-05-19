@@ -12,7 +12,7 @@ from django.utils import timezone
 from apps.accounts.models import UserProfile
 from apps.calendar_app.models import CalendarEvent
 from apps.cases.demo_data import clear_demo_business_data
-from apps.cases.models import Case, CaseDocument
+from apps.cases.models import Case, CaseDocument, CaseMember
 from apps.clients.models import Client, ClientCommunication
 from apps.tasks.models import Task
 
@@ -110,6 +110,30 @@ def ensure_team_user(name, email, role_label):
         },
     )
     return user
+
+
+def case_member_role_for_user(user):
+    profile_role = UserProfile.objects.filter(user=user).values_list("role", flat=True).first()
+    return {
+        "lawyer": CaseMember.Role.LAWYER,
+        "assistant": CaseMember.Role.ASSISTANT,
+        "accountant": CaseMember.Role.ACCOUNTANT,
+    }.get(profile_role, CaseMember.Role.OBSERVER)
+
+
+def ensure_case_member(case, user):
+    if not case or not user:
+        return None
+    member, _created = CaseMember.objects.update_or_create(
+        case=case,
+        user=user,
+        defaults={
+            "role": case_member_role_for_user(user),
+            "can_edit": True,
+            "is_demo": True,
+        },
+    )
+    return member
 
 
 def date_time_from_event(event, key="time"):
@@ -212,9 +236,12 @@ class Command(BaseCommand):
             item.history = row.get("history", [])
             item.is_demo = True
             item.save()
+            item.team_members.filter(is_demo=True).delete()
+            ensure_case_member(item, responsible)
             item.documents.filter(is_demo=True).delete()
             item.tasks.filter(is_demo=True).delete()
             for document in row.get("documents", []):
+                document_responsible = user_for_name(document.get("responsible", row.get("responsible", "")))
                 CaseDocument.objects.create(
                     case=item,
                     title=document.get("name", ""),
@@ -227,8 +254,10 @@ class Command(BaseCommand):
                     history=document.get("history", []),
                     is_demo=True,
                 )
+                ensure_case_member(item, document_responsible)
             for folder in row.get("folders", []):
                 for document in folder.get("files", []):
+                    document_responsible = user_for_name(document.get("responsible", row.get("responsible", "")))
                     CaseDocument.objects.create(
                         case=item,
                         title=document.get("name", ""),
@@ -243,11 +272,12 @@ class Command(BaseCommand):
                         history=document.get("history", []),
                         is_demo=True,
                     )
+                    ensure_case_member(item, document_responsible)
             for task in row.get("tasks", []):
                 planner_at = None
                 if task.get("plannerDate"):
                     planner_at = parse_datetime(f"{task.get('plannerDate')} {task.get('plannerTime') or '09:00'}")
-                Task.objects.create(
+                task_item = Task.objects.create(
                     title=task.get("title", ""),
                     client=client,
                     case=item,
@@ -271,6 +301,11 @@ class Command(BaseCommand):
                     history=task.get("history", []),
                     is_demo=True,
                 )
+                ensure_case_member(item, task_item.responsible)
+                for name in task.get("coexecutors", []):
+                    ensure_case_member(item, user_for_name(name))
+                for subtask in task.get("subtasks", []):
+                    ensure_case_member(item, user_for_name(subtask.get("responsible")))
             cases[item.number] = item
 
         CalendarEvent.objects.filter(is_demo=True).delete()
@@ -298,6 +333,7 @@ class Command(BaseCommand):
             event.status = row.get("status", "")
             event.is_demo = True
             event.save()
+            ensure_case_member(case, event.responsible)
 
         if options.get("verbosity", 1) > 0:
             self.stdout.write(self.style.SUCCESS(

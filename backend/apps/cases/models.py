@@ -39,6 +39,29 @@ class Case(models.Model):
         return f"№{self.number} · {self.title}"
 
 
+class CaseMember(models.Model):
+    class Role(models.TextChoices):
+        LAWYER = "lawyer", "Адвокат"
+        ASSISTANT = "assistant", "Помічник"
+        ACCOUNTANT = "accountant", "Бухгалтер"
+        OBSERVER = "observer", "Спостерігач"
+
+    case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name="team_members")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="assigned_cases")
+    role = models.CharField(max_length=32, choices=Role.choices, default=Role.OBSERVER)
+    can_edit = models.BooleanField(default=True)
+    is_demo = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["case", "user"], name="unique_case_member"),
+        ]
+
+    def __str__(self):
+        return f"{self.case.number} · {self.user}"
+
+
 class CaseDocument(models.Model):
     case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name="documents")
     title = models.CharField(max_length=255)
