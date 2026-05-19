@@ -192,7 +192,7 @@ export async function createInitialState() {
     dataSource: demoData.source,
     currentUser: demoData.currentUser || null,
     sessionAuthenticated: Boolean(demoData.session?.authenticated),
-    sessionPermissions: demoData.session?.permissions || defaultPermissions,
+    sessionPermissions: demoData.session?.permissions || (demoData.source === "api" ? {} : defaultPermissions),
     backendMeta: demoData.meta || {},
     backendFinance: demoData.finance || {},
     demoDataStatus: demoData.meta?.demoData || {

@@ -1,10 +1,10 @@
-import { createInitialState } from "./js/state.js?v=role-ui-1";
+import { createInitialState } from "./js/state.js?v=role-ui-2";
 import {
   closeTopbarPanels as closeTopbarPanelsInChrome,
   isTopbarPanelOpen,
   setupTopbarControls,
   syncTopbarNotifications
-} from "./js/chrome.js?v=demo-data-2";
+} from "./js/chrome.js?v=role-ui-2";
 import { createDialogOpeners } from "./js/dialog-openers.js";
 import { setupDialogControls } from "./js/dialogs.js";
 import { setupCaseDetailForms } from "./js/forms/case-details.js";
@@ -208,7 +208,8 @@ const permissionControlRules = [
 ];
 
 function permissions() {
-  return Object.keys(state.sessionPermissions || {}).length ? state.sessionPermissions : defaultPermissions;
+  if (Object.keys(state.sessionPermissions || {}).length) return state.sessionPermissions;
+  return state.dataSource === "api" ? {} : defaultPermissions;
 }
 
 function can(permission) {
@@ -544,6 +545,14 @@ function syncNavigationState() {
   saveNavigationState();
 }
 
+function handleSessionChange() {
+  if (!canOpenView(state.currentView)) {
+    switchView("dashboard", { skipHistory: true });
+  }
+  renderAll();
+  syncNavigationState();
+}
+
 function backTargetLabel() {
   if (state.currentView === "cases" && state.caseScreen === "detail") return "Назад к списку справ";
   if (state.currentView === "tasks" && state.taskDetailOpen) return "Назад к списку задач";
@@ -620,7 +629,7 @@ navNodes.forEach((button) => {
 
 $("#topbar-back")?.addEventListener("click", goBack);
 
-setupTopbarControls({ $, state, switchView, saveNavigationState, showToast });
+setupTopbarControls({ $, state, switchView, saveNavigationState, showToast, onSessionChange: handleSessionChange });
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;

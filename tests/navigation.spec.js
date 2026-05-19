@@ -257,6 +257,48 @@ test("API empty demo mode still renders the workspace and AI empty state", async
   await expect(page.locator("#ai")).toContainText("Додайте клієнта та справу");
 });
 
+test("assistant API role cannot open the finance section", async ({ page }) => {
+  const assistantPayload = {
+    session: {
+      authenticated: true,
+      user: { id: 3, name: "Кравчук А.В.", email: "kravchuk@advocates.crm", role: "Помічник", access: "Задачі та документи", photo: "КА", active: true },
+      permissions: {
+        canManageUsers: false,
+        canSeeFinance: false,
+        canManageFinance: false,
+        canManageCases: false,
+        canManageClients: false,
+        canManageTasks: true,
+        canManageDocuments: true,
+        canManageCalendar: true
+      }
+    },
+    currentUser: { id: 3, name: "Кравчук А.В.", email: "kravchuk@advocates.crm", role: "Помічник", access: "Задачі та документи", photo: "КА", active: true },
+    settingsUsers: [{ id: 3, name: "Кравчук А.В.", email: "kravchuk@advocates.crm", role: "Помічник", access: "Задачі та документи", photo: "КА", active: true }],
+    clients: [],
+    cases: [],
+    tasks: [],
+    events: [],
+    financeOperations: [],
+    finance: { income: 0, paid: 0, debt: 0, activeCases: 0, documents: 0, tasks: 0 },
+    meta: { clients: 0, cases: 0, tasks: 0, events: 0, demoData: { enabled: false, total: 0, counts: {} } }
+  };
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+    window.localStorage.setItem("crmApiBase", window.location.origin);
+    window.localStorage.setItem("advocates-crm-navigation", JSON.stringify({ currentView: "finance", viewHistory: [] }));
+  });
+  await page.route("**/api/bootstrap/", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(assistantPayload) });
+  });
+
+  await page.goto("/");
+
+  await expect(page.locator("#dashboard")).toHaveClass(/active/);
+  await expect(page.locator('.nav-item[data-view="finance"]')).toBeHidden();
+  await expect(page.locator("#finance")).not.toHaveClass(/active/);
+});
+
 test("AI assistants search, open chat, and answer quick questions", async ({ page }) => {
   await page.goto("/");
   await waitForAppReady(page);

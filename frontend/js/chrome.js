@@ -207,7 +207,7 @@ export function syncTopbarUser($, state) {
 function ensureLogoutOverlay(ctx) {
   let overlay = document.querySelector("#logout-overlay");
   if (overlay) return overlay;
-  const { $, state, saveNavigationState, showToast } = ctx;
+  const { $, state, saveNavigationState, showToast, onSessionChange } = ctx;
   overlay = document.createElement("div");
   overlay.id = "logout-overlay";
   overlay.className = "logout-overlay";
@@ -250,6 +250,7 @@ function ensureLogoutOverlay(ctx) {
       state.sessionPermissions = session.permissions || {};
       syncTopbarUser($, state);
       saveNavigationState();
+      onSessionChange?.();
       overlay.hidden = true;
       document.body.classList.remove("session-ended");
       showToast(`Вхід виконано: ${session.user?.name || "користувач"}.`);
@@ -265,6 +266,7 @@ function ensureLogoutOverlay(ctx) {
     state.sessionAuthenticated = false;
     syncTopbarUser($, state);
     saveNavigationState();
+    onSessionChange?.();
     overlay.hidden = true;
     document.body.classList.remove("session-ended");
     showToast("Демо-режим активний.");
@@ -273,7 +275,7 @@ function ensureLogoutOverlay(ctx) {
 }
 
 async function openLogoutOverlay(ctx) {
-  const { $, state, saveNavigationState, showToast } = ctx;
+  const { $, state, saveNavigationState, showToast, onSessionChange } = ctx;
   if (shouldUseApi(state)) {
     try {
       const session = await logoutFromApi();
@@ -282,6 +284,7 @@ async function openLogoutOverlay(ctx) {
       state.sessionPermissions = session.permissions || {};
       syncTopbarUser($, state);
       saveNavigationState();
+      onSessionChange?.();
     } catch (_error) {
       showToast("Не вдалося завершити серверну сесію.", "warning");
     }
@@ -301,7 +304,7 @@ async function copyDemoLink(showToast) {
   }
 }
 
-export function setupTopbarControls({ $, state, switchView, saveNavigationState, showToast }) {
+export function setupTopbarControls({ $, state, switchView, saveNavigationState, showToast, onSessionChange }) {
   syncTopbarUser($, state);
   syncTopbarNotifications($, state);
   syncDemoDataToggle(state);
@@ -368,7 +371,7 @@ export function setupTopbarControls({ $, state, switchView, saveNavigationState,
         toggleSidebar({ saveNavigationState, showToast });
         return;
       }
-      await openLogoutOverlay({ $, state, saveNavigationState, showToast });
+      await openLogoutOverlay({ $, state, saveNavigationState, showToast, onSessionChange });
     });
   });
 

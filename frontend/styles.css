@@ -52,6 +52,10 @@
   --main-side-grid: minmax(0, 4fr) minmax(280px, 1fr);
 }
 
+[hidden] {
+  display: none !important;
+}
+
 .row-action-menu-wrap {
   position: relative;
   display: inline-flex;
