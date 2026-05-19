@@ -7645,11 +7645,31 @@ button {
   cursor: default;
 }
 
+.settings-cases-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.55fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.settings-cases-controls label {
+  min-width: 0;
+}
+
+.settings-cases-controls small {
+  align-self: center;
+  justify-self: end;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .settings-cases-grid {
-  max-height: 240px;
+  max-height: 440px;
   overflow-y: auto;
   display: grid;
-  gap: 8px;
+  gap: 6px;
   padding-right: 2px;
 }
 
@@ -7661,7 +7681,7 @@ button {
   border: 1px solid #e2ebf5;
   border-radius: 8px;
   background: white;
-  padding: 9px 10px;
+  padding: 8px 10px;
   cursor: pointer;
 }
 
@@ -7699,6 +7719,31 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.settings-case-empty {
+  border: 1px dashed #d6e1ee;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 14px;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .settings-user-form-grid,
+  .settings-cases-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-permissions-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-cases-controls small {
+    justify-self: start;
+  }
 }
 
 @media (max-width: 1100px) {

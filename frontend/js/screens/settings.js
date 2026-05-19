@@ -82,6 +82,41 @@ function selectedCaseIds(user) {
   return new Set([...direct, ...nested].filter(Boolean));
 }
 
+function readStoredCaseIds(form) {
+  try {
+    return new Set(JSON.parse(form.dataset.selectedCaseIds || "[]").filter(Boolean));
+  } catch (_error) {
+    return new Set();
+  }
+}
+
+function writeStoredCaseIds(form, selectedIds) {
+  form.dataset.selectedCaseIds = JSON.stringify([...selectedIds]);
+}
+
+function syncStoredCaseIdsFromForm(form) {
+  const selectedIds = readStoredCaseIds(form);
+  form.querySelectorAll("input[name='assignedCaseIds']").forEach((input) => {
+    if (input.checked) selectedIds.add(input.value);
+    else selectedIds.delete(input.value);
+  });
+  writeStoredCaseIds(form, selectedIds);
+  return selectedIds;
+}
+
+function caseClientOptions(state) {
+  return [...new Set((state.cases || []).map((caseItem) => caseItem.client).filter(Boolean))].sort((a, b) => a.localeCompare(b, "uk"));
+}
+
+function filteredCases(state, search = "", client = "") {
+  const query = cleanSettingValue(search).toLowerCase();
+  return (state.cases || []).filter((caseItem) => {
+    const matchesClient = !client || caseItem.client === client;
+    const haystack = [caseItem.id, caseItem.client, caseItem.title, caseItem.stage].join(" ").toLowerCase();
+    return matchesClient && (!query || haystack.includes(query));
+  });
+}
+
 function renderPermissionCheckboxes(icon, checkedKeys = []) {
   const checked = new Set(checkedKeys);
   return permissionOptions.map((item) => `
@@ -96,8 +131,11 @@ function renderPermissionCheckboxes(icon, checkedKeys = []) {
   `).join("");
 }
 
-function renderCaseCheckboxes(state, checkedIds = new Set()) {
-  return (state.cases || []).map((caseItem) => `
+function renderCaseCheckboxes(cases, checkedIds = new Set()) {
+  if (!cases.length) {
+    return `<div class="settings-case-empty">Нічого не знайдено за цими фільтрами.</div>`;
+  }
+  return cases.map((caseItem) => `
     <label class="settings-case-choice">
       <input type="checkbox" name="assignedCaseIds" value="${caseItem.id}" ${checkedIds.has(caseItem.id) ? "checked" : ""} />
       <span>
@@ -107,6 +145,26 @@ function renderCaseCheckboxes(state, checkedIds = new Set()) {
       <small>${caseItem.title || ""}</small>
     </label>
   `).join("");
+}
+
+function refreshCaseGrid(form, state) {
+  const selectedIds = syncStoredCaseIdsFromForm(form);
+  const search = form.elements.caseSearch?.value || "";
+  const client = form.elements.caseClient?.value || "";
+  const matches = filteredCases(state, search, client);
+  form.querySelector("[data-settings-cases-grid]").innerHTML = renderCaseCheckboxes(matches, selectedIds);
+  const meta = form.querySelector("[data-settings-case-filter-meta]");
+  if (meta) {
+    const total = state.cases?.length || 0;
+    meta.textContent = `${matches.length} з ${total} справ · вибрано ${selectedIds.size}`;
+  }
+}
+
+function syncCaseScope(form) {
+  const isAdmin = form.elements.role.value === "Адміністратор";
+  form.querySelector("[data-settings-case-scope]").textContent = isAdmin ? "Повний доступ до всіх справ" : "Доступ тільки до вибраних справ";
+  form.querySelector("[data-settings-cases-controls]").toggleAttribute("hidden", isAdmin);
+  form.querySelector("[data-settings-cases-grid]").toggleAttribute("hidden", isAdmin);
 }
 
 function applyRoleDefaultsToForm(form, icon) {
@@ -134,10 +192,12 @@ function fillUserDialog(dialog, ctx, userIndex = "") {
   form.elements.role.value = user?.role || "Адвокат";
   form.elements.access.value = user?.access || roleAccessMap[form.elements.role.value] || roleAccessMap["Помічник"];
   form.querySelector("[data-settings-permissions-grid]").innerHTML = renderPermissionCheckboxes(icon, userPermissionKeys(user || { role: form.elements.role.value }));
-  form.querySelector("[data-settings-cases-grid]").innerHTML = renderCaseCheckboxes(state, selectedCaseIds(user));
-  const isAdmin = form.elements.role.value === "Адміністратор";
-  form.querySelector("[data-settings-case-scope]").textContent = isAdmin ? "Повний доступ до всіх справ" : "Доступ тільки до вибраних справ";
-  form.querySelector("[data-settings-cases-grid]").toggleAttribute("hidden", isAdmin);
+  form.elements.caseSearch.value = "";
+  form.elements.caseClient.value = "";
+  writeStoredCaseIds(form, selectedCaseIds(user));
+  form.querySelector("[data-settings-cases-grid]").innerHTML = "";
+  refreshCaseGrid(form, state);
+  syncCaseScope(form);
 }
 
 function ensureInviteDialog(ctx) {
@@ -182,6 +242,18 @@ function ensureInviteDialog(ctx) {
           <strong>Справи користувача</strong>
           <span data-settings-case-scope>Доступ тільки до вибраних справ</span>
         </div>
+        <div class="settings-cases-controls" data-settings-cases-controls>
+          <label>Пошук справи
+            <input name="caseSearch" type="search" placeholder="Клієнт, номер або назва справи" data-settings-case-search>
+          </label>
+          <label>Клієнт
+            <select name="caseClient" data-settings-case-client>
+              <option value="">Всі клієнти</option>
+              ${caseClientOptions(ctx.state).map((client) => `<option value="${client}">${client}</option>`).join("")}
+            </select>
+          </label>
+          <small data-settings-case-filter-meta></small>
+        </div>
         <div class="settings-cases-grid" data-settings-cases-grid></div>
       </section>
       <button type="submit" class="primary" data-settings-user-submit>Створити користувача</button>
@@ -191,16 +263,25 @@ function ensureInviteDialog(ctx) {
   const form = dialog.querySelector("#settings-invite-form");
   form?.elements.role?.addEventListener("change", () => {
     applyRoleDefaultsToForm(form, icon);
-    const isAdmin = form.elements.role.value === "Адміністратор";
-    form.querySelector("[data-settings-case-scope]").textContent = isAdmin ? "Повний доступ до всіх справ" : "Доступ тільки до вибраних справ";
-    form.querySelector("[data-settings-cases-grid]").toggleAttribute("hidden", isAdmin);
+    syncCaseScope(form);
   });
   form?.elements.access?.addEventListener("change", () => applyAccessPresetToForm(form, icon));
   form?.addEventListener("change", (event) => {
     if (event.target?.name === "permissionKeys") {
       form.elements.access.value = "Індивідуальний доступ";
     }
+    if (event.target?.name === "assignedCaseIds") {
+      syncStoredCaseIdsFromForm(form);
+      const meta = form.querySelector("[data-settings-case-filter-meta]");
+      if (meta) {
+        const total = ctx.state.cases?.length || 0;
+        const visible = filteredCases(ctx.state, form.elements.caseSearch?.value || "", form.elements.caseClient?.value || "").length;
+        meta.textContent = `${visible} з ${total} справ · вибрано ${readStoredCaseIds(form).size}`;
+      }
+    }
   });
+  form?.elements.caseSearch?.addEventListener("input", () => refreshCaseGrid(form, ctx.state));
+  form?.elements.caseClient?.addEventListener("change", () => refreshCaseGrid(form, ctx.state));
   dialog.querySelector("[data-settings-role-defaults]")?.addEventListener("click", () => applyRoleDefaultsToForm(form, icon));
   dialog.querySelector("[data-settings-invite-close]")?.addEventListener("click", () => dialog.close());
   form?.addEventListener("submit", async (event) => {
@@ -214,7 +295,7 @@ function ensureInviteDialog(ctx) {
     const userIndex = form.dataset.userIndex;
     const existing = userIndex === "" ? null : state.settingsUsers[Number(userIndex)];
     const permissionKeys = [...form.querySelectorAll("input[name='permissionKeys']:checked")].map((input) => input.value);
-    const assignedCaseIds = role === "Адміністратор" ? [] : [...form.querySelectorAll("input[name='assignedCaseIds']:checked")].map((input) => input.value);
+    const assignedCaseIds = role === "Адміністратор" ? [] : [...syncStoredCaseIdsFromForm(form)];
     if (!name || !email) return;
     let user = {
       ...(existing || {}),

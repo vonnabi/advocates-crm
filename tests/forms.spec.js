@@ -161,6 +161,10 @@ test("settings invite form adds a bureau user", async ({ page }) => {
     "Фінанси",
     "Платежі та зарплата"
   ]);
+  await page.locator('[data-settings-case-search]').fill("немає такої справи");
+  await expect(page.locator(".settings-case-empty")).toBeVisible();
+  await page.locator('[data-settings-case-search]').fill("2024");
+  await expect(page.locator(".settings-case-choice").first()).toBeVisible();
   await page.locator('#settings-invite-form button[type="submit"]').click();
 
   await expect(page.locator("#settings-invite-dialog")).toHaveJSProperty("open", false);
