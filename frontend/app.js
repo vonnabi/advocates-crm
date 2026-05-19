@@ -1,4 +1,4 @@
-import { createInitialState } from "./js/state.js?v=demo-data-2";
+import { createInitialState } from "./js/state.js?v=role-ui-1";
 import {
   closeTopbarPanels as closeTopbarPanelsInChrome,
   isTopbarPanelOpen,
@@ -104,6 +104,146 @@ const titles = {
 const $ = (selector) => document.querySelector(selector);
 const viewNodes = [...document.querySelectorAll(".view")];
 const navNodes = [...document.querySelectorAll(".nav-item")];
+const defaultPermissions = {
+  canManageUsers: true,
+  canSeeFinance: true,
+  canManageFinance: true,
+  canManageCases: true,
+  canManageClients: true,
+  canManageTasks: true,
+  canManageDocuments: true,
+  canManageCalendar: true
+};
+
+const permissionControlRules = [
+  {
+    permission: "canManageClients",
+    selectors: [
+      "#quick-add-client",
+      "#add-client",
+      "[data-edit-client-row]",
+      "[data-edit-client]",
+      "[data-delete-client]",
+      "[data-client-bulk-action]",
+      "[data-ai-create-case]"
+    ]
+  },
+  {
+    permission: "canManageCases",
+    selectors: [
+      "#create-case-from-list",
+      "#save-case-current",
+      "[data-edit-case-row]",
+      "[data-delete-case]",
+      "[data-case-bulk-action]",
+      "[data-edit-case-section]",
+      "[data-edit-authority]"
+    ]
+  },
+  {
+    permission: "canManageTasks",
+    selectors: [
+      "[data-add-task]",
+      "[data-edit-task]",
+      "[data-delete-task]",
+      "[data-edit-task-global]",
+      "[data-delete-task-global]",
+      "[data-edit-subtask-task]",
+      "[data-delete-subtask-task]",
+      "[data-task-bulk-action]",
+      "[data-edit-planner-task]"
+    ]
+  },
+  {
+    permission: "canManageDocuments",
+    selectors: [
+      "[data-add-document]",
+      "[data-add-folder]",
+      "[data-edit-document]",
+      "[data-edit-global-document]",
+      "[data-delete-global-document]",
+      "[data-delete-procedural-doc]",
+      "[data-edit-folder]",
+      "[data-delete-folder]",
+      "[data-delete-folder-file]",
+      "[data-document-bulk-action]"
+    ]
+  },
+  {
+    permission: "canManageCalendar",
+    selectors: [
+      "[data-add-event]",
+      "[data-edit-calendar-event]",
+      "[data-delete-calendar-event]",
+      "[data-edit-procedural-action]",
+      "[data-delete-procedural-action]"
+    ]
+  },
+  {
+    permission: "canManageFinance",
+    selectors: [
+      "[data-edit-finance]",
+      "[data-preview-finance]",
+      "[data-finance-work-action]",
+      "[data-finance-add-income]",
+      "[data-finance-add-expense]",
+      "[data-finance-invoice]",
+      "[data-finance-act]",
+      "[data-finance-salary-open]",
+      "[data-salary-edit]",
+      "[data-salary-delete]"
+    ]
+  },
+  {
+    permission: "canManageUsers",
+    selectors: [
+      "[data-save-settings]",
+      "[data-settings-action='invite']",
+      "[data-settings-user-role]",
+      "[data-settings-user-access]",
+      "[data-settings-user-delete]",
+      "[data-demo-data-toggle]"
+    ]
+  }
+];
+
+function permissions() {
+  return Object.keys(state.sessionPermissions || {}).length ? state.sessionPermissions : defaultPermissions;
+}
+
+function can(permission) {
+  return Boolean(permissions()[permission]);
+}
+
+function canOpenView(view) {
+  return view !== "finance" || can("canSeeFinance");
+}
+
+function restrictedViewMessage(view) {
+  if (view === "finance") return "Фінанси доступні адміністратору або бухгалтеру.";
+  return "Для цього розділу недостатньо прав.";
+}
+
+function syncRoleNavigation() {
+  const financeVisible = can("canSeeFinance");
+  document.querySelectorAll('[data-view="finance"], [data-view-link="finance"]').forEach((node) => {
+    node.hidden = !financeVisible;
+  });
+}
+
+function applyPermissionControls(root = document) {
+  permissionControlRules.forEach(({ permission, selectors }) => {
+    const allowed = can(permission);
+    selectors.forEach((selector) => {
+      root.querySelectorAll(selector).forEach((node) => {
+        node.hidden = !allowed;
+        if (!allowed) node.setAttribute("aria-hidden", "true");
+        else node.removeAttribute("aria-hidden");
+      });
+    });
+  });
+  syncRoleNavigation();
+}
 
 function showToast(message, type = "success") {
   const stack = $("#toast-stack");
@@ -204,6 +344,8 @@ function screenContext() {
     getDocumentPayload,
     openStoredDocument,
     parseDisplayDate,
+    permissions,
+    can,
     renderAll,
     renderCases,
     renderTasks,
@@ -326,6 +468,7 @@ function renderAll() {
   renderOSINT();
   renderSettings();
   bindViewLinks();
+  applyPermissionControls();
   requestAnimationFrame(syncNavigationState);
 }
 
@@ -339,6 +482,10 @@ function restoreNavigationState() {
 
 function switchView(view, options = {}) {
   if (!view || !document.getElementById(view)) return;
+  if (!canOpenView(view)) {
+    showToast(restrictedViewMessage(view), "warning");
+    view = "dashboard";
+  }
   const leavingView = state.currentView;
   if (view !== state.currentView && !options.skipHistory) {
     pushViewHistory(state.currentView, view);

@@ -730,7 +730,18 @@ def serialize_task(item):
     }
 
 
-def serialize_case(item):
+def serialize_case(item, include_finance=True):
+    finance_payload = {
+        "income": money(item.income_amount),
+        "paid": money(item.paid_amount),
+        "debt": money(item.debt_amount),
+        "financeComment": item.finance_comment,
+    } if include_finance else {
+        "income": 0,
+        "paid": 0,
+        "debt": 0,
+        "financeComment": "",
+    }
     return {
         "id": item.number,
         "clientId": item.client_id,
@@ -747,11 +758,8 @@ def serialize_case(item):
         "authorityContact": item.authority_contact,
         "opened": date_value(item.opened_at),
         "deadline": date_value(item.deadline_at),
-        "income": money(item.income_amount),
-        "paid": money(item.paid_amount),
-        "debt": money(item.debt_amount),
+        **finance_payload,
         "description": item.description,
-        "financeComment": item.finance_comment,
         "history": item.history,
         "documents": [serialize_document(document) for document in item.documents.all()],
         "tasks": [serialize_task(task) for task in item.tasks.all()],
@@ -835,6 +843,23 @@ def require_demo_admin(request):
 def permissions_for_user(user):
     profile = profile_for_user(user) if user else None
     return set(ROLE_PERMISSIONS.get(profile.role if profile else "", set()))
+
+
+def request_permissions(request):
+    return permissions_for_user(current_demo_user(request))
+
+
+def request_can(request, permission):
+    return permission in request_permissions(request)
+
+
+def sanitize_case_payload_for_permissions(request, data):
+    if request_can(request, "manage_finance"):
+        return data
+    sanitized = dict(data)
+    for key in ("income", "paid", "debt", "totalFee", "financeComment"):
+        sanitized.pop(key, None)
+    return sanitized
 
 
 def require_permission(request, permission, message="Недостатньо прав для цієї дії."):
@@ -1042,14 +1067,15 @@ def client_communication_detail_api(request, communication_id):
 def cases_api(request):
     if request.method == "OPTIONS":
         return empty_response()
+    include_finance = request_can(request, "view_finance")
     if request.method == "POST":
         forbidden = require_permission(request, "manage_cases", "Справами можуть керувати адміністратор або адвокат.")
         if forbidden:
             return forbidden
-        item = upsert_case(parse_body(request))
-        return json_response(serialize_case(item))
+        item = upsert_case(sanitize_case_payload_for_permissions(request, parse_body(request)))
+        return json_response(serialize_case(item, include_finance=include_finance))
     items = Case.objects.select_related("client", "responsible").prefetch_related("documents", "tasks", "events").order_by("client__full_name", "opened_at")
-    return json_response({"results": [serialize_case(item) for item in items]})
+    return json_response({"results": [serialize_case(item, include_finance=include_finance) for item in items]})
 
 
 @csrf_exempt
@@ -1061,8 +1087,9 @@ def case_detail_api(request, case_number):
         item = Case.objects.get(number=case_number)
     except Case.DoesNotExist as exc:
         raise Http404("Case not found") from exc
+    include_finance = request_can(request, "view_finance")
     if request.method == "GET":
-        return json_response(serialize_case(item))
+        return json_response(serialize_case(item, include_finance=include_finance))
     if request.method == "DELETE":
         forbidden = require_permission(request, "manage_cases", "Справами можуть керувати адміністратор або адвокат.")
         if forbidden:
@@ -1074,7 +1101,7 @@ def case_detail_api(request, case_number):
     forbidden = require_permission(request, "manage_cases", "Справами можуть керувати адміністратор або адвокат.")
     if forbidden:
         return forbidden
-    return json_response(serialize_case(upsert_case(parse_body(request), item)))
+    return json_response(serialize_case(upsert_case(sanitize_case_payload_for_permissions(request, parse_body(request)), item), include_finance=include_finance))
 
 
 @csrf_exempt
@@ -1262,7 +1289,7 @@ def bootstrap_api(_request):
         "currentUser": serialize_system_user(current_user) if current_user else None,
         "settingsUsers": [serialize_system_user(user) for user in system_users_queryset()],
         "clients": [serialize_client(item) for item in Client.objects.prefetch_related("communications", "cases").order_by("full_name")],
-        "cases": [serialize_case(item) for item in Case.objects.select_related("client", "responsible").prefetch_related("documents", "tasks", "events").order_by("client__full_name", "opened_at")],
+        "cases": [serialize_case(item, include_finance=can_see_finance) for item in Case.objects.select_related("client", "responsible").prefetch_related("documents", "tasks", "events").order_by("client__full_name", "opened_at")],
         "tasks": [serialize_task(item) for item in Task.objects.select_related("client", "case", "responsible").order_by("due_at", "id")],
         "events": [serialize_event(item) for item in CalendarEvent.objects.select_related("client", "case", "responsible").order_by("starts_at", "id")],
         "financeOperations": finance_operations_payload() if can_see_finance else [],

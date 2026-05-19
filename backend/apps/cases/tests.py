@@ -229,6 +229,10 @@ class DemoApiTests(TestCase):
         self.assertEqual(lawyer_login.status_code, 200)
         self.assertTrue(lawyer_login.json()["permissions"]["canManageCases"])
         self.assertFalse(lawyer_login.json()["permissions"]["canSeeFinance"])
+        lawyer_bootstrap = self.client.get("/api/bootstrap/").json()
+        self.assertEqual(lawyer_bootstrap["financeOperations"], [])
+        self.assertEqual(lawyer_bootstrap["finance"]["income"], 0)
+        self.assertEqual(lawyer_bootstrap["cases"][0]["income"], 0)
         lawyer_case_response = self.client.post(
             "/api/cases/",
             {
@@ -238,10 +242,21 @@ class DemoApiTests(TestCase):
                 "stage": "Аналіз",
                 "status": "В роботі",
                 "priority": "Середній",
+                "income": 7777,
+                "paid": 1000,
+                "debt": 6777,
+                "financeComment": "Ці дані не має записати адвокат.",
             },
             content_type="application/json",
         )
         self.assertEqual(lawyer_case_response.status_code, 200)
+        lawyer_case_payload = lawyer_case_response.json()
+        self.assertEqual(lawyer_case_payload["income"], 0)
+        self.assertEqual(lawyer_case_payload["debt"], 0)
+        self.assertEqual(lawyer_case_payload["financeComment"], "")
+        created_lawyer_case = Case.objects.get(number=lawyer_case_payload["id"])
+        self.assertEqual(created_lawyer_case.income_amount, 0)
+        self.assertEqual(created_lawyer_case.debt_amount, 0)
         self.assertEqual(self.client.get("/api/finance/summary/").status_code, 403)
 
         accountant = get_user_model().objects.create_user(
@@ -266,6 +281,10 @@ class DemoApiTests(TestCase):
         self.assertTrue(accountant_login.json()["permissions"]["canSeeFinance"])
         self.assertFalse(accountant_login.json()["permissions"]["canManageTasks"])
         self.assertEqual(self.client.get("/api/finance/summary/").status_code, 200)
+        accountant_bootstrap = self.client.get("/api/bootstrap/").json()
+        self.assertGreater(accountant_bootstrap["finance"]["income"], 0)
+        self.assertIn("financeOperations", accountant_bootstrap)
+        self.assertTrue(any(item["income"] > 0 for item in accountant_bootstrap["cases"]))
         accountant_task_response = self.client.post(
             "/api/tasks/",
             {"caseId": "2024/12345", "title": "Бухгалтерська задача"},

@@ -171,6 +171,16 @@ async function loadDemoData() {
 
 export async function createInitialState() {
   const demoData = await loadDemoData();
+  const defaultPermissions = {
+    canManageUsers: true,
+    canSeeFinance: true,
+    canManageFinance: true,
+    canManageCases: true,
+    canManageClients: true,
+    canManageTasks: true,
+    canManageDocuments: true,
+    canManageCalendar: true
+  };
 
   return {
     currentView: "dashboard",
@@ -182,7 +192,7 @@ export async function createInitialState() {
     dataSource: demoData.source,
     currentUser: demoData.currentUser || null,
     sessionAuthenticated: Boolean(demoData.session?.authenticated),
-    sessionPermissions: demoData.session?.permissions || {},
+    sessionPermissions: demoData.session?.permissions || defaultPermissions,
     backendMeta: demoData.meta || {},
     backendFinance: demoData.finance || {},
     demoDataStatus: demoData.meta?.demoData || {
