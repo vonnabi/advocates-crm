@@ -1,4 +1,4 @@
-import { changePasswordInApi, clearDemoDataInApi, loginToApi, logoutFromApi, restoreDemoDataInApi, shouldUseApi } from "./api.js?v=password-access-1";
+import { changePasswordInApi, clearDemoDataInApi, getDemoDataStatusFromApi, loginToApi, logoutFromApi, restoreDemoDataInApi, shouldUseApi } from "./api.js?v=demo-data-status-1";
 
 const DEMO_URL = "https://vonnabi.github.io/advocates-crm/";
 
@@ -99,6 +99,14 @@ function syncDemoDataToggle(state) {
   toggle.querySelector("[data-demo-data-summary]").textContent = demoDataSummary(state.demoDataStatus);
 }
 
+async function refreshDemoDataStatus(state) {
+  if (!shouldUseApi(state)) return state.demoDataStatus;
+  const status = await getDemoDataStatusFromApi();
+  state.demoDataStatus = status;
+  syncDemoDataToggle(state);
+  return status;
+}
+
 function ensureDemoDataOverlay(ctx) {
   let overlay = document.querySelector("#demo-data-overlay");
   if (overlay) return overlay;
@@ -139,8 +147,9 @@ function ensureDemoDataOverlay(ctx) {
       const payload = await clearDemoDataInApi();
       state.demoDataStatus = payload.demoData;
       syncDemoDataToggle(state);
+      overlay.hidden = true;
       showToast("Демо-записи очищено. Ваші додані дані залишаються.");
-      window.setTimeout(() => window.location.reload(), 500);
+      window.setTimeout(() => window.location.reload(), 350);
     } catch (_error) {
       showToast("Не вдалося очистити демо-дані.", "warning");
       button.disabled = false;
@@ -153,8 +162,9 @@ function ensureDemoDataOverlay(ctx) {
       const payload = await restoreDemoDataInApi();
       state.demoDataStatus = payload.demoData;
       syncDemoDataToggle(state);
+      overlay.hidden = true;
       showToast("Демо-дані відновлено. Оновлюю кабінет.");
-      window.setTimeout(() => window.location.reload(), 500);
+      window.setTimeout(() => window.location.reload(), 350);
     } catch (_error) {
       showToast("Не вдалося відновити демо-дані.", "warning");
       button.disabled = false;
@@ -163,8 +173,13 @@ function ensureDemoDataOverlay(ctx) {
   return overlay;
 }
 
-function openDemoDataOverlay(ctx) {
+async function openDemoDataOverlay(ctx) {
   const overlay = ensureDemoDataOverlay(ctx);
+  try {
+    await refreshDemoDataStatus(ctx.state);
+  } catch (_error) {
+    ctx.showToast("Не вдалося перевірити стан демо-даних.", "warning");
+  }
   const status = ctx.state.demoDataStatus || {};
   const enabled = Boolean(status.enabled);
   overlay.querySelector("[data-demo-data-text]").textContent = enabled
@@ -467,5 +482,8 @@ export function setupTopbarControls({ $, state, switchView, saveNavigationState,
   $(".collapse-menu")?.addEventListener("click", () => toggleSidebar({ saveNavigationState, showToast }));
   $(".sidebar-restore")?.addEventListener("click", () => toggleSidebar({ saveNavigationState, showToast }));
   $("[data-demo-data-toggle]")?.addEventListener("click", () => openDemoDataOverlay({ state, showToast }));
+  if (shouldUseApi(state) && state.sessionPermissions?.canManageUsers) {
+    window.setTimeout(() => refreshDemoDataStatus(state).catch(() => {}), 0);
+  }
   window.setTimeout(() => openPasswordChangeOverlay({ $, state, saveNavigationState, showToast, onSessionChange }), 0);
 }
