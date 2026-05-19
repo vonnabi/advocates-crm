@@ -201,6 +201,16 @@ export function renderAIScreen(ctx) {
   const filteredRows = filterRows(state, rows);
   const selected = selectedAssistant(state, rows);
   const selectedCase = caseById(selected?.caseId || state.aiSelectedCaseId) || state.cases[0];
+  if (!selectedCase) {
+    $("#ai").innerHTML = `
+      <div class="empty-state panel">
+        <h2>${icon("bot")} AI помічники</h2>
+        <p class="muted">Додайте клієнта та справу, щоб створити AI помічника на матеріалах справи.</p>
+        <button class="primary" type="button" data-view-link="cases">Перейти до справ</button>
+      </div>
+    `;
+    return;
+  }
   const selectedHelper = selected?.helper || lawForCase(selectedCase);
   state.aiSelectedAssistantId ||= selected?.id;
   if (!state.aiMessages.length || state.aiSelectedCaseId !== selectedCase.id) {

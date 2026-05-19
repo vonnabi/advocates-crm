@@ -1,4 +1,4 @@
-import { loginToApi, logoutFromApi, shouldUseApi } from "./api.js?v=render-api-1";
+import { clearDemoDataInApi, loginToApi, logoutFromApi, restoreDemoDataInApi, shouldUseApi } from "./api.js?v=demo-data-1";
 
 const DEMO_URL = "https://vonnabi.github.io/advocates-crm/";
 
@@ -76,6 +76,112 @@ function focusSettingsSection(sectionKey) {
     section.scrollIntoView({ behavior: "smooth", block: "start" });
     window.setTimeout(() => section.classList.remove("is-focused"), 1600);
   });
+}
+
+function demoDataSummary(status) {
+  const counts = status?.counts || {};
+  const total = status?.total ?? Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0);
+  if (!status?.enabled) return "Вимкнено";
+  if (!total) return "Увімкнено";
+  return `Увімкнено · ${total} записів`;
+}
+
+function syncDemoDataToggle(state) {
+  const toggle = document.querySelector("[data-demo-data-toggle]");
+  if (!toggle) return;
+  const visible = shouldUseApi(state) && state.sessionPermissions?.canManageUsers;
+  toggle.hidden = !visible;
+  if (!visible) return;
+  const enabled = Boolean(state.demoDataStatus?.enabled);
+  toggle.classList.toggle("is-on", enabled);
+  toggle.classList.toggle("is-off", !enabled);
+  toggle.setAttribute("aria-pressed", String(enabled));
+  toggle.querySelector("[data-demo-data-summary]").textContent = demoDataSummary(state.demoDataStatus);
+}
+
+function ensureDemoDataOverlay(ctx) {
+  let overlay = document.querySelector("#demo-data-overlay");
+  if (overlay) return overlay;
+  const { state, showToast } = ctx;
+  overlay = document.createElement("div");
+  overlay.id = "demo-data-overlay";
+  overlay.className = "demo-data-overlay";
+  overlay.hidden = true;
+  overlay.innerHTML = `
+    <section class="demo-data-card" role="dialog" aria-modal="true" aria-labelledby="demo-data-title">
+      <button class="demo-data-close" type="button" data-demo-data-close aria-label="Закрити">×</button>
+      <div class="demo-data-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M4 7h16"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M6 7l1 14h10l1-14"></path><path d="M9 7V4h6v3"></path></svg>
+      </div>
+      <h2 id="demo-data-title">Демо-дані</h2>
+      <p data-demo-data-text></p>
+      <div class="demo-data-counts" data-demo-data-counts></div>
+      <div class="demo-data-actions">
+        <button class="secondary" type="button" data-demo-data-close>Скасувати</button>
+        <button class="danger-soft" type="button" data-demo-data-clear>Очистити</button>
+        <button class="primary" type="button" data-demo-data-restore>Відновити</button>
+      </div>
+    </section>
+  `;
+  document.body.append(overlay);
+  overlay.querySelectorAll("[data-demo-data-close]").forEach((button) => {
+    button.addEventListener("click", () => {
+      overlay.hidden = true;
+    });
+  });
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) overlay.hidden = true;
+  });
+  overlay.querySelector("[data-demo-data-clear]")?.addEventListener("click", async () => {
+    const button = overlay.querySelector("[data-demo-data-clear]");
+    button.disabled = true;
+    try {
+      const payload = await clearDemoDataInApi();
+      state.demoDataStatus = payload.demoData;
+      syncDemoDataToggle(state);
+      showToast("Демо-дані очищено. Перезавантажую чистий кабінет.");
+      window.setTimeout(() => window.location.reload(), 500);
+    } catch (_error) {
+      showToast("Не вдалося очистити демо-дані.", "warning");
+      button.disabled = false;
+    }
+  });
+  overlay.querySelector("[data-demo-data-restore]")?.addEventListener("click", async () => {
+    const button = overlay.querySelector("[data-demo-data-restore]");
+    button.disabled = true;
+    try {
+      const payload = await restoreDemoDataInApi();
+      state.demoDataStatus = payload.demoData;
+      syncDemoDataToggle(state);
+      showToast("Демо-дані відновлено. Оновлюю кабінет.");
+      window.setTimeout(() => window.location.reload(), 500);
+    } catch (_error) {
+      showToast("Не вдалося відновити демо-дані.", "warning");
+      button.disabled = false;
+    }
+  });
+  return overlay;
+}
+
+function openDemoDataOverlay(ctx) {
+  const overlay = ensureDemoDataOverlay(ctx);
+  const status = ctx.state.demoDataStatus || {};
+  const enabled = Boolean(status.enabled);
+  overlay.querySelector("[data-demo-data-text]").textContent = enabled
+    ? "Вимкнення очистить клієнтів, справи, задачі, документи, календар, фінанси та розсилки демо-кабінету. Користувачі, ролі та налаштування залишаться."
+    : "Демо-кабінет зараз порожній. Можна відновити стартовий набір клієнтів, справ, задач, документів, календаря та фінансів.";
+  const counts = status.counts || {};
+  overlay.querySelector("[data-demo-data-counts]").innerHTML = [
+    ["Клієнти", counts.clients],
+    ["Справи", counts.cases],
+    ["Задачі", counts.tasks],
+    ["Документи", counts.documents],
+    ["Події", counts.events],
+    ["Фінанси", counts.financeOperations],
+  ].map(([label, value]) => `<span><strong>${Number(value || 0)}</strong><em>${label}</em></span>`).join("");
+  overlay.querySelector("[data-demo-data-clear]").hidden = !enabled;
+  overlay.querySelector("[data-demo-data-restore]").hidden = enabled;
+  overlay.hidden = false;
 }
 
 export function syncTopbarUser($, state) {
@@ -198,6 +304,7 @@ async function copyDemoLink(showToast) {
 export function setupTopbarControls({ $, state, switchView, saveNavigationState, showToast }) {
   syncTopbarUser($, state);
   syncTopbarNotifications($, state);
+  syncDemoDataToggle(state);
 
   document.addEventListener("click", (event) => {
     if (event.target.closest("#notifications-toggle")) {
@@ -267,4 +374,5 @@ export function setupTopbarControls({ $, state, switchView, saveNavigationState,
 
   $(".collapse-menu")?.addEventListener("click", () => toggleSidebar({ saveNavigationState, showToast }));
   $(".sidebar-restore")?.addEventListener("click", () => toggleSidebar({ saveNavigationState, showToast }));
+  $("[data-demo-data-toggle]")?.addEventListener("click", () => openDemoDataOverlay({ state, showToast }));
 }

@@ -95,11 +95,12 @@ function renderCases() {
   $("#cases").innerHTML = `
     <div class="case-reference-screen" id="case-detail"></div>
   `;
-  if (state.caseScreen === "detail") {
+  if (state.caseScreen === "detail" && selected) {
     renderCaseProfile(selected.id);
     syncNavigationState();
     return;
   }
+  if (!selected) state.caseScreen = "list";
   renderCaseList();
   syncNavigationState();
 }

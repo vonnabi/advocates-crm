@@ -215,8 +215,10 @@ export function renderDocumentsScreen(ctx) {
   const selected = tableRows.find((doc) => doc.key === state.selectedDocumentKey) || tableRows[0] || filtered[0] || rows[0];
   const selectedSubmittedIso = selected ? ctx.parseDisplayDate?.(selected.submitted) || "" : "";
   const selectedResponseDueIso = selected ? ctx.parseDisplayDate?.(selected.responseDue) || "" : "";
-  const selectedCase = archive.selectedCase?.id || selected?.caseId || state.selectedCaseId || state.cases[0]?.id || "";
-  const selectedFolders = selectedCase ? caseFolders(ctx.caseById(selectedCase)) : [];
+  const selectedCaseCandidate = archive.selectedCase?.id || selected?.caseId || state.selectedCaseId || state.cases[0]?.id || "";
+  const selectedCaseItem = selectedCaseCandidate ? ctx.caseById(selectedCaseCandidate) : null;
+  const selectedCase = selectedCaseItem?.id || "";
+  const selectedFolders = selectedCaseItem ? caseFolders(selectedCaseItem) : [];
   const selectedFolderIndex = archive.selectedFolder
     ? selectedFolders.findIndex((folder) => folder.name === archive.selectedFolder.name)
     : -1;

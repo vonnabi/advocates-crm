@@ -1,10 +1,10 @@
-import { createInitialState } from "./js/state.js?v=render-api-1";
+import { createInitialState } from "./js/state.js?v=demo-data-1";
 import {
   closeTopbarPanels as closeTopbarPanelsInChrome,
   isTopbarPanelOpen,
   setupTopbarControls,
   syncTopbarNotifications
-} from "./js/chrome.js?v=render-api-1";
+} from "./js/chrome.js?v=demo-data-1";
 import { createDialogOpeners } from "./js/dialog-openers.js";
 import { setupDialogControls } from "./js/dialogs.js";
 import { setupCaseDetailForms } from "./js/forms/case-details.js";

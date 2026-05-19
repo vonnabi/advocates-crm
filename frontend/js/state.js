@@ -1,4 +1,4 @@
-import { apiBaseUrl } from "./api.js?v=render-api-1";
+import { apiBaseUrl } from "./api.js?v=demo-data-1";
 
 async function readDataFile(path) {
   const response = await fetch(new URL(path, import.meta.url));
@@ -185,6 +185,19 @@ export async function createInitialState() {
     sessionPermissions: demoData.session?.permissions || {},
     backendMeta: demoData.meta || {},
     backendFinance: demoData.finance || {},
+    demoDataStatus: demoData.meta?.demoData || {
+      enabled: Boolean((demoData.clients || []).length || (demoData.cases || []).length || (demoData.events || []).length),
+      counts: {
+        clients: (demoData.clients || []).length,
+        cases: (demoData.cases || []).length,
+        tasks: (demoData.cases || []).flatMap((item) => item.tasks || []).length,
+        documents: (demoData.cases || []).flatMap((item) => item.documents || []).length,
+        events: (demoData.events || []).length,
+        financeOperations: (demoData.financeOperations || []).length,
+        communications: (demoData.clients || []).flatMap((item) => item.communications || []).length,
+        campaigns: (demoData.mailing?.campaigns || []).length
+      }
+    },
     selectedClientId: 1,
     selectedClientKeys: [],
     selectedCaseId: "2024/12345",

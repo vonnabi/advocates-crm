@@ -1,5 +1,12 @@
+from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase
+
+from apps.calendar_app.models import CalendarEvent
+from apps.cases.models import Case, CaseDocument
+from apps.clients.models import Client, ClientCommunication
+from apps.finance.models import Expense, Invoice, Payment
+from apps.tasks.models import Task
 
 
 class DemoApiTests(TestCase):
@@ -12,11 +19,49 @@ class DemoApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["meta"], {"clients": 4, "cases": 4, "tasks": 9, "events": 6})
+        self.assertEqual({key: payload["meta"][key] for key in ("clients", "cases", "tasks", "events")}, {"clients": 4, "cases": 4, "tasks": 9, "events": 6})
+        self.assertTrue(payload["meta"]["demoData"]["enabled"])
         self.assertEqual(payload["finance"]["income"], 107000.0)
         self.assertEqual(payload["finance"]["debt"], 23500.0)
         self.assertTrue(payload["clients"])
         self.assertTrue(payload["cases"])
+
+    def test_demo_data_api_clears_and_restores_business_data(self):
+        status_response = self.client.get("/api/demo-data/")
+        self.assertEqual(status_response.status_code, 200)
+        self.assertTrue(status_response.json()["enabled"])
+
+        clear_response = self.client.post(
+            "/api/demo-data/",
+            {"action": "clear"},
+            content_type="application/json",
+        )
+        self.assertEqual(clear_response.status_code, 200)
+        self.assertFalse(clear_response.json()["demoData"]["enabled"])
+        self.assertEqual(Client.objects.count(), 0)
+        self.assertEqual(Case.objects.count(), 0)
+        self.assertEqual(Task.objects.count(), 0)
+        self.assertEqual(CaseDocument.objects.count(), 0)
+        self.assertEqual(CalendarEvent.objects.count(), 0)
+        self.assertEqual(Payment.objects.count() + Invoice.objects.count() + Expense.objects.count(), 0)
+        self.assertGreater(get_user_model().objects.count(), 0)
+
+        empty_bootstrap = self.client.get("/api/bootstrap/")
+        self.assertEqual(empty_bootstrap.status_code, 200)
+        self.assertEqual(empty_bootstrap.json()["meta"]["clients"], 0)
+
+        restore_response = self.client.post(
+            "/api/demo-data/",
+            {"action": "restore"},
+            content_type="application/json",
+        )
+        self.assertEqual(restore_response.status_code, 200)
+        self.assertTrue(restore_response.json()["demoData"]["enabled"])
+        self.assertEqual(Client.objects.count(), 4)
+        self.assertEqual(Case.objects.count(), 4)
+        self.assertEqual(Task.objects.count(), 9)
+        self.assertEqual(CalendarEvent.objects.count(), 6)
+        self.assertGreater(ClientCommunication.objects.count(), 0)
 
     def test_list_endpoints_are_available(self):
         endpoints = [

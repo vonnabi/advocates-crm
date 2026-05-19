@@ -213,6 +213,50 @@ test("profile logout opens a visible demo session screen", async ({ page }) => {
   await expect(page.locator("#logout-overlay")).toBeHidden();
 });
 
+test("API empty demo mode still renders the workspace and AI empty state", async ({ page }) => {
+  const emptyPayload = {
+    session: {
+      authenticated: false,
+      user: { id: 1, name: "Іваненко А.Ю.", email: "ivanenko@advocates.crm", role: "Адміністратор", access: "Повний доступ", photo: "ІА", active: true },
+      permissions: { canManageUsers: true, canSeeFinance: true, canManageCases: true }
+    },
+    currentUser: { id: 1, name: "Іваненко А.Ю.", email: "ivanenko@advocates.crm", role: "Адміністратор", access: "Повний доступ", photo: "ІА", active: true },
+    settingsUsers: [{ id: 1, name: "Іваненко А.Ю.", email: "ivanenko@advocates.crm", role: "Адміністратор", access: "Повний доступ", photo: "ІА", active: true }],
+    clients: [],
+    cases: [],
+    tasks: [],
+    events: [],
+    financeOperations: [],
+    finance: { income: 0, paid: 0, debt: 0, activeCases: 0, documents: 0, tasks: 0 },
+    meta: {
+      clients: 0,
+      cases: 0,
+      tasks: 0,
+      events: 0,
+      demoData: {
+        enabled: false,
+        total: 0,
+        counts: { clients: 0, cases: 0, tasks: 0, documents: 0, events: 0, financeOperations: 0, communications: 0, campaigns: 0 }
+      }
+    }
+  };
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+    window.localStorage.setItem("crmApiBase", window.location.origin);
+  });
+  await page.route("**/api/bootstrap/", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(emptyPayload) });
+  });
+
+  await page.goto("/");
+  await expect(page.locator("#dashboard")).toContainText("Активних справ");
+  await expect(page.locator("[data-demo-data-toggle]")).toBeVisible();
+  await expect(page.locator("[data-demo-data-summary]")).toHaveText("Вимкнено");
+
+  await page.locator('.nav-item[data-view="ai"]').click();
+  await expect(page.locator("#ai")).toContainText("Додайте клієнта та справу");
+});
+
 test("AI assistants search, open chat, and answer quick questions", async ({ page }) => {
   await page.goto("/");
   await waitForAppReady(page);

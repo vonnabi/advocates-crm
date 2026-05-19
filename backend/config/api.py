@@ -5,6 +5,8 @@ from decimal import Decimal
 from hashlib import sha1
 
 from django.contrib.auth import authenticate, get_user_model, login as auth_login, logout as auth_logout
+from django.core.management import call_command
+from django.db import transaction
 from django.db.models import Sum
 from django.http import Http404, HttpResponse, JsonResponse
 from django.utils import timezone
@@ -12,9 +14,10 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
 from apps.accounts.models import UserProfile
-from apps.calendar_app.models import CalendarEvent
+from apps.calendar_app.models import CalendarEvent, Reminder
 from apps.cases.models import Case, CaseDocument
 from apps.clients.models import Client, ClientCommunication
+from apps.communications.models import Campaign, MessageDelivery, MessageTemplate
 from apps.finance.models import Expense, Invoice, Payment
 from apps.tasks.models import Task
 
@@ -769,6 +772,49 @@ def finance_summary_payload():
     }
 
 
+def demo_data_status_payload():
+    counts = {
+        "clients": Client.objects.count(),
+        "cases": Case.objects.count(),
+        "tasks": Task.objects.count(),
+        "documents": CaseDocument.objects.count(),
+        "events": CalendarEvent.objects.count(),
+        "financeOperations": Payment.objects.count() + Invoice.objects.count() + Expense.objects.count(),
+        "communications": ClientCommunication.objects.count(),
+        "campaigns": Campaign.objects.count(),
+    }
+    return {
+        "enabled": any(counts.values()),
+        "counts": counts,
+        "total": sum(counts.values()),
+    }
+
+
+def clear_crm_business_data():
+    with transaction.atomic():
+        MessageDelivery.objects.all().delete()
+        Campaign.objects.all().delete()
+        MessageTemplate.objects.all().delete()
+        Reminder.objects.all().delete()
+        Payment.objects.all().delete()
+        Invoice.objects.all().delete()
+        Expense.objects.all().delete()
+        CalendarEvent.objects.all().delete()
+        Task.objects.all().delete()
+        CaseDocument.objects.all().delete()
+        Case.objects.all().delete()
+        ClientCommunication.objects.all().delete()
+        Client.objects.all().delete()
+
+
+def require_demo_admin(request):
+    user = current_demo_user(request)
+    profile = profile_for_user(user) if user else None
+    if not profile or profile.role != "admin":
+        return json_response({"error": "Forbidden", "message": "Демо-даними може керувати тільки адміністратор."}, status=403)
+    return None
+
+
 def system_users_queryset():
     User = get_user_model()
     return User.objects.select_related("crm_profile").filter(crm_profile__is_active_member=True, is_active=True).order_by("id")
@@ -1074,6 +1120,29 @@ def finance_summary_api(_request):
     return json_response(finance_summary_payload())
 
 
+@csrf_exempt
+@require_http_methods(["GET", "POST", "OPTIONS"])
+def demo_data_api(request):
+    if request.method == "OPTIONS":
+        return empty_response()
+    if request.method == "GET":
+        return json_response(demo_data_status_payload())
+
+    forbidden = require_demo_admin(request)
+    if forbidden:
+        return forbidden
+
+    action = parse_body(request).get("action")
+    if action == "clear":
+        clear_crm_business_data()
+        return json_response({"demoData": demo_data_status_payload(), "message": "Демо-дані очищено."})
+    if action == "restore":
+        clear_crm_business_data()
+        call_command("seed_demo", verbosity=0)
+        return json_response({"demoData": demo_data_status_payload(), "message": "Демо-дані відновлено."})
+    return json_response({"error": "Unsupported action"}, status=400)
+
+
 @require_GET
 def bootstrap_api(_request):
     current_user = current_demo_user(_request)
@@ -1092,5 +1161,6 @@ def bootstrap_api(_request):
             "cases": Case.objects.count(),
             "tasks": Task.objects.count(),
             "events": CalendarEvent.objects.count(),
+            "demoData": demo_data_status_payload(),
         },
     })

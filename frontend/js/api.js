@@ -82,6 +82,24 @@ export function getSessionFromApi() {
   return apiRequest("/api/session/");
 }
 
+export function getDemoDataStatusFromApi() {
+  return apiRequest("/api/demo-data/");
+}
+
+export function clearDemoDataInApi() {
+  return apiRequest("/api/demo-data/", {
+    method: "POST",
+    body: { action: "clear" }
+  });
+}
+
+export function restoreDemoDataInApi() {
+  return apiRequest("/api/demo-data/", {
+    method: "POST",
+    body: { action: "restore" }
+  });
+}
+
 export function saveCaseToApi(caseItem) {
   const hasId = caseItem.id !== undefined && caseItem.id !== null && caseItem.id !== "";
   return apiRequest(hasId ? `/api/cases/${encodeURIComponent(caseItem.id)}/` : "/api/cases/", {
