@@ -106,6 +106,35 @@ ROLE_ACCESS = {
     "Бухгалтер": ("accountant", "Фінанси та звіти"),
 }
 
+ROLE_PERMISSIONS = {
+    "admin": {
+        "manage_users",
+        "manage_clients",
+        "manage_cases",
+        "manage_tasks",
+        "manage_documents",
+        "manage_calendar",
+        "view_finance",
+        "manage_finance",
+    },
+    "lawyer": {
+        "manage_clients",
+        "manage_cases",
+        "manage_tasks",
+        "manage_documents",
+        "manage_calendar",
+    },
+    "assistant": {
+        "manage_tasks",
+        "manage_documents",
+        "manage_calendar",
+    },
+    "accountant": {
+        "view_finance",
+        "manage_finance",
+    },
+}
+
 
 ROLE_LABELS = {value: label for label, (value, _access) in ROLE_ACCESS.items()}
 
@@ -771,6 +800,17 @@ def finance_summary_payload():
     }
 
 
+def empty_finance_summary_payload():
+    return {
+        "income": 0,
+        "paid": 0,
+        "debt": 0,
+        "activeCases": Case.objects.exclude(status__in=["Закрито", "Завершено", "Архів"]).count(),
+        "documents": CaseDocument.objects.count(),
+        "tasks": Task.objects.count(),
+    }
+
+
 def demo_data_status_payload():
     counts = demo_data_counts()
     return {
@@ -792,6 +832,18 @@ def require_demo_admin(request):
     return None
 
 
+def permissions_for_user(user):
+    profile = profile_for_user(user) if user else None
+    return set(ROLE_PERMISSIONS.get(profile.role if profile else "", set()))
+
+
+def require_permission(request, permission, message="Недостатньо прав для цієї дії."):
+    user = current_demo_user(request)
+    if permission not in permissions_for_user(user):
+        return json_response({"error": "Forbidden", "message": message}, status=403)
+    return None
+
+
 def system_users_queryset():
     User = get_user_model()
     return User.objects.select_related("crm_profile").filter(crm_profile__is_active_member=True, is_active=True).order_by("id")
@@ -810,13 +862,19 @@ def current_demo_user(request):
 def session_payload(request):
     user = current_demo_user(request)
     profile = profile_for_user(user) if user else None
+    permissions = permissions_for_user(user)
     return {
         "authenticated": bool(request.user.is_authenticated),
         "user": serialize_system_user(user) if user else None,
         "permissions": {
-            "canManageUsers": bool(profile and profile.role == "admin"),
-            "canSeeFinance": bool(profile and profile.role in ("admin", "accountant")),
-            "canManageCases": bool(profile and profile.role in ("admin", "lawyer")),
+            "canManageUsers": "manage_users" in permissions,
+            "canSeeFinance": "view_finance" in permissions,
+            "canManageFinance": "manage_finance" in permissions,
+            "canManageCases": "manage_cases" in permissions,
+            "canManageClients": "manage_clients" in permissions,
+            "canManageTasks": "manage_tasks" in permissions,
+            "canManageDocuments": "manage_documents" in permissions,
+            "canManageCalendar": "manage_calendar" in permissions,
         },
     }
 
@@ -856,6 +914,9 @@ def users_api(request):
     if request.method == "OPTIONS":
         return empty_response()
     if request.method == "POST":
+        forbidden = require_permission(request, "manage_users", "Користувачами може керувати тільки адміністратор.")
+        if forbidden:
+            return forbidden
         user = upsert_system_user(parse_body(request))
         return json_response(serialize_system_user(user))
     return json_response({"results": [serialize_system_user(user) for user in system_users_queryset()]})
@@ -873,12 +934,18 @@ def user_detail_api(request, user_id):
     if request.method == "GET":
         return json_response(serialize_system_user(user))
     if request.method == "DELETE":
+        forbidden = require_permission(request, "manage_users", "Користувачами може керувати тільки адміністратор.")
+        if forbidden:
+            return forbidden
         profile = profile_for_user(user)
         profile.is_active_member = False
         profile.save(update_fields=["is_active_member", "updated_at"])
         user.is_active = False
         user.save(update_fields=["is_active"])
         return json_response({"deleted": user_id})
+    forbidden = require_permission(request, "manage_users", "Користувачами може керувати тільки адміністратор.")
+    if forbidden:
+        return forbidden
     return json_response(serialize_system_user(upsert_system_user(parse_body(request), user)))
 
 
@@ -893,6 +960,9 @@ def clients_api(request):
     if request.method == "OPTIONS":
         return empty_response()
     if request.method == "POST":
+        forbidden = require_permission(request, "manage_clients", "Клієнтами можуть керувати адміністратор або адвокат.")
+        if forbidden:
+            return forbidden
         client = upsert_client(parse_body(request))
         return json_response(serialize_client(client))
     items = Client.objects.prefetch_related("communications", "cases").order_by("full_name")
@@ -911,11 +981,17 @@ def client_detail_api(request, client_id):
     if request.method == "GET":
         return json_response(serialize_client(client))
     if request.method == "DELETE":
+        forbidden = require_permission(request, "manage_clients", "Клієнтами можуть керувати адміністратор або адвокат.")
+        if forbidden:
+            return forbidden
         Task.objects.filter(client=client).delete()
         CalendarEvent.objects.filter(client=client).delete()
         client.cases.all().delete()
         client.delete()
         return json_response({"deleted": client_id})
+    forbidden = require_permission(request, "manage_clients", "Клієнтами можуть керувати адміністратор або адвокат.")
+    if forbidden:
+        return forbidden
     return json_response(serialize_client(upsert_client(parse_body(request), client)))
 
 
@@ -929,6 +1005,9 @@ def client_communications_api(request, client_id):
     except Client.DoesNotExist as exc:
         raise Http404("Client not found") from exc
     if request.method == "POST":
+        forbidden = require_permission(request, "manage_clients", "Комунікації клієнта можуть змінювати адміністратор або адвокат.")
+        if forbidden:
+            return forbidden
         item = upsert_client_communication({**parse_body(request), "clientId": client.id}, client=client)
         return json_response(serialize_client_communication(item))
     items = client.communications.select_related("author", "case").order_by("-date", "-id")
@@ -947,8 +1026,14 @@ def client_communication_detail_api(request, communication_id):
     if request.method == "GET":
         return json_response(serialize_client_communication(item))
     if request.method == "DELETE":
+        forbidden = require_permission(request, "manage_clients", "Комунікації клієнта можуть змінювати адміністратор або адвокат.")
+        if forbidden:
+            return forbidden
         item.delete()
         return json_response({"deleted": communication_id})
+    forbidden = require_permission(request, "manage_clients", "Комунікації клієнта можуть змінювати адміністратор або адвокат.")
+    if forbidden:
+        return forbidden
     return json_response(serialize_client_communication(upsert_client_communication(parse_body(request), item)))
 
 
@@ -958,6 +1043,9 @@ def cases_api(request):
     if request.method == "OPTIONS":
         return empty_response()
     if request.method == "POST":
+        forbidden = require_permission(request, "manage_cases", "Справами можуть керувати адміністратор або адвокат.")
+        if forbidden:
+            return forbidden
         item = upsert_case(parse_body(request))
         return json_response(serialize_case(item))
     items = Case.objects.select_related("client", "responsible").prefetch_related("documents", "tasks", "events").order_by("client__full_name", "opened_at")
@@ -976,10 +1064,16 @@ def case_detail_api(request, case_number):
     if request.method == "GET":
         return json_response(serialize_case(item))
     if request.method == "DELETE":
+        forbidden = require_permission(request, "manage_cases", "Справами можуть керувати адміністратор або адвокат.")
+        if forbidden:
+            return forbidden
         Task.objects.filter(case=item).delete()
         CalendarEvent.objects.filter(case=item).delete()
         item.delete()
         return json_response({"deleted": case_number})
+    forbidden = require_permission(request, "manage_cases", "Справами можуть керувати адміністратор або адвокат.")
+    if forbidden:
+        return forbidden
     return json_response(serialize_case(upsert_case(parse_body(request), item)))
 
 
@@ -989,6 +1083,9 @@ def tasks_api(request):
     if request.method == "OPTIONS":
         return empty_response()
     if request.method == "POST":
+        forbidden = require_permission(request, "manage_tasks", "Задачами можуть керувати адміністратор, адвокат або помічник.")
+        if forbidden:
+            return forbidden
         item = upsert_task(parse_body(request))
         return json_response(serialize_task(item))
     items = Task.objects.select_related("client", "case", "responsible").order_by("due_at", "id")
@@ -1001,6 +1098,9 @@ def documents_api(request):
     if request.method == "OPTIONS":
         return empty_response()
     if request.method == "POST":
+        forbidden = require_permission(request, "manage_documents", "Документами можуть керувати адміністратор, адвокат або помічник.")
+        if forbidden:
+            return forbidden
         item = upsert_document(parse_body(request))
         return json_response(serialize_document(item))
     items = CaseDocument.objects.select_related("case").order_by("case__number", "folder", "title")
@@ -1019,8 +1119,14 @@ def document_detail_api(request, document_id):
     if request.method == "GET":
         return json_response(serialize_document(item))
     if request.method == "DELETE":
+        forbidden = require_permission(request, "manage_documents", "Документами можуть керувати адміністратор, адвокат або помічник.")
+        if forbidden:
+            return forbidden
         item.delete()
         return json_response({"deleted": document_id})
+    forbidden = require_permission(request, "manage_documents", "Документами можуть керувати адміністратор, адвокат або помічник.")
+    if forbidden:
+        return forbidden
     return json_response(serialize_document(upsert_document(parse_body(request), item)))
 
 
@@ -1036,8 +1142,14 @@ def task_detail_api(request, task_id):
     if request.method == "GET":
         return json_response(serialize_task(item))
     if request.method == "DELETE":
+        forbidden = require_permission(request, "manage_tasks", "Задачами можуть керувати адміністратор, адвокат або помічник.")
+        if forbidden:
+            return forbidden
         item.delete()
         return json_response({"deleted": task_id})
+    forbidden = require_permission(request, "manage_tasks", "Задачами можуть керувати адміністратор, адвокат або помічник.")
+    if forbidden:
+        return forbidden
     return json_response(serialize_task(upsert_task(parse_body(request), item)))
 
 
@@ -1047,6 +1159,9 @@ def events_api(request):
     if request.method == "OPTIONS":
         return empty_response()
     if request.method == "POST":
+        forbidden = require_permission(request, "manage_calendar", "Календарем можуть керувати адміністратор, адвокат або помічник.")
+        if forbidden:
+            return forbidden
         item = upsert_event(parse_body(request))
         return json_response(serialize_event(item))
     items = CalendarEvent.objects.select_related("client", "case", "responsible").order_by("starts_at", "id")
@@ -1065,8 +1180,14 @@ def event_detail_api(request, event_id):
     if request.method == "GET":
         return json_response(serialize_event(item))
     if request.method == "DELETE":
+        forbidden = require_permission(request, "manage_calendar", "Календарем можуть керувати адміністратор, адвокат або помічник.")
+        if forbidden:
+            return forbidden
         item.delete()
         return json_response({"deleted": event_id})
+    forbidden = require_permission(request, "manage_calendar", "Календарем можуть керувати адміністратор, адвокат або помічник.")
+    if forbidden:
+        return forbidden
     return json_response(serialize_event(upsert_event(parse_body(request), item)))
 
 
@@ -1076,7 +1197,13 @@ def finance_operations_api(request):
     if request.method == "OPTIONS":
         return empty_response()
     if request.method == "POST":
+        forbidden = require_permission(request, "manage_finance", "Фінансами можуть керувати адміністратор або бухгалтер.")
+        if forbidden:
+            return forbidden
         return json_response(create_finance_operation(parse_body(request)))
+    forbidden = require_permission(request, "view_finance", "Фінанси доступні адміністратору або бухгалтеру.")
+    if forbidden:
+        return forbidden
     return json_response({"results": finance_operations_payload()})
 
 
@@ -1085,6 +1212,9 @@ def finance_operations_api(request):
 def finance_operation_detail_api(request, operation_id):
     if request.method == "OPTIONS":
         return empty_response()
+    forbidden = require_permission(request, "manage_finance", "Фінансами можуть керувати адміністратор або бухгалтер.")
+    if forbidden:
+        return forbidden
     try:
         delete_finance_operation(operation_id)
     except (Payment.DoesNotExist, Expense.DoesNotExist, Invoice.DoesNotExist, CaseDocument.DoesNotExist) as exc:
@@ -1093,7 +1223,10 @@ def finance_operation_detail_api(request, operation_id):
 
 
 @require_GET
-def finance_summary_api(_request):
+def finance_summary_api(request):
+    forbidden = require_permission(request, "view_finance", "Фінанси доступні адміністратору або бухгалтеру.")
+    if forbidden:
+        return forbidden
     return json_response(finance_summary_payload())
 
 
@@ -1123,6 +1256,7 @@ def demo_data_api(request):
 @require_GET
 def bootstrap_api(_request):
     current_user = current_demo_user(_request)
+    can_see_finance = "view_finance" in permissions_for_user(current_user)
     return json_response({
         "session": session_payload(_request),
         "currentUser": serialize_system_user(current_user) if current_user else None,
@@ -1131,8 +1265,8 @@ def bootstrap_api(_request):
         "cases": [serialize_case(item) for item in Case.objects.select_related("client", "responsible").prefetch_related("documents", "tasks", "events").order_by("client__full_name", "opened_at")],
         "tasks": [serialize_task(item) for item in Task.objects.select_related("client", "case", "responsible").order_by("due_at", "id")],
         "events": [serialize_event(item) for item in CalendarEvent.objects.select_related("client", "case", "responsible").order_by("starts_at", "id")],
-        "financeOperations": finance_operations_payload(),
-        "finance": finance_summary_payload(),
+        "financeOperations": finance_operations_payload() if can_see_finance else [],
+        "finance": finance_summary_payload() if can_see_finance else empty_finance_summary_payload(),
         "meta": {
             "clients": Client.objects.count(),
             "cases": Case.objects.count(),

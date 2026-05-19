@@ -3,6 +3,7 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
 
+from apps.accounts.models import UserProfile
 from apps.calendar_app.models import CalendarEvent
 from apps.cases.models import Case, CaseDocument
 from apps.clients.models import Client, ClientCommunication
@@ -184,6 +185,93 @@ class DemoApiTests(TestCase):
         delete_response = self.client.delete(f"/api/users/{created['id']}/")
         self.assertEqual(delete_response.status_code, 200)
         self.assertEqual(delete_response.json(), {"deleted": created["id"]})
+
+    def test_role_permissions_limit_write_actions(self):
+        assistant_login = self.client.post(
+            "/api/auth/login/",
+            {"email": "kravchuk@advocates.crm", "password": "demo12345"},
+            content_type="application/json",
+        )
+        self.assertEqual(assistant_login.status_code, 200)
+        assistant_permissions = assistant_login.json()["permissions"]
+        self.assertFalse(assistant_permissions["canManageClients"])
+        self.assertTrue(assistant_permissions["canManageTasks"])
+
+        client_response = self.client.post(
+            "/api/clients/",
+            {"name": "Клієнт помічника", "phone": "+380 50 000 00 00"},
+            content_type="application/json",
+        )
+        self.assertEqual(client_response.status_code, 403)
+
+        task_response = self.client.post(
+            "/api/tasks/",
+            {
+                "caseId": "2024/12345",
+                "clientId": 1,
+                "title": "Помічник може створити задачу",
+                "status": "Нова",
+                "priority": "Середній",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(task_response.status_code, 200)
+
+        finance_response = self.client.get("/api/finance/operations/")
+        self.assertEqual(finance_response.status_code, 403)
+
+        self.client.post("/api/auth/logout/", {}, content_type="application/json")
+        lawyer_login = self.client.post(
+            "/api/auth/login/",
+            {"email": "melnyk@advocates.crm", "password": "demo12345"},
+            content_type="application/json",
+        )
+        self.assertEqual(lawyer_login.status_code, 200)
+        self.assertTrue(lawyer_login.json()["permissions"]["canManageCases"])
+        self.assertFalse(lawyer_login.json()["permissions"]["canSeeFinance"])
+        lawyer_case_response = self.client.post(
+            "/api/cases/",
+            {
+                "clientId": 1,
+                "title": "Адвокатська справа API",
+                "type": "Цивільна",
+                "stage": "Аналіз",
+                "status": "В роботі",
+                "priority": "Середній",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(lawyer_case_response.status_code, 200)
+        self.assertEqual(self.client.get("/api/finance/summary/").status_code, 403)
+
+        accountant = get_user_model().objects.create_user(
+            username="accountant_api",
+            email="accountant@example.com",
+            password="demo12345",
+            first_name="Бухгалтер API",
+        )
+        UserProfile.objects.create(
+            user=accountant,
+            role="accountant",
+            access_scope="Фінанси та звіти",
+            photo_label="БА",
+        )
+        self.client.post("/api/auth/logout/", {}, content_type="application/json")
+        accountant_login = self.client.post(
+            "/api/auth/login/",
+            {"email": "accountant@example.com", "password": "demo12345"},
+            content_type="application/json",
+        )
+        self.assertEqual(accountant_login.status_code, 200)
+        self.assertTrue(accountant_login.json()["permissions"]["canSeeFinance"])
+        self.assertFalse(accountant_login.json()["permissions"]["canManageTasks"])
+        self.assertEqual(self.client.get("/api/finance/summary/").status_code, 200)
+        accountant_task_response = self.client.post(
+            "/api/tasks/",
+            {"caseId": "2024/12345", "title": "Бухгалтерська задача"},
+            content_type="application/json",
+        )
+        self.assertEqual(accountant_task_response.status_code, 403)
 
     def test_client_create_update_and_delete_api(self):
         payload = {
