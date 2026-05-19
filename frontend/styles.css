@@ -7538,8 +7538,94 @@ button {
   width: min(820px, calc(100vw - 32px));
 }
 
+#settings-access-delivery-dialog {
+  width: min(620px, calc(100vw - 32px));
+}
+
 .settings-user-form {
   gap: 14px;
+}
+
+.settings-access-delivery-form {
+  gap: 12px;
+}
+
+.settings-delivery-user-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #dbe8f6;
+  border-radius: 8px;
+  background: #f7fbff;
+  padding: 10px 12px;
+}
+
+.settings-delivery-user-card > span {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--action-dark);
+  color: white;
+}
+
+.settings-delivery-user-card strong,
+.settings-delivery-user-card em {
+  display: block;
+  min-width: 0;
+}
+
+.settings-delivery-user-card strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.settings-delivery-user-card em {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.settings-delivery-channels {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.settings-delivery-channels button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #dbe8f6;
+  border-radius: 8px;
+  background: white;
+  color: var(--action-dark);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.settings-delivery-channels button.active {
+  border-color: #b8d3f4;
+  background: #f3f8ff;
+  box-shadow: inset 0 0 0 1px rgba(31, 94, 150, 0.08);
+}
+
+.settings-delivery-actions {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+}
+
+.settings-access-delivery-form textarea {
+  resize: vertical;
+  min-height: 170px;
+  line-height: 1.45;
 }
 
 .settings-user-form-grid {
@@ -7739,6 +7825,11 @@ button {
 
   .settings-permissions-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-delivery-channels,
+  .settings-delivery-actions {
+    grid-template-columns: 1fr;
   }
 
   .settings-cases-controls small {

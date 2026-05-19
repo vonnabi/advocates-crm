@@ -149,7 +149,13 @@ test("settings user actions open from the three dot menu", async ({ page }) => {
   const assistantRow = page.locator(".settings-user-row").filter({ hasText: "Кравчук А.В." });
   await assistantRow.locator("[data-settings-user-menu]").click();
   await expect(assistantRow.locator(".settings-user-menu")).toBeVisible();
+  await assistantRow.locator("[data-settings-user-delivery]").click();
+  await expect(page.locator("#settings-access-delivery-dialog")).toHaveJSProperty("open", true);
+  await expect(page.locator("[data-settings-delivery-message]")).toHaveValue(/Логін:/);
+  await expect(page.locator("[data-settings-delivery-message]")).toHaveValue(/Тимчасовий пароль:/);
+  await page.locator("[data-settings-delivery-close]").click();
 
+  await page.locator(".settings-user-row").filter({ hasText: "Кравчук А.В." }).locator("[data-settings-user-menu]").click();
   await assistantRow.locator("[data-settings-user-role]").click();
   await expect(page.locator(".settings-user-row").filter({ hasText: "Кравчук А.В." })).toContainText("Адвокат");
   await expect(page.locator(".settings-audit-card")).toContainText("Змінено роль користувача Кравчук А.В.");

@@ -70,6 +70,44 @@ function addSettingsAudit(state, text, tone = "blue") {
   ].slice(0, 8);
 }
 
+function generateTemporaryPassword() {
+  return `crm${Math.random().toString(36).slice(2, 8)}${Math.floor(10 + Math.random() * 89)}`;
+}
+
+function crmAccessUrl() {
+  return `${window.location.origin}/`;
+}
+
+function buildAccessMessage(user, password, channel = "email") {
+  const greeting = channel === "telegram" ? "Вітаю!" : `Вітаю, ${user.name || "колего"}!`;
+  return [
+    greeting,
+    "",
+    "Для вас створено доступ до Advocates Bureau CRM.",
+    `Посилання: ${crmAccessUrl()}`,
+    `Логін: ${user.email || "email не вказано"}`,
+    `Тимчасовий пароль: ${password}`,
+    "",
+    "Після входу рекомендуємо змінити пароль у профілі."
+  ].join("\n");
+}
+
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-999px";
+  document.body.append(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+}
+
 function userPermissionKeys(user) {
   if (Array.isArray(user?.permissionKeys) && user.permissionKeys.length) return user.permissionKeys;
   if (user?.access && accessPermissionMap[user.access]?.length) return accessPermissionMap[user.access];
@@ -198,6 +236,119 @@ function fillUserDialog(dialog, ctx, userIndex = "") {
   form.querySelector("[data-settings-cases-grid]").innerHTML = "";
   refreshCaseGrid(form, state);
   syncCaseScope(form);
+}
+
+function fillAccessDeliveryDialog(dialog, ctx, userIndex) {
+  const user = ctx.state.settingsUsers[Number(userIndex)];
+  const password = generateTemporaryPassword();
+  const form = dialog.querySelector("#settings-access-delivery-form");
+  form.dataset.userIndex = userIndex;
+  form.dataset.channel = "email";
+  form.elements.password.value = password;
+  dialog.querySelector("[data-settings-delivery-user]").textContent = user?.name || "Користувач";
+  dialog.querySelector("[data-settings-delivery-email]").textContent = user?.email || "email не вказано";
+  dialog.querySelector("[data-settings-delivery-message]").value = buildAccessMessage(user || {}, password, "email");
+  dialog.querySelectorAll("[data-settings-access-channel]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.settingsAccessChannel === "email");
+  });
+}
+
+function refreshAccessDeliveryMessage(dialog, ctx) {
+  const form = dialog.querySelector("#settings-access-delivery-form");
+  const user = ctx.state.settingsUsers[Number(form.dataset.userIndex)];
+  const password = cleanSettingValue(form.elements.password.value) || generateTemporaryPassword();
+  form.elements.password.value = password;
+  const channel = form.dataset.channel || "email";
+  dialog.querySelector("[data-settings-delivery-message]").value = buildAccessMessage(user || {}, password, channel);
+}
+
+async function persistAccessDelivery(dialog, ctx) {
+  const form = dialog.querySelector("#settings-access-delivery-form");
+  const index = Number(form.dataset.userIndex);
+  const user = ctx.state.settingsUsers[index];
+  const password = cleanSettingValue(form.elements.password.value);
+  if (!user || !password) return null;
+  let updatedUser = { ...user, password };
+  if (shouldUseApi(ctx.state)) {
+    updatedUser = normalizeSettingsUser(await saveSettingsUserToApi(updatedUser));
+  } else {
+    updatedUser.password = password;
+  }
+  ctx.state.settingsUsers[index] = normalizeSettingsUser(updatedUser);
+  return ctx.state.settingsUsers[index];
+}
+
+function ensureAccessDeliveryDialog(ctx) {
+  const { icon } = ctx;
+  let dialog = document.querySelector("#settings-access-delivery-dialog");
+  if (dialog) return dialog;
+  dialog = document.createElement("dialog");
+  dialog.id = "settings-access-delivery-dialog";
+  dialog.innerHTML = `
+    <form method="dialog" class="modal-form settings-access-delivery-form" id="settings-access-delivery-form">
+      <div class="modal-head">
+        <div>
+          <h2>Надіслати доступ</h2>
+          <p class="muted">Підготуйте повідомлення з логіном, тимчасовим паролем і посиланням на CRM.</p>
+        </div>
+        <button class="ghost" type="button" data-settings-delivery-close>Закрити</button>
+      </div>
+      <section class="settings-delivery-user-card">
+        <span>${icon("mail")}</span>
+        <div>
+          <strong data-settings-delivery-user></strong>
+          <em data-settings-delivery-email></em>
+        </div>
+      </section>
+      <div class="settings-delivery-channels" role="group" aria-label="Канал повідомлення">
+        <button type="button" class="active" data-settings-access-channel="email">${icon("mail")} Email</button>
+        <button type="button" data-settings-access-channel="telegram">${icon("telegram")} Telegram</button>
+        <button type="button" data-settings-access-channel="sms">${icon("message")} SMS</button>
+      </div>
+      <label>Тимчасовий пароль
+        <input name="password" type="text" data-settings-delivery-password>
+      </label>
+      <label>Повідомлення
+        <textarea readonly rows="9" data-settings-delivery-message></textarea>
+      </label>
+      <div class="settings-delivery-actions">
+        <button type="button" class="secondary" data-settings-delivery-refresh>${icon("refresh")} Новий пароль</button>
+        <button type="button" class="primary" data-settings-delivery-copy>${icon("check")} Оновити пароль і скопіювати</button>
+      </div>
+    </form>
+  `;
+  document.body.append(dialog);
+  const form = dialog.querySelector("#settings-access-delivery-form");
+  dialog.querySelector("[data-settings-delivery-close]")?.addEventListener("click", () => dialog.close());
+  dialog.querySelectorAll("[data-settings-access-channel]").forEach((button) => button.addEventListener("click", () => {
+    form.dataset.channel = button.dataset.settingsAccessChannel;
+    dialog.querySelectorAll("[data-settings-access-channel]").forEach((node) => node.classList.toggle("active", node === button));
+    refreshAccessDeliveryMessage(dialog, ctx);
+  }));
+  form.elements.password?.addEventListener("input", () => refreshAccessDeliveryMessage(dialog, ctx));
+  dialog.querySelector("[data-settings-delivery-refresh]")?.addEventListener("click", () => {
+    form.elements.password.value = generateTemporaryPassword();
+    refreshAccessDeliveryMessage(dialog, ctx);
+  });
+  dialog.querySelector("[data-settings-delivery-copy]")?.addEventListener("click", async () => {
+    const button = dialog.querySelector("[data-settings-delivery-copy]");
+    button.disabled = true;
+    try {
+      const user = await persistAccessDelivery(dialog, ctx);
+      refreshAccessDeliveryMessage(dialog, ctx);
+      await copyTextToClipboard(dialog.querySelector("[data-settings-delivery-message]").value);
+      addSettingsAudit(ctx.state, `Підготовлено доступ для ${user?.name || "користувача"}.`, "green");
+      ctx.state.settingsOpenUserMenu = "";
+      ctx.saveNavigationState();
+      renderSettingsScreen(ctx);
+      ctx.showToast("Доступ скопійовано. Тимчасовий пароль оновлено.");
+    } catch (_error) {
+      ctx.showToast("Не вдалося підготувати доступ.", "danger");
+    } finally {
+      button.disabled = false;
+    }
+  });
+  return dialog;
 }
 
 function ensureInviteDialog(ctx) {
@@ -419,6 +570,7 @@ export function renderSettingsScreen(ctx) {
                 <button type="button" class="icon-button compact" data-settings-user-menu="${index}" aria-label="Дії користувача" aria-expanded="${state.settingsOpenUserMenu === String(index) ? "true" : "false"}">⋮</button>
                 <div class="settings-user-menu" data-settings-user-menu-panel="${index}" ${state.settingsOpenUserMenu === String(index) ? "" : "hidden"}>
                   <button type="button" data-settings-user-edit="${index}">${icon("edit")} Картка доступу</button>
+                  <button type="button" data-settings-user-delivery="${index}">${icon("mail")} Надіслати доступ</button>
                   ${user.role === "Адміністратор" ? "" : `<button type="button" data-settings-user-role="${index}">${icon("edit")} Змінити роль</button>`}
                   <button type="button" data-settings-user-access="${index}">${icon("check")} Оновити доступ</button>
                   ${user.role === "Адміністратор" ? "" : `<button type="button" class="danger" data-settings-user-delete="${index}">${icon("trash")} Видалити</button>`}
@@ -525,6 +677,14 @@ export function renderSettingsScreen(ctx) {
     const index = button.dataset.settingsUserEdit;
     const dialog = ensureInviteDialog(ctx);
     fillUserDialog(dialog, ctx, index);
+    state.settingsOpenUserMenu = "";
+    renderSettingsScreen(ctx);
+    dialog.showModal();
+  }));
+  document.querySelectorAll("[data-settings-user-delivery]").forEach((button) => button.addEventListener("click", () => {
+    const index = button.dataset.settingsUserDelivery;
+    const dialog = ensureAccessDeliveryDialog(ctx);
+    fillAccessDeliveryDialog(dialog, ctx, index);
     state.settingsOpenUserMenu = "";
     renderSettingsScreen(ctx);
     dialog.showModal();
