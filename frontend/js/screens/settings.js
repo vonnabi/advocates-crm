@@ -127,6 +127,47 @@ function userPermissionKeys(user) {
   return rolePermissionMap[user?.role] || rolePermissionMap["Помічник"];
 }
 
+function formatUserDate(value) {
+  if (!value) return "ще не входив";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "ще не входив";
+  return date.toLocaleDateString("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+function permissionLabel(key) {
+  return permissionOptions.find((item) => item.key === key)?.label || key;
+}
+
+function renderPermissionSummary(user, icon) {
+  const keys = userPermissionKeys(user);
+  const visible = keys.slice(0, 4);
+  const rest = Math.max(0, keys.length - visible.length);
+  if (!keys.length) {
+    return `<span class="settings-user-permission-chip muted-chip">${icon("home")} Базовий доступ</span>`;
+  }
+  return [
+    ...visible.map((key) => {
+      const option = permissionOptions.find((item) => item.key === key);
+      return `<span class="settings-user-permission-chip">${icon(option?.icon || "check")} ${permissionLabel(key)}</span>`;
+    }),
+    rest ? `<span class="settings-user-permission-chip more-chip">+${rest}</span>` : ""
+  ].join("");
+}
+
+function userCaseSummary(user) {
+  if (user.caseScope === "all") return "усі справи";
+  const count = user.assignedCasesCount || selectedCaseIds(user).size;
+  if (!count) return "справи не вибрані";
+  return `${count} ${count === 1 ? "справа" : count < 5 ? "справи" : "справ"}`;
+}
+
+function renderCasePreview(user) {
+  if (user.caseScope === "all") return "Повний доступ до всіх справ бюро";
+  const cases = Array.isArray(user.assignedCases) ? user.assignedCases.slice(0, 2) : [];
+  if (!cases.length) return "Доступ до справ ще не налаштовано";
+  return cases.map((caseItem) => `№${caseItem.id} · ${caseItem.client || caseItem.title || "справа"}`).join(" / ");
+}
+
 function selectedCaseIds(user) {
   const direct = Array.isArray(user?.assignedCaseIds) ? user.assignedCaseIds : [];
   const nested = Array.isArray(user?.assignedCases) ? user.assignedCases.map((item) => item.id) : [];
@@ -570,18 +611,31 @@ export function renderSettingsScreen(ctx) {
         </div>
         <div class="settings-users-list">
           ${users.map((user, index) => `<article class="settings-user-row">
-            <div class="avatar">${user.photo}</div>
-            <div class="settings-user-main">
-              <strong>${user.name}</strong>
-              <span>${user.email || "email не вказано"}</span>
+            <div class="settings-user-identity">
+              <div class="avatar settings-user-avatar">${user.photo}</div>
+              <div class="settings-user-main">
+                <strong>${user.name}</strong>
+                <span>${user.email || "email не вказано"}</span>
+                <em>${user.role}</em>
+              </div>
             </div>
-            <div class="settings-user-access">
-              <b>${user.role}</b>
-              <em>${user.access}</em>
-            </div>
-            <div class="settings-user-scope">
-              <span>${icon("briefcase")} ${user.caseScope === "all" ? "Всі справи" : `${user.assignedCasesCount || selectedCaseIds(user).size} справ`}</span>
-              <small>${userPermissionKeys(user).length} доступів</small>
+            <div class="settings-user-details">
+              <div class="settings-user-data-grid">
+                <span>
+                  <small>Доступ</small>
+                  <b>${user.access}</b>
+                </span>
+                <span>
+                  <small>Справи</small>
+                  <b>${userCaseSummary(user)}</b>
+                </span>
+                <span>
+                  <small>Останній вхід</small>
+                  <b>${formatUserDate(user.lastLoginAt)}</b>
+                </span>
+              </div>
+              <div class="settings-user-case-preview">${renderCasePreview(user)}</div>
+              <div class="settings-user-permissions">${renderPermissionSummary(user, icon)}</div>
             </div>
             <div class="settings-user-actions">
               ${renderAccessStatus(user, icon)}
