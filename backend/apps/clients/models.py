@@ -27,6 +27,7 @@ class Client(models.Model):
     risk_level = models.CharField(max_length=64, blank=True)
     next_action = models.CharField(max_length=255, blank=True)
     notes = models.TextField(blank=True)
+    is_demo = models.BooleanField(default=False, db_index=True)
     added_at = models.DateField(null=True, blank=True)
     last_contact_at = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -44,6 +45,7 @@ class ClientCommunication(models.Model):
     status = models.CharField(max_length=64, blank=True)
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     case = models.ForeignKey("cases.Case", on_delete=models.SET_NULL, null=True, blank=True, related_name="client_communications")
+    is_demo = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

@@ -11,9 +11,9 @@ from django.utils import timezone
 
 from apps.accounts.models import UserProfile
 from apps.calendar_app.models import CalendarEvent
+from apps.cases.demo_data import clear_demo_business_data
 from apps.cases.models import Case, CaseDocument
 from apps.clients.models import Client, ClientCommunication
-from apps.finance.models import Expense, Invoice, Payment
 from apps.tasks.models import Task
 
 
@@ -126,15 +126,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         if options["clear"]:
-            Payment.objects.all().delete()
-            Invoice.objects.all().delete()
-            Expense.objects.all().delete()
-            CalendarEvent.objects.all().delete()
-            Task.objects.all().delete()
-            CaseDocument.objects.all().delete()
-            Case.objects.all().delete()
-            ClientCommunication.objects.all().delete()
-            Client.objects.all().delete()
+            clear_demo_business_data()
 
         clients_payload = load_json("clients.json")
         cases_payload = load_json("cases.json")
@@ -148,31 +140,31 @@ class Command(BaseCommand):
         clients = {}
         for row in clients_payload:
             manager = user_for_name(row.get("manager"))
-            client, _ = Client.objects.update_or_create(
-                id=row["id"],
-                defaults={
-                    "full_name": row.get("name", ""),
-                    "client_type": row.get("clientType", ""),
-                    "phone": row.get("phone", ""),
-                    "email": row.get("email", ""),
-                    "address": row.get("address", ""),
-                    "telegram_username": row.get("telegramUsername", ""),
-                    "telegram_connected": bool(row.get("telegram")),
-                    "photo_url": row.get("photoUrl", ""),
-                    "show_photo": bool(row.get("showPhoto")),
-                    "request_summary": row.get("request", ""),
-                    "source": row.get("source", ""),
-                    "status": row.get("status", ""),
-                    "responsible": manager,
-                    "consent_to_marketing": bool(row.get("consent")),
-                    "risk_level": row.get("risk", ""),
-                    "next_action": row.get("nextAction", ""),
-                    "notes": row.get("notes", ""),
-                    "added_at": parse_date(row.get("added")),
-                    "last_contact_at": parse_date(row.get("lastContact")),
-                },
-            )
-            client.communications.all().delete()
+            client = Client.objects.filter(id=row["id"], is_demo=True).first()
+            if not client:
+                client = Client(id=row["id"]) if not Client.objects.filter(id=row["id"]).exists() else Client()
+            client.full_name = row.get("name", "")
+            client.client_type = row.get("clientType", "")
+            client.phone = row.get("phone", "")
+            client.email = row.get("email", "")
+            client.address = row.get("address", "")
+            client.telegram_username = row.get("telegramUsername", "")
+            client.telegram_connected = bool(row.get("telegram"))
+            client.photo_url = row.get("photoUrl", "")
+            client.show_photo = bool(row.get("showPhoto"))
+            client.request_summary = row.get("request", "")
+            client.source = row.get("source", "")
+            client.status = row.get("status", "")
+            client.responsible = manager
+            client.consent_to_marketing = bool(row.get("consent"))
+            client.risk_level = row.get("risk", "")
+            client.next_action = row.get("nextAction", "")
+            client.notes = row.get("notes", "")
+            client.added_at = parse_date(row.get("added"))
+            client.last_contact_at = parse_date(row.get("lastContact"))
+            client.is_demo = True
+            client.save()
+            client.communications.filter(is_demo=True).delete()
             for communication in row.get("communications", []):
                 ClientCommunication.objects.create(
                     client=client,
@@ -181,44 +173,47 @@ class Command(BaseCommand):
                     title=communication.get("title", ""),
                     status=communication.get("status", ""),
                     author=manager,
+                    is_demo=True,
                 )
             clients[client.id] = client
+            clients[row["id"]] = client
 
         cases = {}
         for row in cases_payload:
-            client = clients.get(row.get("clientId")) or Client.objects.filter(id=row.get("clientId")).first()
+            client = clients.get(row.get("clientId")) or Client.objects.filter(id=row.get("clientId"), is_demo=True).first()
             if not client:
                 continue
             responsible = user_for_name(row.get("responsible"))
             income = decimal_value(row.get("income"))
             debt = decimal_value(row.get("debt"))
             paid = decimal_value(row.get("paid")) if "paid" in row else max(Decimal("0"), income - debt)
-            item, _ = Case.objects.update_or_create(
-                number=row["id"],
-                defaults={
-                    "title": row.get("title", ""),
-                    "client": client,
-                    "practice_area": row.get("type", ""),
-                    "stage": row.get("stage", ""),
-                    "status": row.get("status", ""),
-                    "priority": row.get("priority", ""),
-                    "responsible": responsible,
-                    "court_or_authority": row.get("court", ""),
-                    "authority_type": row.get("authorityType", ""),
-                    "authority_address": row.get("authorityAddress", ""),
-                    "authority_contact": row.get("authorityContact", ""),
-                    "description": row.get("description", ""),
-                    "opened_at": parse_date(row.get("opened")),
-                    "deadline_at": parse_date(row.get("deadline")),
-                    "income_amount": income,
-                    "paid_amount": paid,
-                    "debt_amount": debt,
-                    "finance_comment": row.get("financeComment", ""),
-                    "history": row.get("history", []),
-                },
-            )
-            item.documents.all().delete()
-            item.tasks.all().delete()
+            item = Case.objects.filter(number=row["id"], is_demo=True).first()
+            if not item and Case.objects.filter(number=row["id"]).exists():
+                continue
+            item = item or Case(number=row["id"])
+            item.title = row.get("title", "")
+            item.client = client
+            item.practice_area = row.get("type", "")
+            item.stage = row.get("stage", "")
+            item.status = row.get("status", "")
+            item.priority = row.get("priority", "")
+            item.responsible = responsible
+            item.court_or_authority = row.get("court", "")
+            item.authority_type = row.get("authorityType", "")
+            item.authority_address = row.get("authorityAddress", "")
+            item.authority_contact = row.get("authorityContact", "")
+            item.description = row.get("description", "")
+            item.opened_at = parse_date(row.get("opened"))
+            item.deadline_at = parse_date(row.get("deadline"))
+            item.income_amount = income
+            item.paid_amount = paid
+            item.debt_amount = debt
+            item.finance_comment = row.get("financeComment", "")
+            item.history = row.get("history", [])
+            item.is_demo = True
+            item.save()
+            item.documents.filter(is_demo=True).delete()
+            item.tasks.filter(is_demo=True).delete()
             for document in row.get("documents", []):
                 CaseDocument.objects.create(
                     case=item,
@@ -230,6 +225,7 @@ class Command(BaseCommand):
                     responsible_name=document.get("responsible", row.get("responsible", "")),
                     comment=document.get("comment", ""),
                     history=document.get("history", []),
+                    is_demo=True,
                 )
             for folder in row.get("folders", []):
                 for document in folder.get("files", []):
@@ -245,6 +241,7 @@ class Command(BaseCommand):
                         responsible_name=document.get("responsible", row.get("responsible", "")),
                         comment=document.get("comment", ""),
                         history=document.get("history", []),
+                        is_demo=True,
                     )
             for task in row.get("tasks", []):
                 planner_at = None
@@ -272,34 +269,35 @@ class Command(BaseCommand):
                     subtasks=task.get("subtasks", []),
                     comments=task.get("comments", []),
                     history=task.get("history", []),
+                    is_demo=True,
                 )
             cases[item.number] = item
 
-        CalendarEvent.objects.all().delete()
+        CalendarEvent.objects.filter(is_demo=True).delete()
         for row in events_payload:
-            case = cases.get(row.get("caseId")) or Case.objects.filter(number=row.get("caseId")).first()
-            client = clients.get(row.get("clientId")) or Client.objects.filter(id=row.get("clientId")).first()
-            CalendarEvent.objects.update_or_create(
-                id=row["id"],
-                defaults={
-                    "title": row.get("title", ""),
-                    "event_type": row.get("type", ""),
-                    "starts_at": date_time_from_event(row, "time"),
-                    "ends_at": date_time_from_event(row, "endTime"),
-                    "client": client,
-                    "case": case,
-                    "authority": row.get("authority", ""),
-                    "location": row.get("location", ""),
-                    "responsible": user_for_name(row.get("responsible")),
-                    "description": row.get("description", ""),
-                    "recurrence": row.get("recurrence", ""),
-                    "reminder_before": row.get("reminderBefore", ""),
-                    "reminder_channels": row.get("reminderChannels", ""),
-                    "reminder_recipients": row.get("reminderRecipients", ""),
-                    "reminder_log": row.get("reminderLog", []),
-                    "status": row.get("status", ""),
-                },
-            )
+            case = cases.get(row.get("caseId")) or Case.objects.filter(number=row.get("caseId"), is_demo=True).first()
+            client = clients.get(row.get("clientId")) or Client.objects.filter(id=row.get("clientId"), is_demo=True).first()
+            event = CalendarEvent.objects.filter(id=row["id"], is_demo=True).first()
+            if not event:
+                event = CalendarEvent(id=row["id"]) if not CalendarEvent.objects.filter(id=row["id"]).exists() else CalendarEvent()
+            event.title = row.get("title", "")
+            event.event_type = row.get("type", "")
+            event.starts_at = date_time_from_event(row, "time")
+            event.ends_at = date_time_from_event(row, "endTime")
+            event.client = client
+            event.case = case
+            event.authority = row.get("authority", "")
+            event.location = row.get("location", "")
+            event.responsible = user_for_name(row.get("responsible"))
+            event.description = row.get("description", "")
+            event.recurrence = row.get("recurrence", "")
+            event.reminder_before = row.get("reminderBefore", "")
+            event.reminder_channels = row.get("reminderChannels", "")
+            event.reminder_recipients = row.get("reminderRecipients", "")
+            event.reminder_log = row.get("reminderLog", [])
+            event.status = row.get("status", "")
+            event.is_demo = True
+            event.save()
 
         if options.get("verbosity", 1) > 0:
             self.stdout.write(self.style.SUCCESS(

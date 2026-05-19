@@ -1,4 +1,4 @@
-import { clearDemoDataInApi, loginToApi, logoutFromApi, restoreDemoDataInApi, shouldUseApi } from "./api.js?v=demo-data-1";
+import { clearDemoDataInApi, loginToApi, logoutFromApi, restoreDemoDataInApi, shouldUseApi } from "./api.js?v=demo-data-2";
 
 const DEMO_URL = "https://vonnabi.github.io/advocates-crm/";
 
@@ -139,7 +139,7 @@ function ensureDemoDataOverlay(ctx) {
       const payload = await clearDemoDataInApi();
       state.demoDataStatus = payload.demoData;
       syncDemoDataToggle(state);
-      showToast("Демо-дані очищено. Перезавантажую чистий кабінет.");
+      showToast("Демо-записи очищено. Ваші додані дані залишаються.");
       window.setTimeout(() => window.location.reload(), 500);
     } catch (_error) {
       showToast("Не вдалося очистити демо-дані.", "warning");
@@ -168,7 +168,7 @@ function openDemoDataOverlay(ctx) {
   const status = ctx.state.demoDataStatus || {};
   const enabled = Boolean(status.enabled);
   overlay.querySelector("[data-demo-data-text]").textContent = enabled
-    ? "Вимкнення очистить клієнтів, справи, задачі, документи, календар, фінанси та розсилки демо-кабінету. Користувачі, ролі та налаштування залишаться."
+    ? "Вимкнення очистить тільки записи, позначені як демо: клієнтів, справи, задачі, документи, календар і фінанси. Те, що ви або замовник додали вручну, залишиться."
     : "Демо-кабінет зараз порожній. Можна відновити стартовий набір клієнтів, справ, задач, документів, календаря та фінансів.";
   const counts = status.counts || {};
   overlay.querySelector("[data-demo-data-counts]").innerHTML = [

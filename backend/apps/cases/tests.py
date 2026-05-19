@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase
+from django.utils import timezone
 
 from apps.calendar_app.models import CalendarEvent
 from apps.cases.models import Case, CaseDocument
@@ -21,12 +22,40 @@ class DemoApiTests(TestCase):
         payload = response.json()
         self.assertEqual({key: payload["meta"][key] for key in ("clients", "cases", "tasks", "events")}, {"clients": 4, "cases": 4, "tasks": 9, "events": 6})
         self.assertTrue(payload["meta"]["demoData"]["enabled"])
+        self.assertEqual(Client.objects.filter(is_demo=True).count(), 4)
+        self.assertEqual(Case.objects.filter(is_demo=True).count(), 4)
+        self.assertEqual(Task.objects.filter(is_demo=True).count(), 9)
+        self.assertEqual(CalendarEvent.objects.filter(is_demo=True).count(), 6)
         self.assertEqual(payload["finance"]["income"], 107000.0)
         self.assertEqual(payload["finance"]["debt"], 23500.0)
         self.assertTrue(payload["clients"])
         self.assertTrue(payload["cases"])
 
     def test_demo_data_api_clears_and_restores_business_data(self):
+        manual_client = Client.objects.create(
+            full_name="Реальний клієнт",
+            client_type="Фізична особа",
+            phone="+380 99 111 22 33",
+            email="real.client@example.com",
+            status="active",
+        )
+        manual_case = Case.objects.create(
+            number="2026/9001",
+            title="Реальна справа",
+            client=manual_client,
+            practice_area="Цивільна",
+            status="В роботі",
+            priority="Середній",
+            opened_at=timezone.localdate(),
+        )
+        Task.objects.create(
+            title="Реальна задача",
+            client=manual_client,
+            case=manual_case,
+            status="Нова",
+            priority="Середній",
+        )
+
         status_response = self.client.get("/api/demo-data/")
         self.assertEqual(status_response.status_code, 200)
         self.assertTrue(status_response.json()["enabled"])
@@ -38,17 +67,20 @@ class DemoApiTests(TestCase):
         )
         self.assertEqual(clear_response.status_code, 200)
         self.assertFalse(clear_response.json()["demoData"]["enabled"])
-        self.assertEqual(Client.objects.count(), 0)
-        self.assertEqual(Case.objects.count(), 0)
-        self.assertEqual(Task.objects.count(), 0)
-        self.assertEqual(CaseDocument.objects.count(), 0)
-        self.assertEqual(CalendarEvent.objects.count(), 0)
-        self.assertEqual(Payment.objects.count() + Invoice.objects.count() + Expense.objects.count(), 0)
+        self.assertEqual(Client.objects.filter(is_demo=True).count(), 0)
+        self.assertEqual(Case.objects.filter(is_demo=True).count(), 0)
+        self.assertEqual(Task.objects.filter(is_demo=True).count(), 0)
+        self.assertEqual(CaseDocument.objects.filter(is_demo=True).count(), 0)
+        self.assertEqual(CalendarEvent.objects.filter(is_demo=True).count(), 0)
+        self.assertEqual(Payment.objects.filter(is_demo=True).count() + Invoice.objects.filter(is_demo=True).count() + Expense.objects.filter(is_demo=True).count(), 0)
+        self.assertTrue(Client.objects.filter(pk=manual_client.pk, is_demo=False).exists())
+        self.assertTrue(Case.objects.filter(number=manual_case.number, is_demo=False).exists())
+        self.assertTrue(Task.objects.filter(title="Реальна задача", is_demo=False).exists())
         self.assertGreater(get_user_model().objects.count(), 0)
 
         empty_bootstrap = self.client.get("/api/bootstrap/")
         self.assertEqual(empty_bootstrap.status_code, 200)
-        self.assertEqual(empty_bootstrap.json()["meta"]["clients"], 0)
+        self.assertEqual(empty_bootstrap.json()["meta"]["clients"], 1)
 
         restore_response = self.client.post(
             "/api/demo-data/",
@@ -57,11 +89,39 @@ class DemoApiTests(TestCase):
         )
         self.assertEqual(restore_response.status_code, 200)
         self.assertTrue(restore_response.json()["demoData"]["enabled"])
-        self.assertEqual(Client.objects.count(), 4)
-        self.assertEqual(Case.objects.count(), 4)
-        self.assertEqual(Task.objects.count(), 9)
+        self.assertEqual(Client.objects.filter(is_demo=True).count(), 4)
+        self.assertEqual(Case.objects.filter(is_demo=True).count(), 4)
+        self.assertEqual(Task.objects.filter(is_demo=True).count(), 9)
+        self.assertEqual(CalendarEvent.objects.filter(is_demo=True).count(), 6)
+        self.assertEqual(Client.objects.count(), 5)
+        self.assertEqual(Case.objects.count(), 5)
+        self.assertEqual(Task.objects.count(), 10)
         self.assertEqual(CalendarEvent.objects.count(), 6)
         self.assertGreater(ClientCommunication.objects.count(), 0)
+
+    def test_demo_clear_preserves_user_records_attached_to_demo_parent(self):
+        demo_case = Case.objects.get(number="2024/12345")
+        demo_client_id = demo_case.client_id
+        user_document = CaseDocument.objects.create(
+            case=demo_case,
+            title="Квитанція замовника.pdf",
+            document_type="Документ",
+            status="Подано",
+        )
+
+        response = self.client.post(
+            "/api/demo-data/",
+            {"action": "clear"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["demoData"]["enabled"])
+        self.assertTrue(CaseDocument.objects.filter(pk=user_document.pk, is_demo=False).exists())
+        self.assertTrue(Case.objects.filter(number="2024/12345", is_demo=False).exists())
+        self.assertTrue(Client.objects.filter(pk=demo_client_id, is_demo=False).exists())
+        self.assertEqual(Case.objects.filter(is_demo=True).count(), 0)
+        self.assertEqual(Client.objects.filter(is_demo=True).count(), 0)
 
     def test_list_endpoints_are_available(self):
         endpoints = [

@@ -37,6 +37,7 @@ class CalendarEvent(models.Model):
     reminder_recipients = models.CharField(max_length=128, blank=True)
     reminder_log = models.JSONField(default=list, blank=True)
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.PLANNED)
+    is_demo = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -58,3 +59,4 @@ class Reminder(models.Model):
     client_recipient = models.ForeignKey("clients.Client", on_delete=models.SET_NULL, null=True, blank=True)
     sent_at = models.DateTimeField(null=True, blank=True)
     delivery_status = models.CharField(max_length=64, default="pending")
+    is_demo = models.BooleanField(default=False, db_index=True)

@@ -11,6 +11,7 @@ class Invoice(models.Model):
     issued_at = models.DateField()
     due_at = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=64, default="draft")
+    is_demo = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -25,6 +26,7 @@ class Payment(models.Model):
     paid_at = models.DateField()
     method = models.CharField(max_length=128, blank=True)
     comment = models.TextField(blank=True)
+    is_demo = models.BooleanField(default=False, db_index=True)
 
     def __str__(self):
         return f"{self.amount} · {self.client}"
@@ -37,6 +39,7 @@ class Expense(models.Model):
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     spent_at = models.DateField()
     comment = models.TextField(blank=True)
+    is_demo = models.BooleanField(default=False, db_index=True)
 
     def __str__(self):
         return f"{self.category}: {self.amount}"

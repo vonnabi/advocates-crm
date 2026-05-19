@@ -1,4 +1,4 @@
-import { apiBaseUrl } from "./api.js?v=demo-data-1";
+import { apiBaseUrl } from "./api.js?v=demo-data-2";
 
 async function readDataFile(path) {
   const response = await fetch(new URL(path, import.meta.url));

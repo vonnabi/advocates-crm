@@ -31,6 +31,7 @@ class Task(models.Model):
     subtasks = models.JSONField(default=list, blank=True)
     comments = models.JSONField(default=list, blank=True)
     history = models.JSONField(default=list, blank=True)
+    is_demo = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

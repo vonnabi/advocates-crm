@@ -6,7 +6,6 @@ from hashlib import sha1
 
 from django.contrib.auth import authenticate, get_user_model, login as auth_login, logout as auth_logout
 from django.core.management import call_command
-from django.db import transaction
 from django.db.models import Sum
 from django.http import Http404, HttpResponse, JsonResponse
 from django.utils import timezone
@@ -14,10 +13,10 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
 from apps.accounts.models import UserProfile
-from apps.calendar_app.models import CalendarEvent, Reminder
+from apps.calendar_app.models import CalendarEvent
+from apps.cases.demo_data import clear_demo_business_data, demo_data_counts
 from apps.cases.models import Case, CaseDocument
 from apps.clients.models import Client, ClientCommunication
-from apps.communications.models import Campaign, MessageDelivery, MessageTemplate
 from apps.finance.models import Expense, Invoice, Payment
 from apps.tasks.models import Task
 
@@ -773,16 +772,7 @@ def finance_summary_payload():
 
 
 def demo_data_status_payload():
-    counts = {
-        "clients": Client.objects.count(),
-        "cases": Case.objects.count(),
-        "tasks": Task.objects.count(),
-        "documents": CaseDocument.objects.count(),
-        "events": CalendarEvent.objects.count(),
-        "financeOperations": Payment.objects.count() + Invoice.objects.count() + Expense.objects.count(),
-        "communications": ClientCommunication.objects.count(),
-        "campaigns": Campaign.objects.count(),
-    }
+    counts = demo_data_counts()
     return {
         "enabled": any(counts.values()),
         "counts": counts,
@@ -791,20 +781,7 @@ def demo_data_status_payload():
 
 
 def clear_crm_business_data():
-    with transaction.atomic():
-        MessageDelivery.objects.all().delete()
-        Campaign.objects.all().delete()
-        MessageTemplate.objects.all().delete()
-        Reminder.objects.all().delete()
-        Payment.objects.all().delete()
-        Invoice.objects.all().delete()
-        Expense.objects.all().delete()
-        CalendarEvent.objects.all().delete()
-        Task.objects.all().delete()
-        CaseDocument.objects.all().delete()
-        Case.objects.all().delete()
-        ClientCommunication.objects.all().delete()
-        Client.objects.all().delete()
+    clear_demo_business_data()
 
 
 def require_demo_admin(request):

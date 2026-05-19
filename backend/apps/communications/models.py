@@ -6,6 +6,7 @@ class MessageTemplate(models.Model):
     title = models.CharField(max_length=255)
     category = models.CharField(max_length=128)
     body = models.TextField()
+    is_demo = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -28,6 +29,7 @@ class Campaign(models.Model):
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     scheduled_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.DRAFT)
+    is_demo = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -42,3 +44,4 @@ class MessageDelivery(models.Model):
     error = models.TextField(blank=True)
     sent_at = models.DateTimeField(null=True, blank=True)
     delivered_at = models.DateTimeField(null=True, blank=True)
+    is_demo = models.BooleanField(default=False, db_index=True)
