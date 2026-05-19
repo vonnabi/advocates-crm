@@ -130,7 +130,13 @@ export function normalizeSettingsUser(user) {
     email: user.email || "",
     role: user.role || "Помічник",
     access: user.access || "Задачі та документи",
-    photo: user.photo || (user.name || "К").slice(0, 1)
+    photo: user.photo || (user.name || "К").slice(0, 1),
+    permissionKeys: Array.isArray(user.permissionKeys) ? user.permissionKeys : [],
+    permissions: user.permissions || {},
+    assignedCaseIds: Array.isArray(user.assignedCaseIds) ? user.assignedCaseIds : [],
+    assignedCases: Array.isArray(user.assignedCases) ? user.assignedCases : [],
+    assignedCasesCount: Number(user.assignedCasesCount || user.assignedCaseIds?.length || 0),
+    caseScope: user.caseScope || (user.role === "Адміністратор" ? "all" : "assigned")
   };
 }
 

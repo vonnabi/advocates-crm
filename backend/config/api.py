@@ -136,6 +136,16 @@ ROLE_PERMISSIONS = {
 }
 
 
+PERMISSION_KEYS = (
+    "manage_users",
+    "manage_clients",
+    "manage_cases",
+    "manage_tasks",
+    "manage_documents",
+    "manage_calendar",
+    "view_finance",
+    "manage_finance",
+)
 ROLE_LABELS = {value: label for label, (value, _access) in ROLE_ACCESS.items()}
 CASE_MEMBER_ROLES = {
     "lawyer": CaseMember.Role.LAWYER,
@@ -166,14 +176,30 @@ def serialize_system_user(user):
     profile = profile_for_user(user)
     name = user_name(user)
     role_label = profile.get_role_display()
+    permission_keys = sorted(permissions_for_user(user), key=lambda item: PERMISSION_KEYS.index(item) if item in PERMISSION_KEYS else 999)
+    assigned_cases = assigned_cases_for_user(user)
     return {
         "id": user.id,
         "name": name,
         "email": user.email,
         "role": role_label,
+        "roleKey": profile.role,
         "access": profile.access_scope or ROLE_ACCESS.get(role_label, ("", ""))[1],
+        "permissionKeys": permission_keys,
+        "permissions": permission_flags(permission_keys),
         "photo": profile.photo_label or initials_from_name(name),
         "active": user.is_active and profile.is_active_member,
+        "caseScope": "all" if profile.role == "admin" else "assigned",
+        "assignedCaseIds": [case.number for case in assigned_cases],
+        "assignedCases": [
+            {
+                "id": case.number,
+                "title": case.title,
+                "client": case.client.full_name if case.client else "",
+            }
+            for case in assigned_cases[:8]
+        ],
+        "assignedCasesCount": assigned_cases.count(),
     }
 
 
@@ -201,8 +227,17 @@ def upsert_system_user(data, user=None):
     profile.role = role
     profile.access_scope = access
     profile.photo_label = data.get("photo") or initials_from_name(name)
+    if "permissionKeys" in data:
+        profile.module_permissions = sanitize_permission_keys(data.get("permissionKeys"))
+    elif "permissions" in data:
+        profile.module_permissions = sanitize_permission_keys([
+            key for key, enabled in (data.get("permissions") or {}).items() if enabled
+        ])
+    elif "role" in data:
+        profile.module_permissions = []
     profile.is_active_member = True
     profile.save()
+    update_user_case_members(user, data)
     return user
 
 
@@ -905,7 +940,28 @@ def require_demo_admin(request):
 
 def permissions_for_user(user):
     profile = profile_for_user(user) if user else None
+    if profile and profile.module_permissions:
+        return set(sanitize_permission_keys(profile.module_permissions))
     return set(ROLE_PERMISSIONS.get(profile.role if profile else "", set()))
+
+
+def sanitize_permission_keys(keys):
+    allowed = set(PERMISSION_KEYS)
+    return [key for key in keys or [] if key in allowed]
+
+
+def permission_flags(keys):
+    permissions = set(keys or [])
+    return {
+        "canManageUsers": "manage_users" in permissions,
+        "canManageClients": "manage_clients" in permissions,
+        "canManageCases": "manage_cases" in permissions,
+        "canManageTasks": "manage_tasks" in permissions,
+        "canManageDocuments": "manage_documents" in permissions,
+        "canManageCalendar": "manage_calendar" in permissions,
+        "canSeeFinance": "view_finance" in permissions,
+        "canManageFinance": "manage_finance" in permissions,
+    }
 
 
 def role_for_user(user):
@@ -951,6 +1007,28 @@ def ensure_case_member(case, user, role=None, is_demo=False):
         },
     )
     return member
+
+
+def assigned_cases_for_user(user):
+    if not user:
+        return Case.objects.none()
+    return Case.objects.select_related("client").filter(
+        Q(responsible=user) | Q(team_members__user=user)
+    ).distinct().order_by("client__full_name", "opened_at", "number")
+
+
+def update_user_case_members(user, data):
+    if not user or "assignedCaseIds" not in data:
+        return
+    profile = profile_for_user(user)
+    if profile.role == "admin":
+        CaseMember.objects.filter(user=user).delete()
+        return
+    selected_numbers = {str(number) for number in data.get("assignedCaseIds") or [] if number}
+    CaseMember.objects.filter(user=user).exclude(case__number__in=selected_numbers).delete()
+    member_role = CASE_MEMBER_ROLES.get(profile.role, CaseMember.Role.OBSERVER)
+    for case in Case.objects.filter(number__in=selected_numbers):
+        ensure_case_member(case, user, role=member_role)
 
 
 def sync_case_members_from_payload(case, data, is_demo=False):
@@ -1066,16 +1144,7 @@ def session_payload(request):
     return {
         "authenticated": bool(request.user.is_authenticated),
         "user": serialize_system_user(user) if user else None,
-        "permissions": {
-            "canManageUsers": "manage_users" in permissions,
-            "canSeeFinance": "view_finance" in permissions,
-            "canManageFinance": "manage_finance" in permissions,
-            "canManageCases": "manage_cases" in permissions,
-            "canManageClients": "manage_clients" in permissions,
-            "canManageTasks": "manage_tasks" in permissions,
-            "canManageDocuments": "manage_documents" in permissions,
-            "canManageCalendar": "manage_calendar" in permissions,
-        },
+        "permissions": permission_flags(permissions),
     }
 
 

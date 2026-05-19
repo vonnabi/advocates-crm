@@ -12,6 +12,7 @@ class UserProfile(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="crm_profile")
     role = models.CharField(max_length=32, choices=Role.choices, default=Role.ASSISTANT)
     access_scope = models.CharField(max_length=255, blank=True)
+    module_permissions = models.JSONField(default=list, blank=True)
     photo_label = models.CharField(max_length=8, blank=True)
     is_active_member = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)

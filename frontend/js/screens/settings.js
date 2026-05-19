@@ -8,6 +8,24 @@ const roleAccessMap = {
   "Бухгалтер": "Фінанси та звіти"
 };
 
+const rolePermissionMap = {
+  "Адміністратор": ["manage_users", "manage_clients", "manage_cases", "manage_tasks", "manage_documents", "manage_calendar", "view_finance", "manage_finance"],
+  "Адвокат": ["manage_clients", "manage_cases", "manage_tasks", "manage_documents", "manage_calendar"],
+  "Помічник": ["manage_tasks", "manage_documents", "manage_calendar"],
+  "Бухгалтер": ["view_finance", "manage_finance"]
+};
+
+const permissionOptions = [
+  ["manage_users", "Користувачі", "user"],
+  ["manage_clients", "Клієнти", "user"],
+  ["manage_cases", "Справи", "briefcase"],
+  ["manage_tasks", "Задачі", "check"],
+  ["manage_documents", "Документи", "file"],
+  ["manage_calendar", "Календар", "calendar"],
+  ["view_finance", "Фінанси", "briefcase"],
+  ["manage_finance", "Операції", "edit"]
+];
+
 function cleanSettingValue(value) {
   return String(value || "").trim().replace(/[<>]/g, "");
 }
@@ -39,39 +57,122 @@ function addSettingsAudit(state, text, tone = "blue") {
   ].slice(0, 8);
 }
 
+function userPermissionKeys(user) {
+  return user?.permissionKeys?.length ? user.permissionKeys : rolePermissionMap[user?.role] || rolePermissionMap["Помічник"];
+}
+
+function selectedCaseIds(user) {
+  const direct = Array.isArray(user?.assignedCaseIds) ? user.assignedCaseIds : [];
+  const nested = Array.isArray(user?.assignedCases) ? user.assignedCases.map((item) => item.id) : [];
+  return new Set([...direct, ...nested].filter(Boolean));
+}
+
+function renderPermissionCheckboxes(icon, checkedKeys = []) {
+  const checked = new Set(checkedKeys);
+  return permissionOptions.map(([key, label, iconName]) => `
+    <label class="settings-permission-tile">
+      <input type="checkbox" name="permissionKeys" value="${key}" ${checked.has(key) ? "checked" : ""} />
+      <span>${icon(iconName)}</span>
+      <strong>${label}</strong>
+    </label>
+  `).join("");
+}
+
+function renderCaseCheckboxes(state, checkedIds = new Set()) {
+  return (state.cases || []).map((caseItem) => `
+    <label class="settings-case-choice">
+      <input type="checkbox" name="assignedCaseIds" value="${caseItem.id}" ${checkedIds.has(caseItem.id) ? "checked" : ""} />
+      <span>
+        <strong>№${caseItem.id}</strong>
+        <em>${caseItem.client || ""}</em>
+      </span>
+      <small>${caseItem.title || ""}</small>
+    </label>
+  `).join("");
+}
+
+function applyRoleDefaultsToForm(form, icon) {
+  const role = form.elements.role.value;
+  form.elements.access.value = roleAccessMap[role] || roleAccessMap["Помічник"];
+  const keys = new Set(rolePermissionMap[role] || rolePermissionMap["Помічник"]);
+  form.querySelector("[data-settings-permissions-grid]").innerHTML = renderPermissionCheckboxes(icon, keys);
+}
+
+function fillUserDialog(dialog, ctx, userIndex = "") {
+  const { state, icon } = ctx;
+  const form = dialog.querySelector("#settings-invite-form");
+  const user = userIndex === "" ? null : state.settingsUsers[Number(userIndex)];
+  form.dataset.userIndex = userIndex;
+  dialog.querySelector("[data-settings-user-dialog-title]").textContent = user ? "Картка користувача" : "Створити користувача";
+  dialog.querySelector("[data-settings-user-submit]").textContent = user ? "Зберегти користувача" : "Створити користувача";
+  form.elements.name.value = user?.name || "";
+  form.elements.email.value = user?.email || "";
+  form.elements.password.value = user ? "" : "demo12345";
+  form.elements.role.value = user?.role || "Адвокат";
+  form.elements.access.value = user?.access || roleAccessMap[form.elements.role.value] || roleAccessMap["Помічник"];
+  form.querySelector("[data-settings-permissions-grid]").innerHTML = renderPermissionCheckboxes(icon, userPermissionKeys(user || { role: form.elements.role.value }));
+  form.querySelector("[data-settings-cases-grid]").innerHTML = renderCaseCheckboxes(state, selectedCaseIds(user));
+  const isAdmin = form.elements.role.value === "Адміністратор";
+  form.querySelector("[data-settings-case-scope]").textContent = isAdmin ? "Повний доступ до всіх справ" : "Доступ тільки до вибраних справ";
+  form.querySelector("[data-settings-cases-grid]").toggleAttribute("hidden", isAdmin);
+}
+
 function ensureInviteDialog(ctx) {
+  const { icon } = ctx;
   let dialog = document.querySelector("#settings-invite-dialog");
   if (dialog) return dialog;
   dialog = document.createElement("dialog");
   dialog.id = "settings-invite-dialog";
   dialog.innerHTML = `
-    <form method="dialog" class="modal-form settings-invite-form" id="settings-invite-form">
+    <form method="dialog" class="modal-form settings-invite-form settings-user-form" id="settings-invite-form">
       <div class="modal-head">
-        <h2>Запросити користувача</h2>
+        <h2 data-settings-user-dialog-title>Створити користувача</h2>
         <button class="ghost" type="button" data-settings-invite-close>Закрити</button>
       </div>
-      <label>Ім'я та прізвище<input name="name" required placeholder="Наприклад, Шевченко Марія Ігорівна"></label>
-      <label>Email<input name="email" type="email" required placeholder="user@example.com"></label>
-      <label>Роль
-        <select name="role">
-          <option>Адвокат</option>
-          <option>Помічник</option>
-          <option>Бухгалтер</option>
-        </select>
-      </label>
+      <div class="settings-user-form-grid">
+        <label>Ім'я та прізвище<input name="name" required placeholder="Наприклад, Шевченко Марія Ігорівна"></label>
+        <label>Email<input name="email" type="email" required placeholder="user@example.com"></label>
+        <label>Пароль<input name="password" type="text" placeholder="Залишити без змін"></label>
+        <label>Роль
+          <select name="role">
+            <option>Адвокат</option>
+            <option>Помічник</option>
+            <option>Бухгалтер</option>
+            <option>Адміністратор</option>
+          </select>
+        </label>
+      </div>
       <label>Доступ
         <select name="access">
           ${Object.values(roleAccessMap).map((access) => `<option>${access}</option>`).join("")}
         </select>
       </label>
-      <button type="submit" class="primary">Надіслати запрошення</button>
+      <section class="settings-user-editor-section">
+        <div class="settings-user-editor-head">
+          <strong>Меню CRM</strong>
+          <button type="button" class="secondary compact" data-settings-role-defaults>${icon("refresh")} За роллю</button>
+        </div>
+        <div class="settings-permissions-grid" data-settings-permissions-grid></div>
+      </section>
+      <section class="settings-user-editor-section">
+        <div class="settings-user-editor-head">
+          <strong>Справи користувача</strong>
+          <span data-settings-case-scope>Доступ тільки до вибраних справ</span>
+        </div>
+        <div class="settings-cases-grid" data-settings-cases-grid></div>
+      </section>
+      <button type="submit" class="primary" data-settings-user-submit>Створити користувача</button>
     </form>
   `;
   document.body.append(dialog);
   const form = dialog.querySelector("#settings-invite-form");
   form?.elements.role?.addEventListener("change", () => {
-    form.elements.access.value = roleAccessMap[form.elements.role.value] || roleAccessMap["Помічник"];
+    applyRoleDefaultsToForm(form, icon);
+    const isAdmin = form.elements.role.value === "Адміністратор";
+    form.querySelector("[data-settings-case-scope]").textContent = isAdmin ? "Повний доступ до всіх справ" : "Доступ тільки до вибраних справ";
+    form.querySelector("[data-settings-cases-grid]").toggleAttribute("hidden", isAdmin);
   });
+  dialog.querySelector("[data-settings-role-defaults]")?.addEventListener("click", () => applyRoleDefaultsToForm(form, icon));
   dialog.querySelector("[data-settings-invite-close]")?.addEventListener("click", () => dialog.close());
   form?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -80,14 +181,23 @@ function ensureInviteDialog(ctx) {
     const email = cleanSettingValue(form.elements.email.value).toLowerCase();
     const role = cleanSettingValue(form.elements.role.value);
     const access = cleanSettingValue(form.elements.access.value) || roleAccessMap[role] || roleAccessMap["Помічник"];
+    const password = cleanSettingValue(form.elements.password.value);
+    const userIndex = form.dataset.userIndex;
+    const existing = userIndex === "" ? null : state.settingsUsers[Number(userIndex)];
+    const permissionKeys = [...form.querySelectorAll("input[name='permissionKeys']:checked")].map((input) => input.value);
+    const assignedCaseIds = role === "Адміністратор" ? [] : [...form.querySelectorAll("input[name='assignedCaseIds']:checked")].map((input) => input.value);
     if (!name || !email) return;
     let user = {
+      ...(existing || {}),
       name,
       email,
       role,
       access,
-      photo: userInitials(name)
+      photo: existing?.photo || userInitials(name),
+      permissionKeys,
+      assignedCaseIds
     };
+    if (password) user.password = password;
     if (shouldUseApi(state)) {
       try {
         user = normalizeSettingsUser(await saveSettingsUserToApi(user));
@@ -96,14 +206,19 @@ function ensureInviteDialog(ctx) {
         return;
       }
     }
-    state.settingsUsers.push(user);
-    addSettingsAudit(state, `Запрошено користувача ${name} з роллю ${role}.`, "green");
+    if (existing) {
+      state.settingsUsers[Number(userIndex)] = normalizeSettingsUser(user);
+      addSettingsAudit(state, `Оновлено картку користувача ${name}.`, "blue");
+    } else {
+      state.settingsUsers.push(normalizeSettingsUser(user));
+      addSettingsAudit(state, `Запрошено користувача ${name} з роллю ${role}.`, "green");
+    }
     form.reset();
     form.elements.access.value = roleAccessMap["Адвокат"];
     dialog.close();
     saveNavigationState();
     renderSettingsScreen(ctx);
-    showToast(`Запрошення для ${name} підготовлено.`);
+    showToast(existing ? `Користувача ${name} оновлено.` : `Користувача ${name} створено.`);
   });
   return dialog;
 }
@@ -176,13 +291,24 @@ export function renderSettingsScreen(ctx) {
         <div class="settings-users-list">
           ${users.map((user, index) => `<article class="settings-user-row">
             <div class="avatar">${user.photo}</div>
-            <div><strong>${user.name}</strong><span>${user.role}</span></div>
-            <em>${user.access}</em>
+            <div class="settings-user-main">
+              <strong>${user.name}</strong>
+              <span>${user.email || "email не вказано"}</span>
+            </div>
+            <div class="settings-user-access">
+              <b>${user.role}</b>
+              <em>${user.access}</em>
+            </div>
+            <div class="settings-user-scope">
+              <span>${icon("briefcase")} ${user.caseScope === "all" ? "Всі справи" : `${user.assignedCasesCount || selectedCaseIds(user).size} справ`}</span>
+              <small>${userPermissionKeys(user).length} доступів</small>
+            </div>
             <div class="settings-user-actions">
               ${badge(user.role === "Адміністратор" ? "Owner" : "Active", user.role === "Адміністратор" ? "blue" : "green")}
               <div class="settings-user-menu-wrap">
                 <button type="button" class="icon-button compact" data-settings-user-menu="${index}" aria-label="Дії користувача" aria-expanded="${state.settingsOpenUserMenu === String(index) ? "true" : "false"}">⋮</button>
                 <div class="settings-user-menu" data-settings-user-menu-panel="${index}" ${state.settingsOpenUserMenu === String(index) ? "" : "hidden"}>
+                  <button type="button" data-settings-user-edit="${index}">${icon("edit")} Картка доступу</button>
                   ${user.role === "Адміністратор" ? "" : `<button type="button" data-settings-user-role="${index}">${icon("edit")} Змінити роль</button>`}
                   <button type="button" data-settings-user-access="${index}">${icon("check")} Оновити доступ</button>
                   ${user.role === "Адміністратор" ? "" : `<button type="button" class="danger" data-settings-user-delete="${index}">${icon("trash")} Видалити</button>`}
@@ -276,10 +402,7 @@ export function renderSettingsScreen(ctx) {
   document.querySelector("[data-settings-action='invite']")?.addEventListener("click", () => {
     const dialog = ensureInviteDialog(ctx);
     const form = dialog.querySelector("#settings-invite-form");
-    if (form) {
-      form.reset();
-      form.elements.access.value = roleAccessMap["Адвокат"];
-    }
+    if (form) fillUserDialog(dialog, ctx);
     dialog.showModal();
     form?.elements.name?.focus();
   });
@@ -288,10 +411,19 @@ export function renderSettingsScreen(ctx) {
     state.settingsOpenUserMenu = state.settingsOpenUserMenu === key ? "" : key;
     renderSettingsScreen(ctx);
   }));
+  document.querySelectorAll("[data-settings-user-edit]").forEach((button) => button.addEventListener("click", () => {
+    const index = button.dataset.settingsUserEdit;
+    const dialog = ensureInviteDialog(ctx);
+    fillUserDialog(dialog, ctx, index);
+    state.settingsOpenUserMenu = "";
+    renderSettingsScreen(ctx);
+    dialog.showModal();
+  }));
   document.querySelectorAll("[data-settings-user-access]").forEach((button) => button.addEventListener("click", async () => {
     const user = state.settingsUsers[Number(button.dataset.settingsUserAccess)];
     if (!user) return;
     user.access = roleAccessMap[user.role] || user.access;
+    user.permissionKeys = rolePermissionMap[user.role] || user.permissionKeys;
     if (shouldUseApi(state)) {
       try {
         Object.assign(user, normalizeSettingsUser(await saveSettingsUserToApi(user)));
@@ -311,6 +443,7 @@ export function renderSettingsScreen(ctx) {
     if (!user || user.role === "Адміністратор") return;
     user.role = user.role === "Адвокат" ? "Помічник" : "Адвокат";
     user.access = user.role === "Адвокат" ? "Справи, клієнти, календар" : "Задачі та документи";
+    user.permissionKeys = rolePermissionMap[user.role] || user.permissionKeys;
     if (shouldUseApi(state)) {
       try {
         Object.assign(user, normalizeSettingsUser(await saveSettingsUserToApi(user)));

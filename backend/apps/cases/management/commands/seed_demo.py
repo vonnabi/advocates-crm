@@ -105,6 +105,7 @@ def ensure_team_user(name, email, role_label):
         defaults={
             "role": role,
             "access_scope": access,
+            "module_permissions": [],
             "photo_label": initials_from_name(name),
             "is_active_member": True,
         },

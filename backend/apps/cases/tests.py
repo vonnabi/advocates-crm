@@ -224,6 +224,41 @@ class DemoApiTests(TestCase):
         self.assertEqual(delete_response.status_code, 200)
         self.assertEqual(delete_response.json(), {"deleted": created["id"]})
 
+    def test_user_card_saves_custom_permissions_and_case_scope(self):
+        payload = {
+            "name": "Доступ Тест",
+            "email": "scope.user@example.com",
+            "password": "demo12345",
+            "role": "Помічник",
+            "access": "Індивідуальний доступ",
+            "permissionKeys": ["manage_tasks"],
+            "assignedCaseIds": ["2024/5678"],
+        }
+
+        create_response = self.client.post("/api/users/", payload, content_type="application/json")
+        self.assertEqual(create_response.status_code, 200)
+        created = create_response.json()
+        self.assertEqual(created["permissionKeys"], ["manage_tasks"])
+        self.assertEqual(created["assignedCaseIds"], ["2024/5678"])
+        self.assertEqual(created["assignedCasesCount"], 1)
+
+        user = get_user_model().objects.get(email="scope.user@example.com")
+        self.assertTrue(CaseMember.objects.filter(user=user, case__number="2024/5678").exists())
+
+        self.client.post("/api/auth/logout/", {}, content_type="application/json")
+        login_response = self.client.post(
+            "/api/auth/login/",
+            {"email": "scope.user@example.com", "password": "demo12345"},
+            content_type="application/json",
+        )
+        self.assertEqual(login_response.status_code, 200)
+        permissions = login_response.json()["permissions"]
+        self.assertTrue(permissions["canManageTasks"])
+        self.assertFalse(permissions["canManageDocuments"])
+
+        bootstrap = self.client.get("/api/bootstrap/").json()
+        self.assertEqual([item["id"] for item in bootstrap["cases"]], ["2024/5678"])
+
     def test_role_permissions_limit_write_actions(self):
         assistant_login = self.client.post(
             "/api/auth/login/",
