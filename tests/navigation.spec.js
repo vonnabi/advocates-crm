@@ -156,9 +156,12 @@ test("settings user actions open from the three dot menu", async ({ page }) => {
   await page.locator("[data-settings-delivery-close]").click();
 
   await page.locator(".settings-user-row").filter({ hasText: "Кравчук А.В." }).locator("[data-settings-user-menu]").click();
-  await assistantRow.locator("[data-settings-user-role]").click();
-  await expect(page.locator(".settings-user-row").filter({ hasText: "Кравчук А.В." })).toContainText("Адвокат");
-  await expect(page.locator(".settings-audit-card")).toContainText("Змінено роль користувача Кравчук А.В.");
+  await expect(assistantRow.locator("[data-settings-user-role]")).toHaveCount(0);
+  await expect(assistantRow.locator("[data-settings-user-access]")).toHaveCount(0);
+  await assistantRow.locator("[data-settings-user-edit]").click();
+  await expect(page.locator("#settings-invite-dialog")).toHaveJSProperty("open", true);
+  await expect(page.locator("[data-settings-user-dialog-title]")).toHaveText("Картка користувача");
+  await expect(page.locator("#settings-invite-form input[name='name']")).toHaveValue("Кравчук А.В.");
 });
 
 test("sidebar collapse and restore controls keep the navigation usable", async ({ page }) => {
@@ -256,8 +259,30 @@ test("API empty demo mode still renders the workspace and AI empty state", async
 
   await page.goto("/");
   await expect(page.locator("#dashboard")).toContainText("Активних справ");
+  await expect(page.locator("#admin-profile-toggle")).toContainText("Admin");
+  await expect(page.locator("#admin-profile-toggle")).not.toContainText("Іваненко");
+  await expect(page.locator('.nav-item[data-view="tasks"] .nav-badge')).toBeHidden();
+  await expect(page.locator('.nav-item[data-view="ai"] .nav-new')).toHaveCount(0);
   await expect(page.locator("[data-demo-data-toggle]")).toBeVisible();
   await expect(page.locator("[data-demo-data-summary]")).toHaveText("Вимкнено");
+
+  await page.locator('.nav-item[data-view="settings"]').click();
+  await expect(page.locator(".settings-user-row").first()).toContainText("Admin");
+  await expect(page.locator(".settings-user-row").first()).not.toContainText("Іваненко");
+
+  await page.locator('.nav-item[data-view="finance"]').click();
+  await expect(page.locator(".finance-status-card")).toContainText("Всього на рахунках0 грн");
+  await expect(page.locator(".finance-status-card")).not.toContainText("540 200");
+  await expect(page.locator(".finance-income-donut")).toHaveClass(/is-empty/);
+
+  await page.locator('.nav-item[data-view="analytics"]').click();
+  await expect(page.locator(".analytics-kpi-card strong")).toHaveText(["0", "0", "0", "0", "0 днів", "0%"]);
+  await expect(page.locator(".analytics-status-donut")).toHaveClass(/is-empty/);
+
+  await page.locator('.nav-item[data-view="osint"]').click();
+  await expect(page.locator("#osint .osint-kpi-card strong")).toHaveText(["0", "0", "0", "0", "0", "0"]);
+  await expect(page.locator("#osint .osint-empty-state")).toContainText("OSINT даних ще немає");
+  await expect(page.locator("#osint .osint-line-chart")).toHaveCount(0);
 
   await page.locator('.nav-item[data-view="ai"]').click();
   await expect(page.locator("#ai")).toContainText("Додайте клієнта та справу");

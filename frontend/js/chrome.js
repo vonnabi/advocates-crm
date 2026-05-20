@@ -202,17 +202,19 @@ async function openDemoDataOverlay(ctx) {
 export function syncTopbarUser($, state) {
   const user = state.currentUser || state.settingsUsers?.[0];
   if (!user) return;
-  const initials = user.photo || user.name?.slice(0, 1) || "І";
-  const role = state.sessionAuthenticated ? user.role : `${user.role || "Адміністратор"} · демо`;
+  const neutralDemoAdmin = shouldUseApi(state) && !state.sessionAuthenticated && state.demoDataStatus?.enabled === false;
+  const displayName = neutralDemoAdmin ? "Admin" : user.name;
+  const initials = neutralDemoAdmin ? "AD" : user.photo || user.name?.slice(0, 1) || "І";
+  const role = neutralDemoAdmin ? "Адміністратор" : state.sessionAuthenticated ? user.role : `${user.role || "Адміністратор"} · демо`;
   const toggleName = $("#admin-profile-toggle > div:nth-of-type(2) strong");
   const toggleRole = $("#admin-profile-toggle > div:nth-of-type(2) span");
   const panelName = $("#admin-profile-menu .profile-panel-head > div:nth-of-type(2) strong");
   const panelRole = $("#admin-profile-menu .profile-panel-head > div:nth-of-type(2) span");
   const avatars = document.querySelectorAll(".admin-photo span");
-  if (toggleName) toggleName.textContent = user.name;
+  if (toggleName) toggleName.textContent = displayName;
   if (toggleRole) toggleRole.textContent = role;
-  if (panelName) panelName.textContent = user.name;
-  if (panelRole) panelRole.textContent = state.sessionAuthenticated ? user.access || user.role : "Демо-доступ до CRM";
+  if (panelName) panelName.textContent = displayName;
+  if (panelRole) panelRole.textContent = neutralDemoAdmin ? "Порожній кабінет CRM" : state.sessionAuthenticated ? user.access || user.role : "Демо-доступ до CRM";
   avatars.forEach((node) => {
     node.textContent = initials.slice(0, 2);
   });

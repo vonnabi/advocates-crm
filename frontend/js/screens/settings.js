@@ -1,4 +1,5 @@
 import { deleteSettingsUserFromApi, saveSettingsUserToApi, shouldUseApi } from "../api.js";
+import { navIconName } from "../ui.js?v=settings-icons-1";
 import { normalizeSettingsUser } from "../state.js";
 
 const roleAccessMap = {
@@ -9,20 +10,20 @@ const roleAccessMap = {
 };
 
 const permissionOptions = [
-  { key: "", label: "Дашборд", icon: "home", note: "базовий огляд", locked: true },
-  { key: "manage_cases", label: "Справи", icon: "briefcase", note: "список і картки справ" },
-  { key: "manage_clients", label: "Клієнти", icon: "user", note: "клієнтська база" },
-  { key: "manage_calendar", label: "Календар", icon: "calendar", note: "події та дедлайни" },
-  { key: "manage_tasks", label: "Задачі", icon: "check", note: "задачі і підзадачі" },
-  { key: "manage_documents", label: "Документи", icon: "file", note: "архів і файли" },
-  { key: "manage_mailings", label: "Розсилка", icon: "telegram", note: "кампанії і шаблони" },
-  { key: "manage_ai", label: "AI помічники", icon: "bot", note: "чати і навчання" },
-  { key: "view_planner", label: "Планер", icon: "planner", note: "план дня" },
-  { key: "view_analytics", label: "Аналітика", icon: "chart", note: "звіти і метрики" },
-  { key: "view_finance", label: "Фінанси", icon: "dollar", note: "перегляд фінансів" },
+  { key: "", label: "Дашборд", icon: navIconName("dashboard"), note: "базовий огляд", locked: true },
+  { key: "manage_cases", label: "Справи", icon: navIconName("cases"), note: "список і картки справ" },
+  { key: "manage_clients", label: "Клієнти", icon: navIconName("clients"), note: "клієнтська база" },
+  { key: "manage_calendar", label: "Календар", icon: navIconName("calendar"), note: "події та дедлайни" },
+  { key: "manage_tasks", label: "Задачі", icon: navIconName("tasks"), note: "задачі і підзадачі" },
+  { key: "manage_documents", label: "Документи", icon: navIconName("documents"), note: "архів і файли" },
+  { key: "manage_mailings", label: "Розсилка", icon: navIconName("mailings"), note: "кампанії і шаблони" },
+  { key: "manage_ai", label: "AI помічники", icon: navIconName("ai"), note: "чати і навчання" },
+  { key: "view_planner", label: "Планер", icon: navIconName("planner"), note: "план дня" },
+  { key: "view_analytics", label: "Аналітика", icon: navIconName("analytics"), note: "звіти і метрики" },
+  { key: "view_finance", label: "Фінанси", icon: navIconName("finance"), note: "перегляд фінансів" },
   { key: "manage_finance", label: "Платежі та зарплата", icon: "wallet", note: "операції у фінансах" },
-  { key: "view_osint", label: "OSINT", icon: "search", note: "перевірки ризиків" },
-  { key: "manage_users", label: "Налаштування", icon: "gear", note: "користувачі і доступ" }
+  { key: "view_osint", label: "OSINT", icon: navIconName("osint"), note: "перевірки ризиків" },
+  { key: "manage_users", label: "Налаштування", icon: navIconName("settings"), note: "користувачі і доступ" }
 ];
 
 const allPermissionKeys = permissionOptions.map((item) => item.key).filter(Boolean);
@@ -45,6 +46,20 @@ function cleanSettingValue(value) {
 
 function cleanAttribute(value) {
   return cleanSettingValue(value).replace(/["'`]/g, "");
+}
+
+function isNeutralDemoAdminState(state) {
+  return shouldUseApi(state) && !state.sessionAuthenticated && state.demoDataStatus?.enabled === false;
+}
+
+function displaySettingsUser(user, state) {
+  if (!isNeutralDemoAdminState(state) || user?.role !== "Адміністратор") return user;
+  return {
+    ...user,
+    name: "Admin",
+    photo: "AD",
+    email: "admin@advocates.ua"
+  };
 }
 
 function userInitials(name) {
@@ -88,7 +103,7 @@ function accessStatusMeta(user) {
 function renderAccessStatus(user, icon) {
   const status = accessStatusMeta(user);
   const iconName = status.tone === "amber" ? "clock" : status.tone === "blue" ? "mail" : "check";
-  return `<span class="settings-access-status ${status.tone}">${icon(iconName)} ${status.label}</span>`;
+  return `<span class="settings-access-status ${status.tone}" data-tooltip="${status.label}" tabindex="0" role="img" aria-label="${status.label}">${icon(iconName)}</span>`;
 }
 
 function crmAccessUrl() {
@@ -635,47 +650,48 @@ export function renderSettingsScreen(ctx) {
           <button type="button" class="secondary" data-settings-action="invite">+ Запросити</button>
         </div>
         <div class="settings-users-list">
-          ${users.map((user, index) => `<article class="settings-user-row">
+          ${users.map((user, index) => {
+            const viewUser = displaySettingsUser(user, state);
+            return `<article class="settings-user-row">
             <div class="settings-user-identity">
-              ${renderUserAvatar(user)}
+              ${renderUserAvatar(viewUser)}
               <div class="settings-user-main">
-                <strong>${user.name}</strong>
-                <span>${user.email || "email не вказано"}</span>
-                <em>${user.role}</em>
+                <strong>${viewUser.name}</strong>
+                <span>${viewUser.email || "email не вказано"}</span>
+                <em>${viewUser.role}</em>
               </div>
             </div>
             <div class="settings-user-details">
               <div class="settings-user-data-grid">
                 <span>
                   <small>Доступ</small>
-                  <b>${user.access}</b>
+                  <b>${viewUser.access}</b>
                 </span>
                 <span>
                   <small>Справи</small>
-                  <b>${userCaseSummary(user)}</b>
+                  <b>${userCaseSummary(viewUser)}</b>
                 </span>
                 <span>
                   <small>Останній вхід</small>
-                  <b>${formatUserDate(user.lastLoginAt)}</b>
+                  <b>${formatUserDate(viewUser.lastLoginAt)}</b>
                 </span>
               </div>
-              <div class="settings-user-case-preview">${renderCasePreview(user)}</div>
-              <div class="settings-user-permissions">${renderPermissionSummary(user, icon)}</div>
+              <div class="settings-user-case-preview">${renderCasePreview(viewUser)}</div>
+              <div class="settings-user-permissions">${renderPermissionSummary(viewUser, icon)}</div>
             </div>
             <div class="settings-user-actions">
-              ${renderAccessStatus(user, icon)}
+              ${renderAccessStatus(viewUser, icon)}
               <div class="settings-user-menu-wrap">
                 <button type="button" class="icon-button compact" data-settings-user-menu="${index}" aria-label="Дії користувача" aria-expanded="${state.settingsOpenUserMenu === String(index) ? "true" : "false"}">⋮</button>
                 <div class="settings-user-menu" data-settings-user-menu-panel="${index}" ${state.settingsOpenUserMenu === String(index) ? "" : "hidden"}>
                   <button type="button" data-settings-user-edit="${index}">${icon("edit")} Картка доступу</button>
                   <button type="button" data-settings-user-delivery="${index}">${icon("mail")} Надіслати доступ</button>
-                  ${user.role === "Адміністратор" ? "" : `<button type="button" data-settings-user-role="${index}">${icon("edit")} Змінити роль</button>`}
-                  <button type="button" data-settings-user-access="${index}">${icon("check")} Оновити доступ</button>
                   ${user.role === "Адміністратор" ? "" : `<button type="button" class="danger" data-settings-user-delete="${index}">${icon("trash")} Видалити</button>`}
                 </div>
               </div>
             </div>
-          </article>`).join("")}
+          </article>`;
+          }).join("")}
         </div>
       </section>
 
@@ -786,45 +802,6 @@ export function renderSettingsScreen(ctx) {
     state.settingsOpenUserMenu = "";
     renderSettingsScreen(ctx);
     dialog.showModal();
-  }));
-  document.querySelectorAll("[data-settings-user-access]").forEach((button) => button.addEventListener("click", async () => {
-    const user = state.settingsUsers[Number(button.dataset.settingsUserAccess)];
-    if (!user) return;
-    user.access = roleAccessMap[user.role] || user.access;
-    user.permissionKeys = rolePermissionMap[user.role] || user.permissionKeys;
-    if (shouldUseApi(state)) {
-      try {
-        Object.assign(user, normalizeSettingsUser(await saveSettingsUserToApi(user)));
-      } catch (_error) {
-        showToast("Не вдалося оновити доступ у базі.", "danger");
-        return;
-      }
-    }
-    state.settingsOpenUserMenu = "";
-    addSettingsAudit(state, `Оновлено доступ користувача ${user.name}: ${user.access}.`, "blue");
-    saveNavigationState();
-    renderSettingsScreen(ctx);
-    showToast(`Доступ користувача ${user.name} оновлено.`);
-  }));
-  document.querySelectorAll("[data-settings-user-role]").forEach((button) => button.addEventListener("click", async () => {
-    const user = state.settingsUsers[Number(button.dataset.settingsUserRole)];
-    if (!user || user.role === "Адміністратор") return;
-    user.role = user.role === "Адвокат" ? "Помічник" : "Адвокат";
-    user.access = user.role === "Адвокат" ? "Справи, клієнти, календар" : "Задачі та документи";
-    user.permissionKeys = rolePermissionMap[user.role] || user.permissionKeys;
-    if (shouldUseApi(state)) {
-      try {
-        Object.assign(user, normalizeSettingsUser(await saveSettingsUserToApi(user)));
-      } catch (_error) {
-        showToast("Не вдалося змінити роль у базі.", "danger");
-        return;
-      }
-    }
-    state.settingsOpenUserMenu = "";
-    addSettingsAudit(state, `Змінено роль користувача ${user.name}: ${user.role}.`, "amber");
-    saveNavigationState();
-    renderSettingsScreen(ctx);
-    showToast(`Роль користувача змінено: ${user.role}.`);
   }));
   document.querySelectorAll("[data-settings-user-delete]").forEach((button) => button.addEventListener("click", async () => {
     const index = Number(button.dataset.settingsUserDelete);

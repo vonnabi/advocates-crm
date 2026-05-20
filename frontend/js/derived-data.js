@@ -298,6 +298,6 @@ export function osintSummaryFromData(state) {
     analyzedCases: new Set(checks.map((item) => item.caseId)).size,
     risks,
     monitoring: activeChecks.length,
-    sources: sources.filter((item) => item.enabled !== false).length || 6
+    sources: Array.isArray(state.osintSources) ? sources.filter((item) => item.enabled !== false).length : 6
   };
 }

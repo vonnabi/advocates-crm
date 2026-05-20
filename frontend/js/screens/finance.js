@@ -113,6 +113,12 @@ const FINANCE_LINE = {
   profit: [29, 38, 41, 35, 34, 42, 37, 47, 41, 45, 46, 42, 51, 56]
 };
 
+const EMPTY_FINANCE_LINE = {
+  income: FINANCE_LINE.income.map(() => 0),
+  expenses: FINANCE_LINE.expenses.map(() => 0),
+  profit: FINANCE_LINE.profit.map(() => 0)
+};
+
 const chartDates = ["01.05", "03.05", "05.05", "07.05", "09.05", "11.05", "13.05", "15.05"];
 
 const FINANCE_ACTIONS = {
@@ -281,11 +287,15 @@ function financeOperations(state) {
   return buildFinanceOperations(state);
 }
 
+function isDemoDataDisabled(state) {
+  return shouldUseApi(state) && state.demoDataStatus?.enabled === false;
+}
+
 function salaryRows(state) {
   state.salaryRows = state.salaryRows || [];
   state.deletedSalaryIds = state.deletedSalaryIds || [];
   const deleted = new Set(state.deletedSalaryIds);
-  const baseRows = SALARY_ROWS.map((row, index) => ({
+  const baseRows = isDemoDataDisabled(state) ? [] : SALARY_ROWS.map((row, index) => ({
     id: `salary-base-${index}`,
     custom: false,
     ...row
@@ -315,6 +325,9 @@ function salaryTotals(rows) {
 }
 
 function salaryHistoryValues(rows) {
+  if (!rows.length) {
+    return SALARY_MONTHS.map((month) => ({ month, value: 0 }));
+  }
   const average = rows.length ? Math.round(rows.reduce((sum, row) => sum + row.total, 0) / rows.length) : 0;
   const fallback = average || 45000;
   return SALARY_MONTHS.map((month, index) => ({
@@ -325,7 +338,8 @@ function salaryHistoryValues(rows) {
 
 function salaryEmployeeOptions(state) {
   const employees = new Map();
-  [...(state.settingsUsers || []), ...salaryRows(state), ...SALARY_ROWS].forEach((item) => {
+  const demoSalaryRows = isDemoDataDisabled(state) ? [] : SALARY_ROWS;
+  [...(state.settingsUsers || []), ...salaryRows(state), ...demoSalaryRows].forEach((item) => {
     const name = item.name;
     const role = item.role || "Співробітник";
     if (name && !employees.has(name)) employees.set(name, role);
@@ -1007,6 +1021,14 @@ export function renderFinanceScreen(ctx) {
   const insights = financeInsightsFromData(rows, operationsInRange);
   const debtRows = rows.filter((item) => item.debt > 0).slice(0, 4);
   const selectedCaseId = state.selectedFinanceCaseId || rows[0]?.id;
+  const hasFinanceData = rows.length > 0 || operationsInRange.length > 0;
+  const lineData = hasFinanceData ? FINANCE_LINE : EMPTY_FINANCE_LINE;
+  const cashflowData = hasFinanceData ? CASHFLOW : CASHFLOW.map(([label]) => [label, 0, 0]);
+  const hasIncomeStructure = insights.incomeStructure.length > 0;
+  const accountBalance = hasFinanceData ? 540200 : 0;
+  const cashBalance = hasFinanceData ? 28500 : 0;
+  const supplierDebt = hasFinanceData ? 48900 : 0;
+  const availableBalance = hasFinanceData ? 304800 : 0;
 
   $("#finance").innerHTML = `
     <div class="finance-screen finance-reference">
@@ -1070,9 +1092,9 @@ export function renderFinanceScreen(ctx) {
                   ${[0, 1, 2, 3, 4].map((line) => `<line x1="40" y1="${25 + line * 45}" x2="600" y2="${25 + line * 45}"></line>`).join("")}
                 </g>
                 ${["0", "200k", "400k", "600k", "800k"].map((value, index) => `<text x="10" y="${212 - index * 45}">${value}</text>`).join("")}
-                <polyline class="line blue-line" points="${linePoints(FINANCE_LINE.income)}" transform="translate(40 25)"></polyline>
-                <polyline class="line red-line" points="${linePoints(FINANCE_LINE.expenses)}" transform="translate(40 25)"></polyline>
-                <polyline class="line green-line" points="${linePoints(FINANCE_LINE.profit)}" transform="translate(40 25)"></polyline>
+                <polyline class="line blue-line" points="${linePoints(lineData.income)}" transform="translate(40 25)"></polyline>
+                <polyline class="line red-line" points="${linePoints(lineData.expenses)}" transform="translate(40 25)"></polyline>
+                <polyline class="line green-line" points="${linePoints(lineData.profit)}" transform="translate(40 25)"></polyline>
                 ${chartDates.map((date, index) => `<text class="axis" x="${42 + index * 78}" y="238">${date}</text>`).join("")}
               </svg>
             </article>
@@ -1080,11 +1102,11 @@ export function renderFinanceScreen(ctx) {
             <article class="panel finance-chart-card">
               <h2>Структура доходів</h2>
                 <div class="finance-donut-wrap">
-                <div class="finance-income-donut"></div>
+                <div class="finance-income-donut${hasIncomeStructure ? "" : " is-empty"}"></div>
                 <div class="finance-donut-legend">
-                  ${insights.incomeStructure.map(([label, amount, color]) => `
+                  ${hasIncomeStructure ? insights.incomeStructure.map(([label, amount, color]) => `
                     <div><span style="--legend-color:${color}">${label}</span><strong>${amount}</strong></div>
-                  `).join("")}
+                  `).join("") : `<p class="finance-empty-note">Доходів за вибраний період ще немає.</p>`}
                 </div>
               </div>
             </article>
@@ -1105,11 +1127,11 @@ export function renderFinanceScreen(ctx) {
           <section class="finance-bottom-grid">
             <article class="panel finance-chart-card">
               <h2>Доходи по справах (топ 5)</h2>
-              <div class="finance-mini-bars">${barRows(insights.incomeByCase)}</div>
+              <div class="finance-mini-bars">${barRows(insights.incomeByCase) || `<p class="finance-empty-note">Оплат по справах ще немає.</p>`}</div>
             </article>
             <article class="panel finance-chart-card">
               <h2>Витрати по категоріях</h2>
-              <div class="finance-mini-bars">${expenseRows(insights.expenseCategories)}</div>
+              <div class="finance-mini-bars">${expenseRows(insights.expenseCategories) || `<p class="finance-empty-note">Витрат за період ще немає.</p>`}</div>
             </article>
             <article class="panel finance-chart-card">
               <h2>Прогноз грошового потоку</h2>
@@ -1118,7 +1140,7 @@ export function renderFinanceScreen(ctx) {
                 <span class="red">Очікувані витрати</span>
               </div>
               <div class="finance-cashflow-chart">
-                ${CASHFLOW.map(([label, income, expense]) => `
+                ${cashflowData.map(([label, income, expense]) => `
                   <div>
                     <span class="green" style="height:${income}%"></span>
                     <span class="red" style="height:${expense}%"></span>
@@ -1134,12 +1156,12 @@ export function renderFinanceScreen(ctx) {
           <article class="panel finance-status-card">
             <h2>Фінансовий стан</h2>
             ${[
-              ["Всього на рахунках", "540 200 грн"],
-              ["Готівка в касі", "28 500 грн"],
+              ["Всього на рахунках", currencyText(accountBalance)],
+              ["Готівка в касі", currencyText(cashBalance)],
               ["Заборгованість клієнтів", currencyText(totals.debt)],
-              ["Заборгованість постачальникам", "48 900 грн"]
+              ["Заборгованість постачальникам", currencyText(supplierDebt)]
             ].map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("")}
-            <div class="available"><span>Доступно до використання</span><strong>304 800 грн</strong></div>
+            <div class="available"><span>Доступно до використання</span><strong>${currencyText(availableBalance)}</strong></div>
           </article>
 
           <article class="panel finance-debt-card">

@@ -183,6 +183,20 @@ async function loadDemoData() {
 
 export async function createInitialState() {
   const demoData = await loadDemoData();
+  const demoDataStatus = demoData.meta?.demoData || {
+    enabled: Boolean((demoData.clients || []).length || (demoData.cases || []).length || (demoData.events || []).length),
+    counts: {
+      clients: (demoData.clients || []).length,
+      cases: (demoData.cases || []).length,
+      tasks: (demoData.cases || []).flatMap((item) => item.tasks || []).length,
+      documents: (demoData.cases || []).flatMap((item) => item.documents || []).length,
+      events: (demoData.events || []).length,
+      financeOperations: (demoData.financeOperations || []).length,
+      communications: (demoData.clients || []).flatMap((item) => item.communications || []).length,
+      campaigns: (demoData.mailing?.campaigns || []).length
+    }
+  };
+  const demoDataDisabled = demoData.source === "api" && demoDataStatus.enabled === false;
   const defaultPermissions = {
     canManageUsers: true,
     canSeeFinance: true,
@@ -213,19 +227,7 @@ export async function createInitialState() {
     sessionPermissions: demoData.session?.permissions || (demoData.source === "api" ? {} : defaultPermissions),
     backendMeta: demoData.meta || {},
     backendFinance: demoData.finance || {},
-    demoDataStatus: demoData.meta?.demoData || {
-      enabled: Boolean((demoData.clients || []).length || (demoData.cases || []).length || (demoData.events || []).length),
-      counts: {
-        clients: (demoData.clients || []).length,
-        cases: (demoData.cases || []).length,
-        tasks: (demoData.cases || []).flatMap((item) => item.tasks || []).length,
-        documents: (demoData.cases || []).flatMap((item) => item.documents || []).length,
-        events: (demoData.events || []).length,
-        financeOperations: (demoData.financeOperations || []).length,
-        communications: (demoData.clients || []).flatMap((item) => item.communications || []).length,
-        campaigns: (demoData.mailing?.campaigns || []).length
-      }
-    },
+    demoDataStatus,
     selectedClientId: 1,
     selectedClientKeys: [],
     selectedCaseId: "2024/12345",
@@ -310,7 +312,7 @@ export async function createInitialState() {
     osintDateStart: "2024-05-01",
     osintDateEnd: "2024-05-16",
     selectedOsintId: "osint-1",
-    osintChecks: [
+    osintChecks: demoDataDisabled ? [] : [
       {
         id: "osint-1",
         title: "Перевірка контрагента по договору",
@@ -339,6 +341,8 @@ export async function createInitialState() {
         status: "Активний"
       }
     ],
+    osintSources: demoDataDisabled ? [] : undefined,
+    osintReports: demoDataDisabled ? [] : undefined,
     settingsUsers: demoData.settingsUsers || [
       { name: "Іваненко А.Ю.", role: "Адміністратор", access: "Повний доступ", photo: "І" },
       { name: "Мельник Н.П.", role: "Адвокат", access: "Справи, клієнти, календар", photo: "М" },

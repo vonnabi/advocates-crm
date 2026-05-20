@@ -1,10 +1,10 @@
-import { createInitialState } from "./js/state.js?v=role-ui-2";
+import { createInitialState } from "./js/state.js?v=demo-empty-1";
 import {
   closeTopbarPanels as closeTopbarPanelsInChrome,
   isTopbarPanelOpen,
   setupTopbarControls,
   syncTopbarNotifications
-} from "./js/chrome.js?v=role-ui-2";
+} from "./js/chrome.js?v=demo-admin-1";
 import { createDialogOpeners } from "./js/dialog-openers.js";
 import { setupDialogControls } from "./js/dialogs.js";
 import { setupCaseDetailForms } from "./js/forms/case-details.js";
@@ -18,7 +18,7 @@ import {
   saveNavigationState as saveNavigationStateToStorage
 } from "./js/navigation.js";
 import { renderAIScreen } from "./js/screens/ai.js";
-import { renderAnalyticsScreen } from "./js/screens/analytics.js";
+import { renderAnalyticsScreen } from "./js/screens/analytics.js?v=demo-admin-1";
 import {
   caseFinance,
   caseFolders,
@@ -45,10 +45,10 @@ import {
   renderMailingsScreen,
   setMailingTab as setMailingTabScreen
 } from "./js/screens/mailings.js";
-import { renderFinanceScreen } from "./js/screens/finance.js";
-import { renderOSINTScreen } from "./js/screens/osint.js";
+import { renderFinanceScreen } from "./js/screens/finance.js?v=demo-admin-1";
+import { renderOSINTScreen } from "./js/screens/osint.js?v=demo-empty-1";
 import { renderPlannerScreen } from "./js/screens/planner.js";
-import { renderSettingsScreen } from "./js/screens/settings.js";
+import { renderSettingsScreen } from "./js/screens/settings.js?v=demo-admin-1";
 import {
   allCaseTasks as allCaseTasksScreen,
   renderTasksScreen
@@ -74,13 +74,14 @@ import {
   isoFromDate,
   makeDocumentId,
   monthNames,
+  navIconName,
   riskTone,
   semanticTone,
   statusTone,
   taskTone,
   todayIso,
   weekDayNames
-} from "./js/ui.js";
+} from "./js/ui.js?v=settings-icons-1";
 
 const state = await createInitialState();
 document.documentElement.dataset.dataSource = state.dataSource || "json";
@@ -104,6 +105,17 @@ const titles = {
 const $ = (selector) => document.querySelector(selector);
 const viewNodes = [...document.querySelectorAll(".view")];
 const navNodes = [...document.querySelectorAll(".nav-item")];
+
+function syncSidebarNavIcons() {
+  navNodes.forEach((node) => {
+    const holder = node.querySelector(".nav-icon");
+    if (!holder) return;
+    holder.innerHTML = icon(navIconName(node.dataset.view));
+  });
+}
+
+syncSidebarNavIcons();
+
 const defaultPermissions = {
   canManageUsers: true,
   canSeeFinance: true,
@@ -219,8 +231,6 @@ const permissionControlRules = [
     selectors: [
       "[data-save-settings]",
       "[data-settings-action='invite']",
-      "[data-settings-user-role]",
-      "[data-settings-user-access]",
       "[data-settings-user-delete]",
       "[data-demo-data-toggle]"
     ]
@@ -482,7 +492,12 @@ function renderSettings() {
 
 function renderAll() {
   const taskBadge = document.querySelector('[data-view="tasks"] .nav-badge');
-  if (taskBadge) taskBadge.textContent = allCaseTasks().filter((task) => !task.completed).length;
+  if (taskBadge) {
+    const activeTasks = allCaseTasks().filter((task) => !task.completed).length;
+    taskBadge.textContent = activeTasks;
+    taskBadge.hidden = activeTasks <= 0;
+    taskBadge.closest(".nav-item")?.classList.toggle("has-badge", activeTasks > 0);
+  }
   renderDashboard();
   renderClients();
   renderCases();

@@ -247,6 +247,11 @@ export function bindActionMenus(root = document) {
 export function icon(name) {
   const icons = {
     home: `<svg viewBox="0 0 24 24"><path d="m3 11 9-8 9 8"></path><path d="M5 10v10h5v-6h4v6h5V10"></path></svg>`,
+    userPlus: `<svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"></circle><path d="M3 21a6 6 0 0 1 12 0"></path><path d="M17 11h4"></path><path d="M19 9v4"></path></svg>`,
+    users: `<svg viewBox="0 0 24 24"><circle cx="8" cy="8" r="3.5"></circle><path d="M2.5 21a5.5 5.5 0 0 1 11 0"></path><circle cx="17" cy="9" r="3"></circle><path d="M14.5 20a4.8 4.8 0 0 1 7 0"></path></svg>`,
+    checkbox: `<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="m8 12 2.5 2.5L16 9"></path></svg>`,
+    aiMark: `<svg viewBox="0 0 24 24"><path d="M6 19H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"></path><path d="M18 5h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-2"></path><path d="M8 16V8l4 8 4-8v8"></path></svg>`,
+    searchPlus: `<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path><path d="M11 8v6M8 11h6"></path></svg>`,
     search: `<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>`,
     filter: `<svg viewBox="0 0 24 24"><path d="M4 5h16l-6.5 7.2V18l-3 1.5v-7.3L4 5Z"></path></svg>`,
     telegram: `<svg viewBox="0 0 24 24"><path d="M21 4 3.8 10.8c-.8.3-.8 1.4.1 1.6l4.3 1.3 1.7 5.1c.2.7 1.1.9 1.6.3l2.5-2.9 4.5 3.4c.6.5 1.5.1 1.7-.7L22.5 5c.2-.7-.7-1.3-1.5-1Z"></path><path d="m8.4 13.6 8.2-5.2-6.4 7.4"></path></svg>`,
@@ -276,6 +281,26 @@ export function icon(name) {
     gear: `<svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"></path><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 0 1 4.2 17l.1-.1A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.6-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.3 7A2 2 0 0 1 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 0 1 19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1a2 2 0 0 1 0 4H21a1.7 1.7 0 0 0-1.6 1Z"></path></svg>`
   };
   return `<span class="ui-icon">${icons[name] || ""}</span>`;
+}
+
+export const navIconMap = {
+  dashboard: "home",
+  cases: "userPlus",
+  clients: "users",
+  calendar: "calendar",
+  tasks: "checkbox",
+  documents: "file",
+  mailings: "telegram",
+  ai: "aiMark",
+  planner: "planner",
+  analytics: "chart",
+  finance: "dollar",
+  osint: "searchPlus",
+  settings: "gear"
+};
+
+export function navIconName(view) {
+  return navIconMap[view] || "file";
 }
 
 export function statusTone(status) {

@@ -1,7 +1,7 @@
 import {
   clientName,
   osintSummaryFromData
-} from "../derived-data.js";
+} from "../derived-data.js?v=demo-empty-1";
 
 const OSINT_TABS = [
   ["overview", "Огляд"],
@@ -360,7 +360,9 @@ function sourceIconMeta(title) {
 }
 
 function ensureOsintSources(state) {
-  state.osintSources = state.osintSources || OSINT_SOURCE_DEFAULTS.map((source) => ({ ...source }));
+  if (!Array.isArray(state.osintSources)) {
+    state.osintSources = OSINT_SOURCE_DEFAULTS.map((source) => ({ ...source }));
+  }
   return state.osintSources;
 }
 
@@ -444,6 +446,26 @@ function quickActions(icon) {
       <button type="button" data-create-osint>${icon("file")} Створити звіт</button>
       <button type="button" data-osint-export>${icon("file")} Експорт даних</button>
     </div>
+  `;
+}
+
+function osintHasData(state) {
+  return Boolean(
+    (state.cases || []).length
+    || (state.osintChecks || []).length
+    || (state.osintSources || []).length
+    || (state.osintReports || []).length
+  );
+}
+
+function emptyOsintWorkspace(icon) {
+  return `
+    <section class="panel osint-empty-state">
+      <span>${icon("searchPlus")}</span>
+      <strong>OSINT даних ще немає</strong>
+      <p>Демо-дані вимкнені, тому тестові згадки, джерела і моніторинг приховані. Після додавання реальних справ або створення перевірки тут з'являться робочі дані.</p>
+      <button class="primary compact" type="button" data-create-osint>${icon("file")} Створити звіт</button>
+    </section>
   `;
 }
 
@@ -641,7 +663,7 @@ export function renderOSINTScreen(ctx) {
   const { state, $, badge, icon, showToast } = ctx;
   state.osintTab = state.osintTab || "overview";
   ensureOsintSources(state);
-  state.osintReports = state.osintReports || [
+  state.osintReports = Array.isArray(state.osintReports) ? state.osintReports : [
     { title: "Звіт по ризиках", description: "Негативні згадки, ризики по справам та рекомендовані дії.", created: "16.05.2024 10:20" },
     { title: "Звіт по згадках", description: "Публічні згадки з Facebook, Telegram, ЗМІ та реєстрів.", created: "16.05.2024 09:45" },
     { title: "Звіт по реєстрах", description: "Зміни по компаніях, судових рішеннях і відкритих базах.", created: "15.05.2024 18:30" }
@@ -654,6 +676,7 @@ export function renderOSINTScreen(ctx) {
   if (!filtered.some((check) => check.id === state.selectedOsintId)) {
     state.selectedOsintId = filtered[0]?.id || state.osintChecks[0]?.id || "";
   }
+  const hasOsintData = osintHasData(state);
 
   $("#osint").innerHTML = `
     <div class="osint-screen osint-reference">
@@ -695,7 +718,7 @@ export function renderOSINTScreen(ctx) {
         ${osintMetrics(state).map((item) => metricCard(item, icon, state.osintMetricFocus)).join("")}
       </section>
 
-      ${state.osintTab === "overview" ? overviewWorkspace(state, badge, icon) : secondaryWorkspace(state, badge, icon)}
+      ${hasOsintData ? state.osintTab === "overview" ? overviewWorkspace(state, badge, icon) : secondaryWorkspace(state, badge, icon) : emptyOsintWorkspace(icon)}
     </div>
   `;
 

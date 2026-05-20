@@ -206,6 +206,7 @@ export function renderAnalyticsScreen(ctx) {
   state.analyticsDateEnd = state.analyticsDateEnd || defaultEnd;
   state.analyticsDatePickerOpen = Boolean(state.analyticsDatePickerOpen);
   const filteredCases = filterCases(state);
+  const hasCaseData = filteredCases.length > 0;
   const stats = analyticsStats(state, filteredCases);
   const statusRows = rowsWithPercent(countBy(filteredCases, (item) => item.status || "В роботі"));
   const typeRows = countBy(filteredCases, (item) => item.type || "Інші").map(([label, value], index) => [label, value, typeColors[index % typeColors.length]]);
@@ -223,6 +224,18 @@ export function renderAnalyticsScreen(ctx) {
   const financeOperations = buildFinanceOperations({ ...state, cases: filteredCases })
     .filter((item) => inRange(item.date, state.analyticsDateStart, state.analyticsDateEnd));
   const financeStats = financeTotalsFromData(financeRows, financeOperations);
+  const hasFinanceData = financeRows.length > 0 || financeOperations.length > 0;
+  const financeColumnRows = hasFinanceData
+    ? [
+      ["01-05.05", 82, 32, 58],
+      ["06-10.05", 88, 34, 64],
+      ["11-15.05", 95, 42, 68]
+    ]
+    : [
+      ["01-05.05", 0, 0, 0],
+      ["06-10.05", 0, 0, 0],
+      ["11-15.05", 0, 0, 0]
+    ];
   const currency = (value) => `${new Intl.NumberFormat("uk-UA").format(value)} грн`;
   const caseTypes = [...new Set(state.cases.map((item) => item.type).filter(Boolean))];
   const responsibles = [...new Set(state.cases.map((item) => item.responsible).filter(Boolean))];
@@ -322,12 +335,12 @@ export function renderAnalyticsScreen(ctx) {
 
       <section class="analytics-kpi-grid">
         ${[
-          { title: "Всього справ", value: stats.totalCases, trend: "+12%", iconName: "briefcase", tone: "blue" },
-          { title: "Нові справи", value: stats.newCases, trend: "+6%", iconName: "calendar", tone: "green" },
-          { title: "Завершені справи", value: stats.finishedCases, trend: "+20%", iconName: "check", tone: "violet" },
-          { title: "В роботі", value: stats.inWork, trend: "+8%", iconName: "search", tone: "amber" },
-          { title: "Середній час ведення справи", value: `${stats.avgDays} днів`, trend: "-5%", iconName: "clock", tone: "gray" },
-          { title: "% успішних справ", value: `${stats.success}%`, trend: "+7%", iconName: "check", tone: "green" }
+          { title: "Всього справ", value: stats.totalCases, trend: hasCaseData ? "+12%" : "0%", iconName: "briefcase", tone: "blue" },
+          { title: "Нові справи", value: stats.newCases, trend: hasCaseData ? "+6%" : "0%", iconName: "calendar", tone: "green" },
+          { title: "Завершені справи", value: stats.finishedCases, trend: hasCaseData ? "+20%" : "0%", iconName: "check", tone: "violet" },
+          { title: "В роботі", value: stats.inWork, trend: hasCaseData ? "+8%" : "0%", iconName: "search", tone: "amber" },
+          { title: "Середній час ведення справи", value: `${stats.avgDays} днів`, trend: hasCaseData ? "-5%" : "0%", iconName: "clock", tone: "gray" },
+          { title: "% успішних справ", value: `${stats.success}%`, trend: hasCaseData ? "+7%" : "0%", iconName: "check", tone: "green" }
         ].map((item) => kpiCard(item, icon)).join("")}
       </section>
 
@@ -357,8 +370,8 @@ export function renderAnalyticsScreen(ctx) {
         <article class="panel analytics-chart-card">
           <h2>Справи за статусами</h2>
           <div class="analytics-donut-wrap">
-            <div class="analytics-status-donut"></div>
-            <div>${renderDonutLegend(statusRows)}</div>
+            <div class="analytics-status-donut${statusRows.length ? "" : " is-empty"}"></div>
+            <div>${statusRows.length ? renderDonutLegend(statusRows) : `<p class="analytics-empty-note">Справ за вибраний період ще немає.</p>`}</div>
           </div>
         </article>
 
@@ -367,7 +380,7 @@ export function renderAnalyticsScreen(ctx) {
             <h2>Справи за типами</h2>
             <select><option>За кількістю</option><option>За сумою</option></select>
           </div>
-          <div class="analytics-hbar-list">${horizontalRows(typeRows)}</div>
+          <div class="analytics-hbar-list">${horizontalRows(typeRows) || `<p class="analytics-empty-note">Типи справ ще не сформовані.</p>`}</div>
         </article>
 
         <article class="panel analytics-chart-card">
@@ -376,7 +389,7 @@ export function renderAnalyticsScreen(ctx) {
             <select><option>За успішними справами</option><option>За навантаженням</option></select>
           </div>
           <div class="analytics-lawyer-list">
-            ${lawyerRows.map(([name, percent], index) => `
+            ${lawyerRows.length ? lawyerRows.map(([name, percent], index) => `
               <div class="analytics-lawyer-row">
                 <span>${index + 1}</span>
                 ${advocatePhoto(name, "small")}
@@ -384,7 +397,7 @@ export function renderAnalyticsScreen(ctx) {
                 <em><i style="width:${percent}%"></i></em>
                 <b>${percent}%</b>
               </div>
-            `).join("")}
+            `).join("") : `<p class="analytics-empty-note">Навантаження команди з'явиться після додавання справ.</p>`}
           </div>
           <button class="secondary analytics-view-all" type="button" data-analytics-details>Переглянути всіх</button>
         </article>
@@ -400,11 +413,7 @@ export function renderAnalyticsScreen(ctx) {
             <div><span>Чистий прибуток</span><strong>${currency(financeStats.profit)}</strong><em>актуально</em></div>
           </div>
           <div class="analytics-column-chart">
-            ${[
-              ["01-05.05", 82, 32, 58],
-              ["06-10.05", 88, 34, 64],
-              ["11-15.05", 95, 42, 68]
-            ].map(([label, income, expense, profit]) => `
+            ${financeColumnRows.map(([label, income, expense, profit]) => `
               <div class="analytics-column-group">
                 <span style="height:${income}%"></span>
                 <span class="red" style="height:${expense}%"></span>
@@ -420,7 +429,7 @@ export function renderAnalyticsScreen(ctx) {
             <h2>Топ практик <small>(${activeTabLabel.toLowerCase()})</small></h2>
             <select><option>За кількістю</option><option>За доходом</option></select>
           </div>
-          <div class="analytics-hbar-list">${horizontalRows(practiceRows)}</div>
+          <div class="analytics-hbar-list">${horizontalRows(practiceRows) || `<p class="analytics-empty-note">Практики з'являться після першої справи.</p>`}</div>
         </article>
       </section>
     </div>
