@@ -33,13 +33,90 @@ function toggleTopbarPanel($, toggleSelector, panelSelector) {
   toggle.setAttribute("aria-expanded", String(willOpen));
 }
 
+const doneNotificationStatuses = new Set(["Готово", "Виконано", "Завершено"]);
+
+function notificationDate(value) {
+  const clean = String(value || "").split(" ")[0];
+  if (!clean || clean === "-") return null;
+  if (clean.includes("-")) {
+    const [year, month, day] = clean.split("-").map(Number);
+    return new Date(year, month - 1, day);
+  }
+  const [day, month, year] = clean.split(".").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function notificationTasks(state) {
+  return (state.cases || []).flatMap((item) => (item.tasks || []).map((task) => ({
+    ...task,
+    caseId: item.id
+  })));
+}
+
+function topbarNotificationData(state) {
+  if (state.dataSource !== "api") {
+    return {
+      deadlines: { available: true },
+      court: { available: true },
+      mailings: { available: true }
+    };
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tasks = notificationTasks(state);
+  const overdueTasks = tasks.filter((task) => {
+    const due = notificationDate(task.due || task.dueDate || task.deadline);
+    return due && due < today && !doneNotificationStatuses.has(task.status);
+  });
+  const courtEvent = (state.events || []).find((event) => {
+    const text = `${event.type || ""} ${event.title || ""}`.toLowerCase();
+    return text.includes("суд");
+  });
+  const campaign = (state.mailingCampaigns || [])[0];
+
+  return {
+    deadlines: {
+      available: overdueTasks.length > 0,
+      title: `${overdueTasks.length} ${overdueTasks.length === 1 ? "задача прострочена" : "задачі прострочено"}`,
+      meta: "Перевірте дедлайни на сьогодні",
+      action: "Відкрити задачі"
+    },
+    court: {
+      available: Boolean(courtEvent),
+      title: courtEvent ? `${courtEvent.title || courtEvent.type || "Судова подія"}${courtEvent.time ? ` о ${courtEvent.time}` : ""}` : "",
+      meta: courtEvent?.caseId ? `Справа №${courtEvent.caseId}` : "Судові події ще не додані",
+      action: "Відкрити календар"
+    },
+    mailings: {
+      available: Boolean(campaign),
+      title: campaign?.title || "Розсилка готова",
+      meta: campaign?.meta || campaign?.status || "Кампанії ще не створені",
+      action: "Відкрити розсилку"
+    }
+  };
+}
+
+function updateNotificationCopy(row, data) {
+  if (!data?.available) return;
+  const title = row.querySelector("strong");
+  const meta = row.querySelector("em");
+  const action = row.querySelector("small");
+  if (data.title && title) title.textContent = data.title;
+  if (data.meta && meta) meta.textContent = data.meta;
+  if (data.action && action) action.textContent = data.action;
+}
+
 export function syncTopbarNotifications($, state) {
   const settings = state.settingsNotifications || {};
   const readKeys = new Set(state.notificationReadKeys || []);
+  const notifications = topbarNotificationData(state);
   let unreadCount = 0;
   document.querySelectorAll("[data-notification-key]").forEach((row) => {
     const key = row.dataset.notificationKey;
-    const visible = settings[key] !== false && !readKeys.has(key);
+    const data = notifications[key] || { available: true };
+    updateNotificationCopy(row, data);
+    const visible = data.available && settings[key] !== false && !readKeys.has(key);
     row.hidden = !visible;
     if (visible) unreadCount += 1;
   });

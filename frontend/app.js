@@ -4,7 +4,7 @@ import {
   isTopbarPanelOpen,
   setupTopbarControls,
   syncTopbarNotifications
-} from "./js/chrome.js?v=demo-admin-1";
+} from "./js/chrome.js?v=empty-kpi-2";
 import { createDialogOpeners } from "./js/dialog-openers.js";
 import { setupDialogControls } from "./js/dialogs.js";
 import { setupCaseDetailForms } from "./js/forms/case-details.js";
@@ -39,20 +39,20 @@ import {
   renderClientRows as renderClientRowsScreen,
   renderClientsScreen
 } from "./js/screens/clients.js";
-import { renderDashboardScreen } from "./js/screens/dashboard.js";
+import { renderDashboardScreen } from "./js/screens/dashboard.js?v=empty-kpi-2";
 import { renderDocumentsScreen } from "./js/screens/documents.js";
 import {
   renderMailingsScreen,
   setMailingTab as setMailingTabScreen
-} from "./js/screens/mailings.js?v=empty-kpi-1";
-import { renderFinanceScreen } from "./js/screens/finance.js?v=empty-kpi-1";
-import { renderOSINTScreen } from "./js/screens/osint.js?v=demo-empty-1";
+} from "./js/screens/mailings.js?v=empty-kpi-2";
+import { renderFinanceScreen } from "./js/screens/finance.js?v=empty-kpi-2";
+import { renderOSINTScreen } from "./js/screens/osint.js?v=empty-kpi-2";
 import { renderPlannerScreen } from "./js/screens/planner.js";
 import { renderSettingsScreen } from "./js/screens/settings.js?v=demo-admin-1";
 import {
   allCaseTasks as allCaseTasksScreen,
   renderTasksScreen
-} from "./js/screens/tasks.js?v=empty-kpi-1";
+} from "./js/screens/tasks.js?v=empty-kpi-2";
 import {
   addDays,
   actionMenu,

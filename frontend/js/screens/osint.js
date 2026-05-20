@@ -117,13 +117,15 @@ function filteredChecks(state) {
 
 function osintMetrics(state) {
   const summary = osintSummaryFromData(state);
+  const hasData = Boolean(summary.collected || summary.mentions || summary.analyzedCases || summary.risks || summary.monitoring || summary.sources);
+  const trend = (value) => hasData ? value : "Без даних";
   return [
-    { action: "overview", label: "Зібрано даних", value: new Intl.NumberFormat("uk-UA").format(summary.collected), trend: "+18%", icon: "briefcase", tone: "blue" },
-    { action: "mentions", label: "Нові згадки", value: new Intl.NumberFormat("uk-UA").format(summary.mentions), trend: "+12%", icon: "file", tone: "green" },
-    { action: "cases", label: "Проаналізовано справ", value: summary.analyzedCases, trend: "+8%", icon: "check", tone: "green" },
-    { action: "risks", label: "Виявлено ризиків", value: summary.risks, trend: "+20%", icon: "tag", tone: "red" },
-    { action: "monitoring", label: "Моніторинг активний", value: summary.monitoring, trend: "справ / людей / подій", icon: "refresh", tone: "blue" },
-    { action: "sources", label: "Джерел у роботі", value: summary.sources, trend: "підключено", icon: "search", tone: "blue" }
+    { action: "overview", label: "Зібрано даних", value: new Intl.NumberFormat("uk-UA").format(summary.collected), trend: trend("+18%"), icon: "briefcase", tone: "blue" },
+    { action: "mentions", label: "Нові згадки", value: new Intl.NumberFormat("uk-UA").format(summary.mentions), trend: trend("+12%"), icon: "file", tone: "green" },
+    { action: "cases", label: "Проаналізовано справ", value: summary.analyzedCases, trend: trend("+8%"), icon: "check", tone: "green" },
+    { action: "risks", label: "Виявлено ризиків", value: summary.risks, trend: trend("+20%"), icon: "tag", tone: "red" },
+    { action: "monitoring", label: "Моніторинг активний", value: summary.monitoring, trend: trend("справ / людей / подій"), icon: "refresh", tone: "blue" },
+    { action: "sources", label: "Джерел у роботі", value: summary.sources, trend: trend("підключено"), icon: "search", tone: "blue" }
   ];
 }
 

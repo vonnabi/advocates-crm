@@ -259,12 +259,20 @@ test("API empty demo mode still renders the workspace and AI empty state", async
 
   await page.goto("/");
   await expect(page.locator("#dashboard")).toContainText("Активних справ");
+  await expect(page.locator(".dashboard-kpi-grid")).toContainText("Без даних");
+  await expect(page.locator(".dashboard-kpi-grid")).not.toContainText("+12%");
+  await expect(page.locator(".dashboard-kpi-grid")).not.toContainText("+20%");
   await expect(page.locator("#admin-profile-toggle")).toContainText("Admin");
   await expect(page.locator("#admin-profile-toggle")).not.toContainText("Іваненко");
   await expect(page.locator('.nav-item[data-view="tasks"] .nav-badge')).toBeHidden();
   await expect(page.locator('.nav-item[data-view="ai"] .nav-new')).toHaveCount(0);
   await expect(page.locator("[data-demo-data-toggle]")).toBeVisible();
   await expect(page.locator("[data-demo-data-summary]")).toHaveText("Вимкнено");
+  await expect(page.locator("#notifications-count")).toHaveText("0");
+  await expect(page.locator("#notifications-count")).toHaveClass(/empty/);
+  await page.locator("#notifications-toggle").click();
+  await expect(page.locator("[data-notifications-empty]")).toBeVisible();
+  await page.locator("#notifications-toggle").click();
 
   await page.locator('.nav-item[data-view="tasks"]').click();
   await expect(page.locator(".tasks-kpi-grid")).toContainText("Без даних");
@@ -294,6 +302,9 @@ test("API empty demo mode still renders the workspace and AI empty state", async
 
   await page.locator('.nav-item[data-view="osint"]').click();
   await expect(page.locator("#osint .osint-kpi-card strong")).toHaveText(["0", "0", "0", "0", "0", "0"]);
+  await expect(page.locator("#osint .osint-kpi-grid")).toContainText("Без даних");
+  await expect(page.locator("#osint .osint-kpi-grid")).not.toContainText("+18%");
+  await expect(page.locator("#osint .osint-kpi-grid")).not.toContainText("+12%");
   await expect(page.locator("#osint .osint-empty-state")).toContainText("OSINT даних ще немає");
   await expect(page.locator("#osint .osint-line-chart")).toHaveCount(0);
 

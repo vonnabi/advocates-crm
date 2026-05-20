@@ -96,6 +96,11 @@ function trendText(value) {
   return value >= 0 ? `+${value}%` : `${value}%`;
 }
 
+function dataTrend(hasData, value, fallback = "0%") {
+  if (!hasData) return "Без даних";
+  return value ? trendText(value) : fallback;
+}
+
 function kpiCard({ label, value, hint, iconName, tone = "blue", trend = "", view = "" }, icon) {
   const link = view ? ` data-view-link="${view}" aria-label="Відкрити розділ: ${label}"` : "";
   return `
@@ -250,6 +255,11 @@ export function renderDashboardScreen(ctx) {
   const finance = financeTotalsFromData(financeRows, financeOperations);
   const osint = osintSummaryFromData(state);
   const telegram = state.clients.filter((client) => client.telegram).length;
+  const hasCaseData = state.cases.length > 0;
+  const hasTaskData = tasks.length > 0;
+  const hasFinanceData = financeRows.length > 0 || financeOperations.length > 0;
+  const hasClientData = state.clients.length > 0;
+  const hasOsintData = Boolean(osint.collected || osint.mentions || osint.analyzedCases || osint.risks || osint.monitoring || osint.sources);
 
   $("#dashboard").innerHTML = `
     <div class="dashboard-screen">
@@ -267,12 +277,12 @@ export function renderDashboardScreen(ctx) {
 
       <section class="dashboard-kpi-grid">
         ${[
-          { label: "Активних справ", value: activeCases.length, hint: "у роботі бюро", iconName: "briefcase", tone: "blue", trend: trendText(12), view: "cases" },
-          { label: "Задач у планері", value: plannedTasks.length, hint: "автоматично пов'язані з планом", iconName: "calendar", tone: "violet", trend: trendText(8), view: "planner" },
-          { label: "Прострочені", value: overdueTasks.length, hint: "потребують контролю сьогодні", iconName: "bell", tone: "red", trend: overdueTasks.length ? "+100%" : "0%", view: "tasks" },
-          { label: "Борг клієнтів", value: currency(finance.debt), hint: "з усіх активних справ", iconName: "tag", tone: "amber", trend: finance.debt ? "+15%" : "0%", view: "finance" },
-          { label: "Telegram", value: telegram, hint: "клієнтів підключено", iconName: "telegram", tone: "green", trend: trendText(10), view: "clients" },
-          { label: "OSINT ризики", value: osint.risks, hint: "виявлено у відкритих джерелах", iconName: "search", tone: "red", trend: trendText(20), view: "osint" }
+          { label: "Активних справ", value: activeCases.length, hint: "у роботі бюро", iconName: "briefcase", tone: "blue", trend: dataTrend(hasCaseData, activeCases.length ? 12 : 0), view: "cases" },
+          { label: "Задач у планері", value: plannedTasks.length, hint: "автоматично пов'язані з планом", iconName: "calendar", tone: "violet", trend: dataTrend(hasTaskData, plannedTasks.length ? 8 : 0), view: "planner" },
+          { label: "Прострочені", value: overdueTasks.length, hint: "потребують контролю сьогодні", iconName: "bell", tone: "red", trend: dataTrend(hasTaskData, overdueTasks.length ? 100 : 0), view: "tasks" },
+          { label: "Борг клієнтів", value: currency(finance.debt), hint: "з усіх активних справ", iconName: "tag", tone: "amber", trend: dataTrend(hasFinanceData, finance.debt ? 15 : 0), view: "finance" },
+          { label: "Telegram", value: telegram, hint: "клієнтів підключено", iconName: "telegram", tone: "green", trend: dataTrend(hasClientData, telegram ? 10 : 0), view: "clients" },
+          { label: "OSINT ризики", value: osint.risks, hint: "виявлено у відкритих джерелах", iconName: "search", tone: "red", trend: dataTrend(hasOsintData, osint.risks ? 20 : 0), view: "osint" }
         ].map((item) => kpiCard(item, icon)).join("")}
       </section>
 
