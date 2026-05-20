@@ -266,14 +266,27 @@ test("API empty demo mode still renders the workspace and AI empty state", async
   await expect(page.locator("[data-demo-data-toggle]")).toBeVisible();
   await expect(page.locator("[data-demo-data-summary]")).toHaveText("Вимкнено");
 
+  await page.locator('.nav-item[data-view="tasks"]').click();
+  await expect(page.locator(".tasks-kpi-grid")).toContainText("Без даних");
+  await expect(page.locator(".tasks-kpi-grid")).not.toContainText("+12%");
+
   await page.locator('.nav-item[data-view="settings"]').click();
   await expect(page.locator(".settings-user-row").first()).toContainText("Admin");
   await expect(page.locator(".settings-user-row").first()).not.toContainText("Іваненко");
 
   await page.locator('.nav-item[data-view="finance"]').click();
+  await expect(page.locator(".finance-kpi-grid")).toContainText("Без даних");
+  await expect(page.locator(".finance-kpi-grid")).not.toContainText("+12%");
+  await expect(page.locator(".finance-kpi-grid")).not.toContainText("+8%");
   await expect(page.locator(".finance-status-card")).toContainText("Всього на рахунках0 грн");
   await expect(page.locator(".finance-status-card")).not.toContainText("540 200");
   await expect(page.locator(".finance-income-donut")).toHaveClass(/is-empty/);
+
+  await page.locator('.nav-item[data-view="mailings"]').click();
+  await expect(page.locator(".coverage-row")).toContainText("Всего клиентов0");
+  await expect(page.locator(".coverage-row")).not.toContainText("82%");
+  await expect(page.locator(".forecast-card")).toContainText("0 сообщений");
+  await expect(page.locator(".forecast-card")).not.toContainText("744");
 
   await page.locator('.nav-item[data-view="analytics"]').click();
   await expect(page.locator(".analytics-kpi-card strong")).toHaveText(["0", "0", "0", "0", "0 днів", "0%"]);

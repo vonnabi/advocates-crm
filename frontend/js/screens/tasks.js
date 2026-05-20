@@ -538,6 +538,9 @@ function renderTasks() {
     .slice(0, 3);
   const planTime = (task) => task.plannerTime || String(task.dueText || "").match(/\d{2}:\d{2}/)?.[0] || "09:00";
   const planTone = (task) => task.priority === "Високий" ? "red" : task.priority === "Середній" ? "amber" : task.priority === "Низький" ? "green" : "blue";
+  const taskDataHint = tasks.length ? "" : "Без даних";
+  const taskPercent = (value) => tasks.length ? `${Math.round((value / tasks.length) * 100)}%` : taskDataHint;
+  const plannerPercent = tasks.length ? `${Math.round((plannedCount / tasks.length) * 100)}% у плані` : taskDataHint;
   const syncSteps = [
     { icon: "calendar", title: "Створіть задачу", text: "Додайте задачу з дедлайном" },
     { icon: "check", title: "Встановіть пріоритет", text: "Задачі сортуються за важливістю" },
@@ -567,11 +570,11 @@ function renderTasks() {
       <div class="tasks-workspace ${selected ? "has-task-detail" : "is-full"}">
         <div class="tasks-main-column">
           <div class="tasks-kpi-grid">
-            <button class="panel tasks-kpi-card ${allKpiActive ? "active" : ""}" type="button" data-task-kpi="all"><div><span>Всього задач</span><strong>${tasks.length}</strong><em>+12% порівняно з попер. періодом</em></div><i>${icon("calendar")}</i></button>
-            <button class="panel tasks-kpi-card ${quickFilter === "done" ? "active" : ""}" type="button" data-task-kpi="done"><div><span>Виконано</span><strong>${doneCount}</strong><em>${completion}%</em></div><i class="green">${icon("check")}</i></button>
-            <button class="panel tasks-kpi-card ${quickFilter === "work" ? "active" : ""}" type="button" data-task-kpi="work"><div><span>В роботі</span><strong>${inWorkCount}</strong><em>${tasks.length ? Math.round((inWorkCount / tasks.length) * 100) : 0}%</em></div><i class="amber">${icon("search")}</i></button>
-            <button class="panel tasks-kpi-card ${quickFilter === "overdue" ? "active" : ""}" type="button" data-task-kpi="overdue"><div><span>Просрочені</span><strong>${overdueCount}</strong><em>${tasks.length ? Math.round((overdueCount / tasks.length) * 100) : 0}%</em></div><i class="red">${icon("warning")}</i></button>
-            <button class="panel tasks-kpi-card ${quickFilter === "planner" ? "active" : ""}" type="button" data-task-kpi="planner"><div><span>Планер / нагадування</span><strong>${plannedCount} / ${reminderCount}</strong><em>${tasks.length ? Math.round((plannedCount / tasks.length) * 100) : 0}% у плані</em></div><i class="violet">${icon("calendar")}</i></button>
+            <button class="panel tasks-kpi-card ${allKpiActive ? "active" : ""}" type="button" data-task-kpi="all"><div><span>Всього задач</span><strong>${tasks.length}</strong><em>${tasks.length ? "поточний список" : taskDataHint}</em></div><i>${icon("calendar")}</i></button>
+            <button class="panel tasks-kpi-card ${quickFilter === "done" ? "active" : ""}" type="button" data-task-kpi="done"><div><span>Виконано</span><strong>${doneCount}</strong><em>${tasks.length ? `${completion}%` : taskDataHint}</em></div><i class="green">${icon("check")}</i></button>
+            <button class="panel tasks-kpi-card ${quickFilter === "work" ? "active" : ""}" type="button" data-task-kpi="work"><div><span>В роботі</span><strong>${inWorkCount}</strong><em>${taskPercent(inWorkCount)}</em></div><i class="amber">${icon("search")}</i></button>
+            <button class="panel tasks-kpi-card ${quickFilter === "overdue" ? "active" : ""}" type="button" data-task-kpi="overdue"><div><span>Просрочені</span><strong>${overdueCount}</strong><em>${taskPercent(overdueCount)}</em></div><i class="red">${icon("warning")}</i></button>
+            <button class="panel tasks-kpi-card ${quickFilter === "planner" ? "active" : ""}" type="button" data-task-kpi="planner"><div><span>Планер / нагадування</span><strong>${plannedCount} / ${reminderCount}</strong><em>${plannerPercent}</em></div><i class="violet">${icon("calendar")}</i></button>
           </div>
           <div class="tasks-toolbar">
             <input id="task-search" value="${state.taskQuery || ""}" type="search" placeholder="Пошук задачі, клієнта, справи..." />

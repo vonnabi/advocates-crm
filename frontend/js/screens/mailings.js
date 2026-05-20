@@ -10,7 +10,8 @@ export function renderMailingsScreen(ctx) {
   const { state, $, icon, badge, actionMenu, bindActionMenus, semanticTone, formatDate, showToast, syncNavigationState } = ctx;
   const setTab = (tab, remember = true) => setMailingTab(ctx, tab, remember);
   const rerender = () => renderMailingsScreen(ctx);
-  if (!state.mailingTemplates.length) {
+  const realDataMode = state.dataSource === "api";
+  if (!realDataMode && !state.mailingTemplates.length) {
     state.mailingTemplates = [
       { title: "Нагадування про подію", type: "Нагадування", text: "Шановний {{client_name}}, нагадуємо про заплановану подію у вашій справі." },
       { title: "Юридичне повідомлення", type: "Юридичне повідомлення", text: "Шановний {{client_name}}, повідомляємо важливу інформацію щодо вашого звернення." }
@@ -18,19 +19,26 @@ export function renderMailingsScreen(ctx) {
   }
   const recipientMode = state.mailingRecipientMode || "segment";
   const manualRecipients = state.clients.filter((client) => state.mailingManualClientIds.includes(client.id));
-  const recipients = recipientMode === "all" ? 1245 : recipientMode === "manual" ? manualRecipients.length : Math.max(120, 386 - Math.max(0, 3 - state.mailingFilters.length) * 58);
+  const activeMailingFilters = realDataMode && !state.clients.length ? [] : state.mailingFilters;
+  const totalClients = realDataMode ? state.clients.length : 1245;
+  const demoSegmentRecipients = Math.max(120, 386 - Math.max(0, 3 - activeMailingFilters.length) * 58);
+  const segmentRecipients = realDataMode ? totalClients : demoSegmentRecipients;
+  const recipients = recipientMode === "all" ? totalClients : recipientMode === "manual" ? manualRecipients.length : segmentRecipients;
   const estimatedTelegram = Math.round(recipients * 0.82);
   const smsDelivered = Math.round(recipients * 0.625);
   const emailDelivered = Math.round(recipients * 0.482);
   const totalMessages = estimatedTelegram + smsDelivered + emailDelivered;
+  const metricText = (value, percent) => recipients ? `${value} (${percent}%)` : "0";
+  const forecastText = (value, percent) => recipients ? `~ ${value} (${percent}%)` : "0";
+  const totalMessagesText = totalMessages ? `~ ${totalMessages} сообщений` : "0 сообщений";
   const mainTab = state.mailingMainTab || "new";
   const editorChannel = state.mailingEditorChannel || "Telegram";
   const previewChannel = state.mailingPreviewChannel || editorChannel;
   const filterOptions = ["Статус клиента: Новый", "Статус клиента: Активный", "Статус клиента: Постоянный", "Telegram: Подключен", "SMS: Доступен", "Email: Заполнен", "Источник: Сайт", "Источник: Рекомендация", "Ответственный: Іваненко А.Ю.", "Клиенты с активными делами", "Есть согласие на рассылку"];
-  const availableFilters = filterOptions.filter((filter) => !state.mailingFilters.includes(filter));
+  const availableFilters = filterOptions.filter((filter) => !activeMailingFilters.includes(filter));
   const campaignFilter = state.mailingCampaignFilter || "all";
   const campaignQuery = String(state.mailingCampaignQuery || "").trim().toLowerCase();
-  const baseCampaignRows = state.mailingCampaigns.length ? state.mailingCampaigns : [{ title: "Нагадування про консультацію", status: "Відправлено", meta: "Telegram + SMS · 124 отримувачі", sample: true }];
+  const baseCampaignRows = state.mailingCampaigns.length ? state.mailingCampaigns : realDataMode ? [] : [{ title: "Нагадування про консультацію", status: "Відправлено", meta: "Telegram + SMS · 124 отримувачі", sample: true }];
   const campaignRows = baseCampaignRows.filter((item) => {
     if (campaignFilter === "all") return true;
     if (campaignFilter === "scheduled") return item.status === "Запланирована";
@@ -133,7 +141,7 @@ export function renderMailingsScreen(ctx) {
           <section class="panel mailing-section mailing-recipients-section">
             <h2>1. Получатели</h2>
             <div class="recipient-mode-grid">
-              <button class="recipient-mode-card ${recipientMode === "all" ? "selected" : ""}" data-recipient-mode="all">${icon("filter")}<span><strong>Все клиенты</strong><em>1245 клиентов</em></span></button>
+              <button class="recipient-mode-card ${recipientMode === "all" ? "selected" : ""}" data-recipient-mode="all">${icon("filter")}<span><strong>Все клиенты</strong><em>${totalClients} клиентов</em></span></button>
               <button class="recipient-mode-card ${recipientMode === "segment" ? "selected" : ""}" data-recipient-mode="segment">${icon("check")}<span><strong>Сегмент клиентов</strong><em>Выбрано ${recipients} клиентов</em></span></button>
               <button class="recipient-mode-card ${recipientMode === "manual" ? "selected" : ""}" data-recipient-mode="manual">${icon("user")}<span><strong>Выбор вручную</strong><em>Выбрано ${manualRecipients.length} клиентов</em></span></button>
             </div>
@@ -150,7 +158,7 @@ export function renderMailingsScreen(ctx) {
             <div class="segment-filter-box">
               <h3>Фильтры сегмента</h3>
               <div class="segment-chips">
-                ${state.mailingFilters.map((filter, index) => `<span>${filter} <button data-remove-mailing-filter="${index}">×</button></span>`).join("") || `<em class="muted">Фильтры не выбраны</em>`}
+                ${activeMailingFilters.map((filter, index) => `<span>${filter} <button data-remove-mailing-filter="${index}">×</button></span>`).join("") || `<em class="muted">Фильтры не выбраны</em>`}
               </div>
               <div class="segment-add-wrap">
                 <button class="secondary segment-add" data-add-mailing-filter>+ Добавить фильтр</button>
@@ -162,9 +170,9 @@ export function renderMailingsScreen(ctx) {
             ` : ""}
             <div class="coverage-row">
               <span class="coverage-user">${icon("user")}<strong>Всего клиентов</strong><em>${recipients}</em></span>
-              <span class="coverage-telegram">${icon("telegram")}<strong>Telegram</strong><em>${estimatedTelegram} (82%)</em></span>
-              <span class="coverage-sms">${icon("message")}<strong>SMS</strong><em>${smsDelivered} (62%)</em></span>
-              <span class="coverage-email">${icon("mail")}<strong>Email</strong><em>${emailDelivered} (48%)</em></span>
+              <span class="coverage-telegram">${icon("telegram")}<strong>Telegram</strong><em>${metricText(estimatedTelegram, 82)}</em></span>
+              <span class="coverage-sms">${icon("message")}<strong>SMS</strong><em>${metricText(smsDelivered, 62)}</em></span>
+              <span class="coverage-email">${icon("mail")}<strong>Email</strong><em>${metricText(emailDelivered, 48)}</em></span>
             </div>
           </section>
           <section class="panel mailing-section">
@@ -241,10 +249,10 @@ export function renderMailingsScreen(ctx) {
           <section class="panel forecast-card">
             <h2>Прогноз результатов</h2>
             <div class="forecast-row"><span>Всего получателей</span><strong>${recipients}</strong></div>
-            <div class="forecast-row green"><span>Telegram доставлено</span><strong>~ ${estimatedTelegram} (82%)</strong></div>
-            <div class="forecast-row green"><span>SMS доставлено</span><strong>~ ${smsDelivered} (62%)</strong></div>
-            <div class="forecast-row green"><span>Email доставлено</span><strong>~ ${emailDelivered} (48%)</strong></div>
-            <div class="forecast-total"><span>Ориентировочный охват</span><strong>~ ${totalMessages} сообщений</strong></div>
+            <div class="forecast-row green"><span>Telegram доставлено</span><strong>${forecastText(estimatedTelegram, 82)}</strong></div>
+            <div class="forecast-row green"><span>SMS доставлено</span><strong>${forecastText(smsDelivered, 62)}</strong></div>
+            <div class="forecast-row green"><span>Email доставлено</span><strong>${forecastText(emailDelivered, 48)}</strong></div>
+            <div class="forecast-total"><span>Ориентировочный охват</span><strong>${totalMessagesText}</strong></div>
           </section>
           <section class="panel mailing-tips-card">
             <h2>Советы</h2>

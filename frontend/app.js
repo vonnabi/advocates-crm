@@ -44,15 +44,15 @@ import { renderDocumentsScreen } from "./js/screens/documents.js";
 import {
   renderMailingsScreen,
   setMailingTab as setMailingTabScreen
-} from "./js/screens/mailings.js";
-import { renderFinanceScreen } from "./js/screens/finance.js?v=demo-admin-1";
+} from "./js/screens/mailings.js?v=empty-kpi-1";
+import { renderFinanceScreen } from "./js/screens/finance.js?v=empty-kpi-1";
 import { renderOSINTScreen } from "./js/screens/osint.js?v=demo-empty-1";
 import { renderPlannerScreen } from "./js/screens/planner.js";
 import { renderSettingsScreen } from "./js/screens/settings.js?v=demo-admin-1";
 import {
   allCaseTasks as allCaseTasksScreen,
   renderTasksScreen
-} from "./js/screens/tasks.js";
+} from "./js/screens/tasks.js?v=empty-kpi-1";
 import {
   addDays,
   actionMenu,

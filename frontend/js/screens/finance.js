@@ -361,13 +361,13 @@ function financeTotals(rows, operations, state) {
   return financeTotalsFromData(rows, operations, state);
 }
 
-function kpiCard({ title, value, trend, iconName, tone, trendTone = "" }, icon) {
+function kpiCard({ title, value, trend, detail = "порівняно з попер. періодом", iconName, tone, trendTone = "" }, icon) {
   return `
     <article class="finance-kpi-card">
       <span>${title}</span>
       <strong>${value}</strong>
       <em class="${trendTone}">${trend}</em>
-      <small>порівняно з попер. періодом</small>
+      <small>${detail}</small>
       <i class="${tone}">${icon(iconName)}</i>
     </article>
   `;
@@ -1029,6 +1029,14 @@ export function renderFinanceScreen(ctx) {
   const cashBalance = hasFinanceData ? 28500 : 0;
   const supplierDebt = hasFinanceData ? 48900 : 0;
   const availableBalance = hasFinanceData ? 304800 : 0;
+  const emptyKpiDetail = "даних ще немає";
+  const financeKpis = [
+    { title: "Загальний дохід", value: currencyText(totals.income), trend: hasFinanceData ? "+12%" : "Без даних", detail: hasFinanceData ? undefined : emptyKpiDetail, iconName: "briefcase", tone: "blue" },
+    { title: "Витрати", value: currencyText(totals.expenses), trend: hasFinanceData ? "+8%" : "Без даних", detail: hasFinanceData ? undefined : emptyKpiDetail, trendTone: hasFinanceData ? "danger" : "", iconName: "file", tone: "red" },
+    { title: "Чистий прибуток", value: currencyText(totals.profit), trend: hasFinanceData ? "+15%" : "Без даних", detail: hasFinanceData ? undefined : emptyKpiDetail, iconName: "check", tone: "green" },
+    { title: "Очікувані надходження", value: currencyText(totals.expected), trend: hasFinanceData ? "порівняно з попер. періодом" : "Без даних", detail: hasFinanceData ? undefined : emptyKpiDetail, iconName: "clock", tone: "amber" },
+    { title: "Заборгованість клієнтів", value: currencyText(totals.debt), trend: hasFinanceData ? "порівняно з попер. періодом" : "Без даних", detail: hasFinanceData ? undefined : emptyKpiDetail, iconName: "mail", tone: "red" }
+  ];
 
   $("#finance").innerHTML = `
     <div class="finance-screen finance-reference">
@@ -1065,13 +1073,7 @@ export function renderFinanceScreen(ctx) {
 
       ${state.financeTab === "overview" ? `
       <section class="finance-kpi-grid">
-        ${[
-          { title: "Загальний дохід", value: currencyText(totals.income), trend: "+12%", iconName: "briefcase", tone: "blue" },
-          { title: "Витрати", value: currencyText(totals.expenses), trend: "+8%", trendTone: "danger", iconName: "file", tone: "red" },
-          { title: "Чистий прибуток", value: currencyText(totals.profit), trend: "+15%", iconName: "check", tone: "green" },
-          { title: "Очікувані надходження", value: currencyText(totals.expected), trend: "порівняно з попер. періодом", iconName: "clock", tone: "amber" },
-          { title: "Заборгованість клієнтів", value: currencyText(totals.debt), trend: "порівняно з попер. періодом", iconName: "mail", tone: "red" }
-        ].map((item) => kpiCard(item, icon)).join("")}
+        ${financeKpis.map((item) => kpiCard(item, icon)).join("")}
       </section>
 
       <section class="finance-dashboard-layout">
