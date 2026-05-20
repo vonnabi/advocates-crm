@@ -18,7 +18,7 @@ import {
   saveNavigationState as saveNavigationStateToStorage
 } from "./js/navigation.js";
 import { renderAIScreen } from "./js/screens/ai.js";
-import { renderAnalyticsScreen } from "./js/screens/analytics.js?v=demo-admin-1";
+import { renderAnalyticsScreen } from "./js/screens/analytics.js?v=empty-kpi-3";
 import {
   caseFinance,
   caseFolders,

@@ -236,6 +236,17 @@ export function renderAnalyticsScreen(ctx) {
       ["06-10.05", 0, 0, 0],
       ["11-15.05", 0, 0, 0]
     ];
+  const financeSummaryLabels = hasFinanceData
+    ? {
+      income: "з фінансів",
+      expenses: "з операцій",
+      profit: "актуально"
+    }
+    : {
+      income: "Без даних",
+      expenses: "Без даних",
+      profit: "Без даних"
+    };
   const currency = (value) => `${new Intl.NumberFormat("uk-UA").format(value)} грн`;
   const caseTypes = [...new Set(state.cases.map((item) => item.type).filter(Boolean))];
   const responsibles = [...new Set(state.cases.map((item) => item.responsible).filter(Boolean))];
@@ -408,9 +419,9 @@ export function renderAnalyticsScreen(ctx) {
             <select><option>За період</option><option>За місяць</option></select>
           </div>
           <div class="analytics-finance-summary">
-            <div><span>Дохід</span><strong>${currency(financeStats.income)}</strong><em>з фінансів</em></div>
-            <div><span>Витрати</span><strong>${currency(financeStats.expenses)}</strong><em class="danger">з операцій</em></div>
-            <div><span>Чистий прибуток</span><strong>${currency(financeStats.profit)}</strong><em>актуально</em></div>
+            <div><span>Дохід</span><strong>${currency(financeStats.income)}</strong><em>${financeSummaryLabels.income}</em></div>
+            <div><span>Витрати</span><strong>${currency(financeStats.expenses)}</strong><em class="${hasFinanceData ? "danger" : ""}">${financeSummaryLabels.expenses}</em></div>
+            <div><span>Чистий прибуток</span><strong>${currency(financeStats.profit)}</strong><em>${financeSummaryLabels.profit}</em></div>
           </div>
           <div class="analytics-column-chart">
             ${financeColumnRows.map(([label, income, expense, profit]) => `

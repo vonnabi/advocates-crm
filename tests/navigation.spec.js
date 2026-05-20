@@ -299,6 +299,9 @@ test("API empty demo mode still renders the workspace and AI empty state", async
   await page.locator('.nav-item[data-view="analytics"]').click();
   await expect(page.locator(".analytics-kpi-card strong")).toHaveText(["0", "0", "0", "0", "0 днів", "0%"]);
   await expect(page.locator(".analytics-status-donut")).toHaveClass(/is-empty/);
+  await expect(page.locator(".analytics-finance-summary")).toContainText("Без даних");
+  await expect(page.locator(".analytics-finance-summary")).not.toContainText("з фінансів");
+  await expect(page.locator(".analytics-finance-summary")).not.toContainText("з операцій");
 
   await page.locator('.nav-item[data-view="osint"]').click();
   await expect(page.locator("#osint .osint-kpi-card strong")).toHaveText(["0", "0", "0", "0", "0", "0"]);
