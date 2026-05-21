@@ -182,13 +182,13 @@ function exportAnalytics(ctx, stats) {
   ctx.showToast("Звіт аналітики сформовано.");
 }
 
-function kpiCard({ title, value, trend, iconName, tone }, icon) {
+function kpiCard({ title, value, trend, detail = "порівняно з попер. періодом", iconName, tone }, icon) {
   return `
     <article class="analytics-kpi-card">
       <span>${title}</span>
       <strong>${value}</strong>
       <em class="${trend.startsWith("-") ? "down" : ""}">${trend}</em>
-      <small>порівняно з попер. періодом</small>
+      <small>${detail}</small>
       <i class="${tone}">${icon(iconName)}</i>
     </article>
   `;
@@ -275,6 +275,8 @@ export function renderAnalyticsScreen(ctx) {
     efficiency: "Ефективність",
     reports: "Детальні звіти"
   }[state.analyticsTab];
+  const analyticsTrend = (metricValue, value) => hasCaseData && metricValue ? value : "Без даних";
+  const analyticsTrendDetail = hasCaseData ? undefined : "даних ще немає";
 
   $("#analytics").innerHTML = `
     <div class="analytics-screen analytics-reference">
@@ -363,12 +365,12 @@ export function renderAnalyticsScreen(ctx) {
 
       <section class="analytics-kpi-grid">
         ${[
-          { title: "Всього справ", value: stats.totalCases, trend: hasCaseData ? "+12%" : "0%", iconName: "briefcase", tone: "blue" },
-          { title: "Нові справи", value: stats.newCases, trend: hasCaseData ? "+6%" : "0%", iconName: "calendar", tone: "green" },
-          { title: "Завершені справи", value: stats.finishedCases, trend: hasCaseData ? "+20%" : "0%", iconName: "check", tone: "violet" },
-          { title: "В роботі", value: stats.inWork, trend: hasCaseData ? "+8%" : "0%", iconName: "search", tone: "amber" },
-          { title: "Середній час ведення справи", value: `${stats.avgDays} днів`, trend: hasCaseData ? "-5%" : "0%", iconName: "clock", tone: "gray" },
-          { title: "% успішних справ", value: `${stats.success}%`, trend: hasCaseData ? "+7%" : "0%", iconName: "check", tone: "green" }
+          { title: "Всього справ", value: stats.totalCases, trend: analyticsTrend(stats.totalCases, "+12%"), detail: analyticsTrendDetail, iconName: "briefcase", tone: "blue" },
+          { title: "Нові справи", value: stats.newCases, trend: analyticsTrend(stats.newCases, "+6%"), detail: analyticsTrendDetail, iconName: "calendar", tone: "green" },
+          { title: "Завершені справи", value: stats.finishedCases, trend: analyticsTrend(stats.finishedCases, "+20%"), detail: analyticsTrendDetail, iconName: "check", tone: "violet" },
+          { title: "В роботі", value: stats.inWork, trend: analyticsTrend(stats.inWork, "+8%"), detail: analyticsTrendDetail, iconName: "search", tone: "amber" },
+          { title: "Середній час ведення справи", value: `${stats.avgDays} днів`, trend: analyticsTrend(stats.avgDays, "-5%"), detail: analyticsTrendDetail, iconName: "clock", tone: "gray" },
+          { title: "% успішних справ", value: `${stats.success}%`, trend: analyticsTrend(stats.success, "+7%"), detail: analyticsTrendDetail, iconName: "check", tone: "green" }
         ].map((item) => kpiCard(item, icon)).join("")}
       </section>
 

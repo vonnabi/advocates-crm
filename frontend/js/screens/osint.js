@@ -43,15 +43,6 @@ const OSINT_SUBTABS = [
   ["events", "Ключові події"]
 ];
 
-const OSINT_METRICS = [
-  { label: "Зібрано даних", value: "32 540", trend: "+18%", icon: "briefcase", tone: "blue" },
-  { label: "Нові згадки", value: "1 245", trend: "+12%", icon: "file", tone: "green" },
-  { label: "Проаналізовано справ", value: "86", trend: "+8%", icon: "check", tone: "green" },
-  { label: "Виявлено ризиків", value: "24", trend: "+20%", icon: "tag", tone: "red" },
-  { label: "Моніторинг активний", value: "15", trend: "справ / людей / подій", icon: "refresh", tone: "blue" },
-  { label: "Джерел у роботі", value: "52", trend: "підключено", icon: "search", tone: "blue" }
-];
-
 const OSINT_SOURCE_SPLIT = [
   ["Соцмережі", 45, 562, "#1f7ae0"],
   ["Новини", 25, 312, "#27ae6f"],
@@ -135,15 +126,14 @@ function filteredChecks(state) {
 
 function osintMetrics(state) {
   const summary = osintSummaryFromData(state);
-  const hasData = Boolean(summary.collected || summary.mentions || summary.analyzedCases || summary.risks || summary.monitoring || summary.sources);
-  const trend = (value) => hasData ? value : "Без даних";
+  const trend = (metricValue, value) => metricValue ? value : "Без даних";
   return [
-    { action: "overview", label: "Зібрано даних", value: new Intl.NumberFormat("uk-UA").format(summary.collected), trend: trend("+18%"), icon: "briefcase", tone: "blue" },
-    { action: "mentions", label: "Нові згадки", value: new Intl.NumberFormat("uk-UA").format(summary.mentions), trend: trend("+12%"), icon: "file", tone: "green" },
-    { action: "cases", label: "Проаналізовано справ", value: summary.analyzedCases, trend: trend("+8%"), icon: "check", tone: "green" },
-    { action: "risks", label: "Виявлено ризиків", value: summary.risks, trend: trend("+20%"), icon: "tag", tone: "red" },
-    { action: "monitoring", label: "Моніторинг активний", value: summary.monitoring, trend: trend("справ / людей / подій"), icon: "refresh", tone: "blue" },
-    { action: "sources", label: "Джерел у роботі", value: summary.sources, trend: trend("підключено"), icon: "search", tone: "blue" }
+    { action: "overview", label: "Зібрано даних", value: new Intl.NumberFormat("uk-UA").format(summary.collected), trend: trend(summary.collected, "+18%"), icon: "briefcase", tone: "blue" },
+    { action: "mentions", label: "Нові згадки", value: new Intl.NumberFormat("uk-UA").format(summary.mentions), trend: trend(summary.mentions, "+12%"), icon: "file", tone: "green" },
+    { action: "cases", label: "Проаналізовано справ", value: summary.analyzedCases, trend: trend(summary.analyzedCases, "+8%"), icon: "check", tone: "green" },
+    { action: "risks", label: "Виявлено ризиків", value: summary.risks, trend: trend(summary.risks, "+20%"), icon: "tag", tone: "red" },
+    { action: "monitoring", label: "Моніторинг активний", value: summary.monitoring, trend: trend(summary.monitoring, "справ / людей / подій"), icon: "refresh", tone: "blue" },
+    { action: "sources", label: "Джерел у роботі", value: summary.sources, trend: trend(summary.sources, "підключено"), icon: "search", tone: "blue" }
   ];
 }
 

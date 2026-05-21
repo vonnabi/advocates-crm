@@ -11,15 +11,6 @@ import { normalizeFinanceOperation } from "../state.js";
 
 const DEFAULT_START = DEMO_START;
 const DEFAULT_END = DEMO_END;
-const demoCaseYear = new Date().getFullYear();
-
-function demoCaseId(value) {
-  return String(value).replace(/^2024\//, `${demoCaseYear}/`);
-}
-
-function demoCaseText(value) {
-  return String(value).replace(/№2024\//g, `№${demoCaseYear}/`);
-}
 
 function financeDisplayDate(daysAgo = 0) {
   const date = new Date();
@@ -38,83 +29,6 @@ const FINANCE_TABS = [
   ["payments", "Платежі"],
   ["salary", "Зарплата"],
   ["reports", "Звіти"]
-];
-
-const FINANCE_OPERATIONS = [
-  {
-    date: financeDisplayDate(0),
-    type: "Надходження",
-    title: "Оплата за правову допомогу",
-    caseId: demoCaseId("2024/12345"),
-    client: "Петренко Микола",
-    amount: 50000,
-    status: "Оплачено",
-    method: "Банківський переказ"
-  },
-  {
-    date: financeDisplayDate(1),
-    type: "Витрата",
-    title: "Судовий збір",
-    caseId: demoCaseId("2024/5678"),
-    client: "ТОВ «Будівельник»",
-    amount: -5368,
-    status: "Оплачено",
-    method: "Картка"
-  },
-  {
-    date: financeDisplayDate(1),
-    type: "Надходження",
-    title: "Оплата за консультацію",
-    caseId: demoCaseId("2024/4321"),
-    client: "Коваленко Ольга",
-    amount: 10000,
-    status: "Оплачено",
-    method: "Готівка"
-  },
-  {
-    date: financeDisplayDate(2),
-    type: "Витрата",
-    title: "Поштові витрати",
-    caseId: demoCaseId("2024/9999"),
-    client: "Іванов Іван",
-    amount: -350,
-    status: "Оплачено",
-    method: "Готівка"
-  },
-  {
-    date: financeDisplayDate(2),
-    type: "Надходження",
-    title: "Оплата за правову допомогу",
-    caseId: demoCaseId("2024/4321"),
-    client: "ТОВ «Альфа»",
-    amount: 75000,
-    status: "Частково",
-    method: "Банківський переказ"
-  }
-];
-
-const INCOME_STRUCTURE = [
-  ["Гонорари", "60% (747 000 грн)", "#1f7ae0"],
-  ["Фіксовані платежі", "20% (249 000 грн)", "#27ae6f"],
-  ["Супутні послуги", "10% (124 000 грн)", "#f59e0b"],
-  ["Судові витрати відшкодовано", "5% (62 000 грн)", "#7c5ce8"],
-  ["Інше", "5% (63 000 грн)", "#9aa7b7"]
-];
-
-const INCOME_BY_CASE = [
-  [demoCaseText("№2024/1234 Петренко М.М."), 150000],
-  [demoCaseText("№2024/5678 ТОВ «Будівельник»"), 120000],
-  [demoCaseText("№2024/9012 Коваленко О.В."), 80000],
-  [demoCaseText("№2024/1357 ТОВ «Альфа»"), 75000],
-  [demoCaseText("№2024/2468 Іванов І.І."), 60000]
-];
-
-const EXPENSE_CATEGORIES = [
-  ["Судові витрати", 45, "144 000 грн"],
-  ["Поштові витрати", 20, "64 000 грн"],
-  ["Офісні витрати", 15, "48 000 грн"],
-  ["Транспортні витрати", 10, "32 000 грн"],
-  ["Інше", 10, "32 000 грн"]
 ];
 
 const CASHFLOW = [
@@ -1038,7 +952,8 @@ export function renderFinanceScreen(ctx) {
   const insights = financeInsightsFromData(rows, operationsInRange);
   const debtRows = rows.filter((item) => item.debt > 0).slice(0, 4);
   const selectedCaseId = state.selectedFinanceCaseId || rows[0]?.id;
-  const hasFinanceData = rows.length > 0 || operationsInRange.length > 0;
+  const hasFinanceData = operationsInRange.length > 0 || rows.some((item) => item.total > 0 || item.paid > 0 || item.debt > 0);
+  const hasFinanceTotals = totals.income > 0 || totals.expenses > 0 || totals.profit > 0 || totals.expected > 0 || totals.debt > 0;
   const lineData = hasFinanceData ? FINANCE_LINE : EMPTY_FINANCE_LINE;
   const cashflowData = hasFinanceData ? CASHFLOW : CASHFLOW.map(([label]) => [label, 0, 0]);
   const hasIncomeStructure = insights.incomeStructure.length > 0;
@@ -1047,12 +962,15 @@ export function renderFinanceScreen(ctx) {
   const supplierDebt = hasFinanceData ? 48900 : 0;
   const availableBalance = hasFinanceData ? 304800 : 0;
   const emptyKpiDetail = "даних ще немає";
+  const financeTrend = (value, trend, detail) => value > 0 && hasFinanceTotals
+    ? { trend, detail }
+    : { trend: "Без даних", detail: emptyKpiDetail };
   const financeKpis = [
-    { title: "Загальний дохід", value: currencyText(totals.income), trend: hasFinanceData ? "+12%" : "Без даних", detail: hasFinanceData ? undefined : emptyKpiDetail, iconName: "briefcase", tone: "blue" },
-    { title: "Витрати", value: currencyText(totals.expenses), trend: hasFinanceData ? "+8%" : "Без даних", detail: hasFinanceData ? undefined : emptyKpiDetail, trendTone: hasFinanceData ? "danger" : "", iconName: "file", tone: "red" },
-    { title: "Чистий прибуток", value: currencyText(totals.profit), trend: hasFinanceData ? "+15%" : "Без даних", detail: hasFinanceData ? undefined : emptyKpiDetail, iconName: "check", tone: "green" },
-    { title: "Очікувані надходження", value: currencyText(totals.expected), trend: hasFinanceData ? "порівняно з попер. періодом" : "Без даних", detail: hasFinanceData ? undefined : emptyKpiDetail, iconName: "clock", tone: "amber" },
-    { title: "Заборгованість клієнтів", value: currencyText(totals.debt), trend: hasFinanceData ? "порівняно з попер. періодом" : "Без даних", detail: hasFinanceData ? undefined : emptyKpiDetail, iconName: "mail", tone: "red" }
+    { title: "Загальний дохід", value: currencyText(totals.income), ...financeTrend(totals.income, "+12%"), iconName: "briefcase", tone: "blue" },
+    { title: "Витрати", value: currencyText(totals.expenses), ...financeTrend(totals.expenses, "+8%"), trendTone: totals.expenses > 0 ? "danger" : "", iconName: "file", tone: "red" },
+    { title: "Чистий прибуток", value: currencyText(totals.profit), ...financeTrend(totals.profit, "+15%"), iconName: "check", tone: "green" },
+    { title: "Очікувані надходження", value: currencyText(totals.expected), ...financeTrend(totals.expected, "порівняно з попер. періодом"), iconName: "clock", tone: "amber" },
+    { title: "Заборгованість клієнтів", value: currencyText(totals.debt), ...financeTrend(totals.debt, "порівняно з попер. періодом"), iconName: "mail", tone: "red" }
   ];
 
   $("#finance").innerHTML = `

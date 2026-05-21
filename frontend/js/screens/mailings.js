@@ -28,8 +28,8 @@ export function renderMailingsScreen(ctx) {
   const smsDelivered = Math.round(recipients * 0.625);
   const emailDelivered = Math.round(recipients * 0.482);
   const totalMessages = estimatedTelegram + smsDelivered + emailDelivered;
-  const metricText = (value, percent) => recipients ? `${value} (${percent}%)` : "0";
-  const forecastText = (value, percent) => recipients ? `~ ${value} (${percent}%)` : "0";
+  const metricText = (value) => recipients ? `${value}` : "0";
+  const forecastText = (value) => recipients ? `~ ${value}` : "0";
   const totalMessagesText = totalMessages ? `~ ${totalMessages} сообщений` : "0 сообщений";
   const mainTab = state.mailingMainTab || "new";
   const editorChannel = state.mailingEditorChannel || "Telegram";
@@ -170,9 +170,9 @@ export function renderMailingsScreen(ctx) {
             ` : ""}
             <div class="coverage-row">
               <span class="coverage-user">${icon("user")}<strong>Всего клиентов</strong><em>${recipients}</em></span>
-              <span class="coverage-telegram">${icon("telegram")}<strong>Telegram</strong><em>${metricText(estimatedTelegram, 82)}</em></span>
-              <span class="coverage-sms">${icon("message")}<strong>SMS</strong><em>${metricText(smsDelivered, 62)}</em></span>
-              <span class="coverage-email">${icon("mail")}<strong>Email</strong><em>${metricText(emailDelivered, 48)}</em></span>
+              <span class="coverage-telegram">${icon("telegram")}<strong>Telegram</strong><em>${metricText(estimatedTelegram)}</em></span>
+              <span class="coverage-sms">${icon("message")}<strong>SMS</strong><em>${metricText(smsDelivered)}</em></span>
+              <span class="coverage-email">${icon("mail")}<strong>Email</strong><em>${metricText(emailDelivered)}</em></span>
             </div>
           </section>
           <section class="panel mailing-section">
@@ -249,9 +249,9 @@ export function renderMailingsScreen(ctx) {
           <section class="panel forecast-card">
             <h2>Прогноз результатов</h2>
             <div class="forecast-row"><span>Всего получателей</span><strong>${recipients}</strong></div>
-            <div class="forecast-row green"><span>Telegram доставлено</span><strong>${forecastText(estimatedTelegram, 82)}</strong></div>
-            <div class="forecast-row green"><span>SMS доставлено</span><strong>${forecastText(smsDelivered, 62)}</strong></div>
-            <div class="forecast-row green"><span>Email доставлено</span><strong>${forecastText(emailDelivered, 48)}</strong></div>
+            <div class="forecast-row green"><span>Telegram доставлено</span><strong>${forecastText(estimatedTelegram)}</strong></div>
+            <div class="forecast-row green"><span>SMS доставлено</span><strong>${forecastText(smsDelivered)}</strong></div>
+            <div class="forecast-row green"><span>Email доставлено</span><strong>${forecastText(emailDelivered)}</strong></div>
             <div class="forecast-total"><span>Ориентировочный охват</span><strong>${totalMessagesText}</strong></div>
           </section>
           <section class="panel mailing-tips-card">

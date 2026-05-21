@@ -97,9 +97,10 @@ function trendText(value) {
   return value >= 0 ? `+${value}%` : `${value}%`;
 }
 
-function dataTrend(hasData, value, fallback = "0%") {
+function dataTrend(hasData, value) {
   if (!hasData) return "Без даних";
-  return value ? trendText(value) : fallback;
+  if (!value) return "Без даних";
+  return trendText(value);
 }
 
 function kpiCard({ label, value, hint, iconName, tone = "blue", trend = "", view = "" }, icon) {
