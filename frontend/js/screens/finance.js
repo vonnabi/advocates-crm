@@ -1,14 +1,16 @@
 import { saveFinanceOperationToApi, shouldUseApi } from "../api.js";
 import {
   buildFinanceOperations,
+  DEMO_END,
+  DEMO_START,
   financeInsightsFromData,
   financeRowsFromCases,
   financeTotalsFromData
-} from "../derived-data.js";
+} from "../derived-data.js?v=live-demo-1";
 import { normalizeFinanceOperation } from "../state.js";
 
-const DEFAULT_START = "2024-05-01";
-const DEFAULT_END = "2024-05-15";
+const DEFAULT_START = DEMO_START;
+const DEFAULT_END = DEMO_END;
 
 const FINANCE_TABS = [
   ["overview", "Огляд"],
@@ -232,7 +234,7 @@ const REPORT_ROWS = [
 ];
 
 function isoToday() {
-  return "2024-05-15";
+  return DEFAULT_END;
 }
 
 function financeRows(ctx) {

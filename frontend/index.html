@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Advocates Bureau CRM</title>
     <link rel="icon" type="image/png" href="assets/advocates-crm-logo.png" />
-    <link rel="stylesheet" href="styles.css?v=empty-kpi-3" />
+    <link rel="stylesheet" href="styles.css?v=live-demo-time-1" />
   </head>
   <body>
     <aside class="sidebar">
@@ -58,6 +58,22 @@
           </div>
         </div>
         <div class="top-actions admin-actions">
+          <div class="topbar-clock" data-topbar-clock aria-label="Поточна дата і час">
+            <span class="topbar-clock-row topbar-clock-date">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="4" y="5" width="16" height="16" rx="2"></rect>
+                <path d="M8 3v4M16 3v4M4 11h16"></path>
+              </svg>
+              <span id="topbar-current-date">--.--.----</span>
+            </span>
+            <span class="topbar-clock-row topbar-clock-time">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="8"></circle>
+                <path d="M12 8v5l3 2"></path>
+              </svg>
+              <strong id="topbar-current-time">--:--</strong>
+            </span>
+          </div>
           <div class="topbar-menu-wrap">
             <button class="notification-button" id="notifications-toggle" type="button" title="Вхідні повідомлення" aria-expanded="false" aria-controls="notifications-menu">
               <span class="bell-shape" aria-hidden="true">
@@ -725,6 +741,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="app.js?v=empty-kpi-3"></script>
+    <script type="module" src="app.js?v=live-demo-time-1"></script>
   </body>
 </html>

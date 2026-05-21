@@ -21,6 +21,11 @@ export function createDialogOpeners({
       .replaceAll("'", "&#039;");
   }
 
+  function todayIso() {
+    const date = new Date();
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  }
+
   function openClientDialog(clientId = null) {
     const form = $("#client-form");
     form.reset();
@@ -474,7 +479,7 @@ export function createDialogOpeners({
     form.elements.caseId.value = initialCaseId;
     form.elements.actionIndex.value = "";
     form.elements.eventId.value = "";
-    form.elements.date.value = state.calendarDate || "2024-05-15";
+    form.elements.date.value = state.calendarDate || todayIso();
     form.elements.time.value = "09:00";
     form.elements.endTime.value = "10:00";
     form.elements.status.value = "Заплановано";

@@ -1,11 +1,11 @@
-import { createInitialState } from "./js/state.js?v=demo-empty-1";
+import { createInitialState } from "./js/state.js?v=live-demo-1";
 import {
   closeTopbarPanels as closeTopbarPanelsInChrome,
   isTopbarPanelOpen,
   setupTopbarControls,
   syncTopbarNotifications
-} from "./js/chrome.js?v=empty-kpi-2";
-import { createDialogOpeners } from "./js/dialog-openers.js";
+} from "./js/chrome.js?v=live-demo-time-1";
+import { createDialogOpeners } from "./js/dialog-openers.js?v=live-demo-1";
 import { setupDialogControls } from "./js/dialogs.js";
 import { setupCaseDetailForms } from "./js/forms/case-details.js";
 import { setupCaseItemForms } from "./js/forms/case-items.js";
@@ -18,7 +18,7 @@ import {
   saveNavigationState as saveNavigationStateToStorage
 } from "./js/navigation.js";
 import { renderAIScreen } from "./js/screens/ai.js";
-import { renderAnalyticsScreen } from "./js/screens/analytics.js?v=empty-kpi-3";
+import { renderAnalyticsScreen } from "./js/screens/analytics.js?v=live-demo-1";
 import {
   caseFinance,
   caseFolders,
@@ -39,14 +39,14 @@ import {
   renderClientRows as renderClientRowsScreen,
   renderClientsScreen
 } from "./js/screens/clients.js";
-import { renderDashboardScreen } from "./js/screens/dashboard.js?v=empty-kpi-2";
+import { renderDashboardScreen } from "./js/screens/dashboard.js?v=live-demo-1";
 import { renderDocumentsScreen } from "./js/screens/documents.js";
 import {
   renderMailingsScreen,
   setMailingTab as setMailingTabScreen
 } from "./js/screens/mailings.js?v=empty-kpi-2";
-import { renderFinanceScreen } from "./js/screens/finance.js?v=empty-kpi-2";
-import { renderOSINTScreen } from "./js/screens/osint.js?v=empty-kpi-2";
+import { renderFinanceScreen } from "./js/screens/finance.js?v=live-demo-1";
+import { renderOSINTScreen } from "./js/screens/osint.js?v=live-demo-1";
 import { renderPlannerScreen } from "./js/screens/planner.js";
 import { renderSettingsScreen } from "./js/screens/settings.js?v=demo-admin-1";
 import {
@@ -81,7 +81,7 @@ import {
   taskTone,
   todayIso,
   weekDayNames
-} from "./js/ui.js?v=settings-icons-1";
+} from "./js/ui.js?v=live-demo-1";
 
 const state = await createInitialState();
 document.documentElement.dataset.dataSource = state.dataSource || "json";

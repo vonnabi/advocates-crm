@@ -1,7 +1,9 @@
 import {
   clientName,
+  DEMO_END,
+  DEMO_START,
   osintSummaryFromData
-} from "../derived-data.js?v=demo-empty-1";
+} from "../derived-data.js?v=live-demo-1";
 
 const OSINT_TABS = [
   ["overview", "Огляд"],
@@ -14,8 +16,8 @@ const OSINT_TABS = [
   ["settings", "Налаштування"]
 ];
 
-const OSINT_DEFAULT_START = "2024-05-01";
-const OSINT_DEFAULT_END = "2024-05-16";
+const OSINT_DEFAULT_START = DEMO_START;
+const OSINT_DEFAULT_END = DEMO_END;
 
 const OSINT_SUBTABS = [
   ["mentions", "Останні згадки"],

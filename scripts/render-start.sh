@@ -17,7 +17,9 @@ fi
 
 "$PYTHON_BIN" backend/manage.py migrate --noinput
 
-if ! "$PYTHON_BIN" backend/manage.py shell -c "from apps.clients.models import Client; raise SystemExit(0 if Client.objects.exists() else 1)"; then
+if "$PYTHON_BIN" backend/manage.py shell -c "from apps.clients.models import Client; raise SystemExit(0 if Client.objects.filter(is_demo=True).exists() else 1)"; then
+  "$PYTHON_BIN" backend/manage.py seed_demo
+elif ! "$PYTHON_BIN" backend/manage.py shell -c "from apps.clients.models import Client; raise SystemExit(0 if Client.objects.exists() else 1)"; then
   "$PYTHON_BIN" backend/manage.py seed_demo
 fi
 

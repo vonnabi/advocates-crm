@@ -3,13 +3,14 @@ import {
   caseFinancials,
   clientName,
   dateFromAny,
+  DEMO_END,
   financeRowsFromCases,
   financeTotalsFromData,
   formatDisplayDate,
   osintSummaryFromData
-} from "../derived-data.js";
+} from "../derived-data.js?v=live-demo-1";
 
-const dashboardToday = dateFromAny("2024-05-15");
+const dashboardToday = dateFromAny(DEMO_END);
 const closedStatuses = new Set(["Закрито", "Завершено", "Архів"]);
 const doneTaskStatuses = new Set(["Готово", "Виконано", "Завершено"]);
 

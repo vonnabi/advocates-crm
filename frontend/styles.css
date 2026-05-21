@@ -856,6 +856,57 @@ h3 {
   padding-left: 24px;
 }
 
+.topbar-clock {
+  min-width: 128px;
+  height: 44px;
+  display: grid;
+  align-content: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 5px 10px;
+  border: 1px solid #d6e6f6;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #fbfdff 0%, #f4f8fd 100%);
+  box-shadow: 0 8px 20px rgba(15, 78, 132, 0.06);
+  color: var(--navy);
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.topbar-clock-row {
+  display: grid;
+  grid-template-columns: 15px auto;
+  align-items: center;
+  justify-content: end;
+  gap: 6px;
+}
+
+.topbar-clock svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.topbar-clock-date {
+  color: #66758b;
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+}
+
+.topbar-clock-time {
+  color: var(--action-dark);
+}
+
+.topbar-clock strong {
+  font-size: var(--text-md);
+  font-weight: var(--weight-black);
+  letter-spacing: 0;
+}
+
 .topbar-menu-wrap {
   position: relative;
   display: flex;
@@ -18636,6 +18687,11 @@ dialog::backdrop {
     padding-left: 14px;
   }
 
+  .topbar-clock {
+    min-width: 108px;
+    padding: 4px 8px;
+  }
+
   .admin-profile {
     min-width: 168px;
   }
@@ -18670,6 +18726,10 @@ dialog::backdrop {
 
   .top-actions {
     flex: 0 0 auto;
+  }
+
+  .topbar-clock {
+    display: none;
   }
 
   .tasks-page-head {

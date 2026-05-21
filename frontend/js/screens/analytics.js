@@ -3,10 +3,12 @@ import {
   analyticsSummaryFromCases,
   buildFinanceOperations,
   countBy,
+  DEMO_END,
+  DEMO_START,
   financeRowsFromCases,
   financeTotalsFromData,
   rowsWithPercent
-} from "../derived-data.js";
+} from "../derived-data.js?v=live-demo-1";
 
 const typeColors = ["#1f7ae0", "#27ae6f", "#f59e0b", "#7c5ce8", "#64748b", "#9aa7b7"];
 
@@ -53,9 +55,13 @@ const LINE_SERIES = {
   inWork: [40, 42, 52, 47, 49, 50, 66, 58, 57, 50, 59, 63, 62, 56, 66]
 };
 
-const dates = Array.from({ length: 15 }, (_, index) => `${String(index + 1).padStart(2, "0")}.05`);
-const defaultStart = "2024-05-01";
-const defaultEnd = "2024-05-15";
+const dates = Array.from({ length: 15 }, (_, index) => {
+  const date = dateFromAny(DEMO_START);
+  date.setDate(date.getDate() + index);
+  return `${String(date.getDate()).padStart(2, "0")}.${String(date.getMonth() + 1).padStart(2, "0")}`;
+});
+const defaultStart = DEMO_START;
+const defaultEnd = DEMO_END;
 function linePoints(values, max = 80, width = 560, height = 190) {
   const step = width / (values.length - 1);
   return values.map((value, index) => `${Math.round(index * step)},${Math.round(height - (value / max) * height)}`).join(" ");
@@ -85,6 +91,16 @@ function inRange(dateValue, startIso, endIso) {
   return date >= start && date <= end;
 }
 
+function isoFromDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function offsetIso(iso, days) {
+  const date = dateFromAny(iso) || new Date();
+  date.setDate(date.getDate() + days);
+  return isoFromDate(date);
+}
+
 function updateRangeFromPeriod(state) {
   if (state.analyticsPeriod === "month" || state.analyticsPeriod === "custom") {
     state.analyticsDateStart = state.analyticsDateStart || defaultStart;
@@ -92,13 +108,14 @@ function updateRangeFromPeriod(state) {
     return;
   }
   if (state.analyticsPeriod === "30") {
-    state.analyticsDateStart = "2024-04-16";
+    state.analyticsDateStart = offsetIso(defaultEnd, -29);
     state.analyticsDateEnd = defaultEnd;
     return;
   }
   if (state.analyticsPeriod === "year") {
-    state.analyticsDateStart = "2024-01-01";
-    state.analyticsDateEnd = "2024-12-31";
+    const end = dateFromAny(defaultEnd) || new Date();
+    state.analyticsDateStart = `${end.getFullYear()}-01-01`;
+    state.analyticsDateEnd = `${end.getFullYear()}-12-31`;
   }
 }
 

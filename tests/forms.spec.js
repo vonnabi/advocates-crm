@@ -9,6 +9,34 @@ async function openApp(page) {
   await expect(page.locator("#dashboard")).toHaveClass(/active/);
 }
 
+function localIsoDate(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function shiftedDemoIso(anchorIso) {
+  const [year, month, day] = anchorIso.split("-").map(Number);
+  const anchor = new Date(2024, 4, 15);
+  const deltaDays = Math.round((new Date().setHours(0, 0, 0, 0) - anchor.getTime()) / 86400000);
+  return localIsoDate(addDays(new Date(year, month - 1, day), deltaDays));
+}
+
+function displayIso(iso) {
+  const [year, month, day] = iso.split("-");
+  return `${day}.${month}.${year}`;
+}
+
+function demoRangeText() {
+  const start = shiftedDemoIso("2024-05-01");
+  const end = shiftedDemoIso("2024-05-15");
+  return `${displayIso(start)} - ${displayIso(end)}`;
+}
+
 test("client form creates and edits a client", async ({ page }) => {
   const originalName = "Тестовий клієнт Автотест";
   const updatedName = "Тестовий клієнт Оновлено";
@@ -217,7 +245,7 @@ test("analytics filters and date picker update the screen", async ({ page }) => 
   await openApp(page);
   await page.locator('.nav-item[data-view="analytics"]').click();
   await expect(page.locator("#analytics")).toHaveClass(/active/);
-  await expect(page.locator("#analytics .analytics-date-range")).toContainText("01.05.2024 - 15.05.2024");
+  await expect(page.locator("#analytics .analytics-date-range")).toContainText(demoRangeText());
 
   await page.locator("[data-analytics-status]").selectOption("debt");
   await page.locator("[data-apply-analytics]").click();
@@ -226,14 +254,16 @@ test("analytics filters and date picker update the screen", async ({ page }) => 
 
   await page.locator("[data-analytics-date-toggle]").click();
   await expect(page.locator("#analytics .analytics-date-popover")).toBeVisible();
-  await page.locator("[data-analytics-date-start]").fill("2024-05-10");
-  await page.locator("[data-analytics-date-end]").fill("2024-05-15");
+  const customStart = shiftedDemoIso("2024-05-10");
+  const customEnd = shiftedDemoIso("2024-05-15");
+  await page.locator("[data-analytics-date-start]").fill(customStart);
+  await page.locator("[data-analytics-date-end]").fill(customEnd);
   await page.locator("[data-analytics-date-apply]").click();
-  await expect(page.locator("#analytics .analytics-date-range")).toContainText("10.05.2024 - 15.05.2024");
+  await expect(page.locator("#analytics .analytics-date-range")).toContainText(`${displayIso(customStart)} - ${displayIso(customEnd)}`);
 
   await page.locator("[data-reset-analytics]").click();
   await expect(page.locator("[data-analytics-status]")).toHaveValue("all");
-  await expect(page.locator("#analytics .analytics-date-range")).toContainText("01.05.2024 - 15.05.2024");
+  await expect(page.locator("#analytics .analytics-date-range")).toContainText(demoRangeText());
 });
 
 test("finance tabs and date picker update the screen", async ({ page }) => {
@@ -241,7 +271,7 @@ test("finance tabs and date picker update the screen", async ({ page }) => {
   await page.locator('.nav-item[data-view="finance"]').click();
   await expect(page.locator("#finance")).toHaveClass(/active/);
 
-  await expect(page.locator("#finance .finance-date-range")).toContainText("01.05.2024 - 15.05.2024");
+  await expect(page.locator("#finance .finance-date-range")).toContainText(demoRangeText());
   await expect(page.locator(".finance-kpi-grid")).toContainText("Загальний дохід");
 
   await page.locator('[data-finance-tab="payments"]').click();
@@ -250,10 +280,12 @@ test("finance tabs and date picker update the screen", async ({ page }) => {
 
   await page.locator("[data-finance-date-toggle]").click();
   await expect(page.locator("#finance .finance-date-popover")).toBeVisible();
-  await page.locator("[data-finance-date-start]").fill("2024-05-10");
-  await page.locator("[data-finance-date-end]").fill("2024-05-15");
+  const customStart = shiftedDemoIso("2024-05-10");
+  const customEnd = shiftedDemoIso("2024-05-15");
+  await page.locator("[data-finance-date-start]").fill(customStart);
+  await page.locator("[data-finance-date-end]").fill(customEnd);
   await page.locator("[data-finance-date-apply]").click();
 
-  await expect(page.locator("#finance .finance-date-range")).toContainText("10.05.2024 - 15.05.2024");
+  await expect(page.locator("#finance .finance-date-range")).toContainText(`${displayIso(customStart)} - ${displayIso(customEnd)}`);
   await expect(page.locator("#finance .finance-date-popover")).toHaveCount(0);
 });

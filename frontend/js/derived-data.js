@@ -1,5 +1,15 @@
-export const DEMO_START = "2024-05-01";
-export const DEMO_END = "2024-05-15";
+function localIsoDate(value = new Date()) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+function addDaysValue(value, days) {
+  const next = new Date(value);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+export const DEMO_END = localIsoDate();
+export const DEMO_START = localIsoDate(addDaysValue(new Date(), -14));
 
 const typeColors = ["#1f7ae0", "#27ae6f", "#f59e0b", "#7c5ce8", "#64748b", "#9aa7b7"];
 
@@ -17,7 +27,7 @@ export function dateFromAny(value) {
 
 export function formatDisplayDate(value) {
   const date = dateFromAny(value);
-  if (!date) return "15.05.2024";
+  if (!date) return formatDisplayDate(DEMO_END);
   return `${String(date.getDate()).padStart(2, "0")}.${String(date.getMonth() + 1).padStart(2, "0")}.${date.getFullYear()}`;
 }
 

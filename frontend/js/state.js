@@ -1,5 +1,54 @@
 import { apiBaseUrl } from "./api.js?v=demo-data-2";
 
+const DEMO_DATE_ANCHOR = new Date(2024, 4, 15);
+const ISO_DATE_RE = /(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)/g;
+const DISPLAY_DATE_RE = /(?<!\d)(\d{2})\.(\d{2})\.(\d{4})(?!\d)/g;
+
+function localDateOnly(value = new Date()) {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+}
+
+function localIsoDate(value = new Date()) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+function addDays(value, days) {
+  const next = new Date(value);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function demoDateDeltaDays() {
+  return Math.round((localDateOnly().getTime() - DEMO_DATE_ANCHOR.getTime()) / 86400000);
+}
+
+function shiftIsoDate(value) {
+  const [year, month, day] = String(value).split("-").map(Number);
+  return localIsoDate(addDays(new Date(year, month - 1, day), demoDateDeltaDays()));
+}
+
+function displayFromIso(value) {
+  const [year, month, day] = String(value).split("-");
+  return `${day}.${month}.${year}`;
+}
+
+function shiftDemoDateString(value) {
+  const days = demoDateDeltaDays();
+  if (!days) return value;
+  return String(value)
+    .replace(ISO_DATE_RE, (_match, year, month, day) => localIsoDate(addDays(new Date(Number(year), Number(month) - 1, Number(day)), days)))
+    .replace(DISPLAY_DATE_RE, (_match, day, month, year) => displayFromIso(localIsoDate(addDays(new Date(Number(year), Number(month) - 1, Number(day)), days))));
+}
+
+function shiftDemoPayloadDates(value) {
+  if (Array.isArray(value)) return value.map(shiftDemoPayloadDates);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, shiftDemoPayloadDates(item)]));
+  }
+  if (typeof value === "string") return shiftDemoDateString(value);
+  return value;
+}
+
 async function readDataFile(path) {
   const response = await fetch(new URL(path, import.meta.url));
   if (!response.ok) throw new Error(`Не удалось загрузить файл данных: ${path}`);
@@ -163,10 +212,12 @@ function normalizeBackendPayload(payload) {
 }
 
 async function loadDemoData() {
-  const [mailing, settings] = await Promise.all([
+  const [rawMailing, rawSettings] = await Promise.all([
     readDataFile("../data/mailing.json"),
     readDataFile("../data/settings.json")
   ]);
+  const mailing = shiftDemoPayloadDates(rawMailing);
+  const settings = shiftDemoPayloadDates(rawSettings);
   try {
     const apiData = normalizeBackendPayload(await readApiBootstrap());
     if (apiData) return { ...apiData, mailing, settings };
@@ -178,11 +229,22 @@ async function loadDemoData() {
     readDataFile("../data/cases.json"),
     readDataFile("../data/events.json")
   ]);
-  return { clients, cases, events, mailing, settings, source: "json" };
+  return {
+    clients: shiftDemoPayloadDates(clients),
+    cases: shiftDemoPayloadDates(cases),
+    events: shiftDemoPayloadDates(events),
+    mailing,
+    settings,
+    source: "json"
+  };
 }
 
 export async function createInitialState() {
   const demoData = await loadDemoData();
+  const demoRangeStart = shiftIsoDate("2024-05-01");
+  const demoRangeEnd = shiftIsoDate("2024-05-15");
+  const demoOsintRangeEnd = shiftIsoDate("2024-05-16");
+  const demoToday = localIsoDate();
   const demoDataStatus = demoData.meta?.demoData || {
     enabled: Boolean((demoData.clients || []).length || (demoData.cases || []).length || (demoData.events || []).length),
     counts: {
@@ -277,8 +339,8 @@ export async function createInitialState() {
     financeStatusFilter: "all",
     selectedFinanceCaseId: "2024/12345",
     financeTab: "overview",
-    financeDateStart: "2024-05-01",
-    financeDateEnd: "2024-05-15",
+    financeDateStart: demoRangeStart,
+    financeDateEnd: demoRangeEnd,
     financeDatePickerOpen: false,
     financeOperations: demoData.financeOperations || [],
     salaryRows: [],
@@ -293,8 +355,8 @@ export async function createInitialState() {
     analyticsCaseFilter: "all",
     analyticsTypeFilter: "all",
     analyticsPriorityFilter: "all",
-    analyticsDateStart: "2024-05-01",
-    analyticsDateEnd: "2024-05-15",
+    analyticsDateStart: demoRangeStart,
+    analyticsDateEnd: demoRangeEnd,
     analyticsDatePickerOpen: false,
     aiSelectedHelper: "Військове право",
     aiSelectedCaseId: "2024/12345",
@@ -309,8 +371,8 @@ export async function createInitialState() {
     osintQuery: "",
     osintStatusFilter: "all",
     osintTab: "overview",
-    osintDateStart: "2024-05-01",
-    osintDateEnd: "2024-05-16",
+    osintDateStart: demoRangeStart,
+    osintDateEnd: demoOsintRangeEnd,
     selectedOsintId: "osint-1",
     osintChecks: demoDataDisabled ? [] : [
       {
@@ -350,7 +412,7 @@ export async function createInitialState() {
     ],
     selectedEventId: "event-4",
     calendarMode: "month",
-    calendarDate: "2024-05-15",
+    calendarDate: demoToday,
     calendarPickerOpen: false,
     calendarFilter: "all",
     calendarClientFilter: "all",

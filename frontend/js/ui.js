@@ -1,4 +1,4 @@
-export const calendarToday = "2024-05-15";
+export const calendarToday = isoFromDate(new Date());
 export const monthNames = ["Січень", "Лютий", "Березень", "Квітень", "Травень", "Червень", "Липень", "Серпень", "Вересень", "Жовтень", "Листопад", "Грудень"];
 export const weekDayNames = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"];
 

@@ -1,7 +1,7 @@
 import json
 import re
 from hashlib import sha1
-from datetime import datetime, time
+from datetime import date, datetime, time
 from decimal import Decimal
 
 from django.conf import settings
@@ -21,6 +21,37 @@ def load_json(name):
     path = settings.BASE_DIR.parent / "frontend" / "data" / name
     with path.open(encoding="utf-8") as handle:
         return json.load(handle)
+
+
+DEMO_DATE_ANCHOR = date(2024, 5, 15)
+ISO_DATE_RE = re.compile(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)")
+DISPLAY_DATE_RE = re.compile(r"(?<!\d)(\d{2})\.(\d{2})\.(\d{4})(?!\d)")
+
+
+def shift_demo_date_string(value, delta):
+    if not delta.days:
+        return value
+
+    def replace_iso(match):
+        parsed = date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+        return (parsed + delta).strftime("%Y-%m-%d")
+
+    def replace_display(match):
+        parsed = date(int(match.group(3)), int(match.group(2)), int(match.group(1)))
+        return (parsed + delta).strftime("%d.%m.%Y")
+
+    shifted = ISO_DATE_RE.sub(replace_iso, value)
+    return DISPLAY_DATE_RE.sub(replace_display, shifted)
+
+
+def shift_demo_payload_dates(value, delta):
+    if isinstance(value, dict):
+        return {key: shift_demo_payload_dates(item, delta) for key, item in value.items()}
+    if isinstance(value, list):
+        return [shift_demo_payload_dates(item, delta) for item in value]
+    if isinstance(value, str):
+        return shift_demo_date_string(value, delta)
+    return value
 
 
 def parse_date(value):
@@ -155,6 +186,10 @@ class Command(BaseCommand):
         clients_payload = load_json("clients.json")
         cases_payload = load_json("cases.json")
         events_payload = load_json("events.json")
+        demo_date_delta = timezone.localdate() - DEMO_DATE_ANCHOR
+        clients_payload = shift_demo_payload_dates(clients_payload, demo_date_delta)
+        cases_payload = shift_demo_payload_dates(cases_payload, demo_date_delta)
+        events_payload = shift_demo_payload_dates(events_payload, demo_date_delta)
 
         ensure_team_user("Іваненко А.Ю.", "ivanenko@advocates.crm", "Адміністратор")
         ensure_team_user("Мельник Н.П.", "melnyk@advocates.crm", "Адвокат")

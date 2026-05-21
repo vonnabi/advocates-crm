@@ -1,6 +1,7 @@
 import { changePasswordInApi, clearDemoDataInApi, getDemoDataStatusFromApi, loginToApi, logoutFromApi, restoreDemoDataInApi, shouldUseApi } from "./api.js?v=demo-data-status-1";
 
 const DEMO_URL = "https://vonnabi.github.io/advocates-crm/";
+let topbarClockTimer = null;
 
 export function closeTopbarPanels($) {
   [
@@ -19,6 +20,29 @@ export function closeTopbarPanels($) {
 
 export function isTopbarPanelOpen() {
   return Boolean(document.querySelector(".topbar-panel:not([hidden])"));
+}
+
+function syncTopbarClock() {
+  const dateNode = document.querySelector("#topbar-current-date");
+  const timeNode = document.querySelector("#topbar-current-time");
+  const wrap = document.querySelector("[data-topbar-clock]");
+  if (!dateNode || !timeNode) return;
+  const now = new Date();
+  dateNode.textContent = new Intl.DateTimeFormat("uk-UA", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  }).format(now);
+  timeNode.textContent = new Intl.DateTimeFormat("uk-UA", {
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(now);
+  if (wrap) {
+    wrap.title = new Intl.DateTimeFormat("uk-UA", {
+      dateStyle: "full",
+      timeStyle: "medium"
+    }).format(now);
+  }
 }
 
 function toggleTopbarPanel($, toggleSelector, panelSelector) {
@@ -491,6 +515,10 @@ export function setupTopbarControls({ $, state, switchView, saveNavigationState,
   syncTopbarUser($, state);
   syncTopbarNotifications($, state);
   syncDemoDataToggle(state);
+  syncTopbarClock();
+  if (!topbarClockTimer) {
+    topbarClockTimer = window.setInterval(syncTopbarClock, 30000);
+  }
 
   document.addEventListener("click", (event) => {
     if (event.target.closest("#notifications-toggle")) {
