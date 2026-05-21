@@ -21,6 +21,12 @@ function demoCaseText(value) {
   return String(value).replace(/№2024\//g, `№${demoCaseYear}/`);
 }
 
+function financeDisplayDate(daysAgo = 0) {
+  const date = new Date();
+  date.setDate(date.getDate() - daysAgo);
+  return `${String(date.getDate()).padStart(2, "0")}.${String(date.getMonth() + 1).padStart(2, "0")}.${date.getFullYear()}`;
+}
+
 const FINANCE_TABS = [
   ["overview", "Огляд"],
   ["income", "Надходження"],
@@ -36,7 +42,7 @@ const FINANCE_TABS = [
 
 const FINANCE_OPERATIONS = [
   {
-    date: "15.05.2024",
+    date: financeDisplayDate(0),
     type: "Надходження",
     title: "Оплата за правову допомогу",
     caseId: demoCaseId("2024/12345"),
@@ -46,7 +52,7 @@ const FINANCE_OPERATIONS = [
     method: "Банківський переказ"
   },
   {
-    date: "14.05.2024",
+    date: financeDisplayDate(1),
     type: "Витрата",
     title: "Судовий збір",
     caseId: demoCaseId("2024/5678"),
@@ -56,7 +62,7 @@ const FINANCE_OPERATIONS = [
     method: "Картка"
   },
   {
-    date: "14.05.2024",
+    date: financeDisplayDate(1),
     type: "Надходження",
     title: "Оплата за консультацію",
     caseId: demoCaseId("2024/4321"),
@@ -66,7 +72,7 @@ const FINANCE_OPERATIONS = [
     method: "Готівка"
   },
   {
-    date: "13.05.2024",
+    date: financeDisplayDate(2),
     type: "Витрата",
     title: "Поштові витрати",
     caseId: demoCaseId("2024/9999"),
@@ -76,7 +82,7 @@ const FINANCE_OPERATIONS = [
     method: "Готівка"
   },
   {
-    date: "13.05.2024",
+    date: financeDisplayDate(2),
     type: "Надходження",
     title: "Оплата за правову допомогу",
     caseId: demoCaseId("2024/4321"),
@@ -228,10 +234,10 @@ const FINANCE_WORKSPACES = {
 };
 
 const SALARY_ROWS = [
-  { name: "Іваненко А.Ю.", role: "Адвокат", base: 80000, bonus: 12000, total: 92000, status: "Готово", date: "15.05.2024", comment: "Ставка та бонус за закриті задачі" },
-  { name: "Мельник Н.П.", role: "Адвокат", base: 62000, bonus: 8000, total: 70000, status: "Готово", date: "15.05.2024", comment: "Ставка за травень" },
-  { name: "Кравчук А.В.", role: "Помічник", base: 34000, bonus: 3500, total: 37500, status: "Очікує", date: "15.05.2024", comment: "Потребує підтвердження" },
-  { name: "Петренко С.В.", role: "Юрист", base: 48000, bonus: 6000, total: 54000, status: "Готово", date: "15.05.2024", comment: "Ставка за травень" }
+  { name: "Іваненко А.Ю.", role: "Адвокат", base: 80000, bonus: 12000, total: 92000, status: "Готово", date: financeDisplayDate(), comment: "Ставка та бонус за закриті задачі" },
+  { name: "Мельник Н.П.", role: "Адвокат", base: 62000, bonus: 8000, total: 70000, status: "Готово", date: financeDisplayDate(), comment: "Ставка за травень" },
+  { name: "Кравчук А.В.", role: "Помічник", base: 34000, bonus: 3500, total: 37500, status: "Очікує", date: financeDisplayDate(), comment: "Потребує підтвердження" },
+  { name: "Петренко С.В.", role: "Юрист", base: 48000, bonus: 6000, total: 54000, status: "Готово", date: financeDisplayDate(), comment: "Ставка за травень" }
 ];
 
 const SALARY_MONTHS = ["Черв", "Лип", "Серп", "Вер", "Жов", "Лис", "Гру", "Січ", "Лют", "Бер", "Квіт", "Трав"];

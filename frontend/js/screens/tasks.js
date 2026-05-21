@@ -53,6 +53,12 @@ function applyContext(ctx) {
   } = ctx);
 }
 
+function displayRelativeDate(daysFromToday = 0) {
+  const date = new Date();
+  date.setDate(date.getDate() + daysFromToday);
+  return `${String(date.getDate()).padStart(2, "0")}.${String(date.getMonth() + 1).padStart(2, "0")}.${date.getFullYear()}`;
+}
+
 function deriveTaskPriority(task = {}) {
   if (task.priority) return task.priority;
   if (["Терміново", "Срочно"].includes(task.status)) return "Високий";
@@ -690,7 +696,7 @@ function renderTasks() {
           </div>
         </article>
         <article class="panel task-plan-card">
-          <h2>Задачі в планері на завтра (16.05.2024)</h2>
+          <h2>Задачі в планері на завтра (${displayRelativeDate(1)})</h2>
           <div class="task-plan-list">
             ${bottomPlanItems.map((task) => `
               <div class="task-plan-row ${planTone(task)}">

@@ -36,6 +36,12 @@ const accessPermissionMap = {
   "Індивідуальний доступ": []
 };
 
+function settingsAuditDate(daysAgo, time) {
+  const date = new Date();
+  date.setDate(date.getDate() - daysAgo);
+  return `${String(date.getDate()).padStart(2, "0")}.${String(date.getMonth() + 1).padStart(2, "0")}.${date.getFullYear()} ${time}`;
+}
+
 const rolePermissionMap = Object.fromEntries(
   Object.entries(roleAccessMap).map(([role, access]) => [role, accessPermissionMap[access] || []])
 );
@@ -599,9 +605,9 @@ export function renderSettingsScreen(ctx) {
   const activeUsers = users.filter((user) => user.role !== "Видалений").length;
   state.settingsFocusedSection ||= "profile";
   state.settingsAudit ||= [
-    { date: "16.05.2024 09:30", text: "Синхронізовано канали Telegram та SMS.", tone: "green" },
-    { date: "15.05.2024 18:10", text: "Оновлено профіль бюро для документів.", tone: "blue" },
-    { date: "15.05.2024 12:40", text: "Перевірено правила сповіщень по дедлайнах.", tone: "amber" }
+    { date: settingsAuditDate(0, "09:30"), text: "Синхронізовано канали Telegram та SMS.", tone: "green" },
+    { date: settingsAuditDate(1, "18:10"), text: "Оновлено профіль бюро для документів.", tone: "blue" },
+    { date: settingsAuditDate(1, "12:40"), text: "Перевірено правила сповіщень по дедлайнах.", tone: "amber" }
   ];
 
   $("#settings").innerHTML = `

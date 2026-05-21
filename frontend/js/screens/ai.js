@@ -52,6 +52,12 @@ function fallbackDemoCaseId(suffix = "12345") {
   return `${new Date().getFullYear()}/${suffix}`;
 }
 
+function fallbackCreatedDate() {
+  const date = new Date();
+  date.setDate(date.getDate() - 9);
+  return `${String(date.getDate()).padStart(2, "0")}.${String(date.getMonth() + 1).padStart(2, "0")}.${date.getFullYear()}`;
+}
+
 function escapeHtml(value = "") {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -80,7 +86,7 @@ function assistantRows(state, clientById) {
       caseId: caseItem.id,
       title: `${client?.name?.split(" ")[0] || "Клієнт"}, ${caseItem.title.toLowerCase()}`,
       subtitle: `Справа №${caseItem.id} · ${helper.label}`,
-      created: caseItem.opened || "12.05.2024",
+      created: caseItem.opened || fallbackCreatedDate(),
       description: `Помічник навчений на матеріалах справи: ${caseItem.stage?.toLowerCase() || "аналіз матеріалів"}, документи, задачі та історія.`,
       status: index === 3 ? "На навчанні" : "Активний",
       helper,

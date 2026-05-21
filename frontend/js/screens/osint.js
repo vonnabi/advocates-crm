@@ -19,13 +19,20 @@ const OSINT_TABS = [
 const OSINT_DEFAULT_START = DEMO_START;
 const OSINT_DEFAULT_END = DEMO_END;
 const demoCaseYear = new Date().getFullYear();
+const demoDateAnchor = new Date(2024, 4, 15);
 
 function demoCaseId(value) {
   return String(value).replace(/^2024\//, `${demoCaseYear}/`);
 }
 
 function demoDateTime(dayMonth, clock) {
-  return `${dayMonth}.${demoCaseYear} ${clock}`;
+  const [day, month] = String(dayMonth).split(".").map(Number);
+  const source = new Date(2024, month - 1, day);
+  const today = new Date();
+  const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const deltaDays = Math.round((todayOnly.getTime() - demoDateAnchor.getTime()) / 86400000);
+  source.setDate(source.getDate() + deltaDays);
+  return `${String(source.getDate()).padStart(2, "0")}.${String(source.getMonth() + 1).padStart(2, "0")}.${source.getFullYear()} ${clock}`;
 }
 
 const OSINT_SUBTABS = [
@@ -82,19 +89,19 @@ const OSINT_DATA_TYPES = [
 ];
 
 const OSINT_SOURCE_DEFAULTS = [
-  { id: "youcontrol", title: "YouControl", subtitle: "Бізнес-дані та реєстри", updated: "16.05.2024 09:00", status: "Активне", enabled: true, cadence: "кожні 60 хв" },
-  { id: "opendatabot", title: "Opendatabot", subtitle: "Відкриті дані", updated: "16.05.2024 09:15", status: "Активне", enabled: true, cadence: "кожні 30 хв" },
-  { id: "court", title: "Судові рішення", subtitle: "Єдиний держреєстр", updated: "16.05.2024 09:20", status: "Активне", enabled: true, cadence: "кожні 2 год" },
-  { id: "social", title: "Соцмережі", subtitle: "Facebook, Instagram, LinkedIn", updated: "16.05.2024 08:10", status: "Активне", enabled: true, cadence: "кожні 4 год" },
-  { id: "telegram", title: "Telegram", subtitle: "Канали та групи", updated: "16.05.2024 09:05", status: "Активне", enabled: true, cadence: "кожні 20 хв" },
-  { id: "news", title: "Новини", subtitle: "ЗМІ та новинні сайти", updated: "16.05.2024 08:50", status: "Активне", enabled: true, cadence: "кожні 45 хв" }
+  { id: "youcontrol", title: "YouControl", subtitle: "Бізнес-дані та реєстри", updated: demoDateTime("16.05", "09:00"), status: "Активне", enabled: true, cadence: "кожні 60 хв" },
+  { id: "opendatabot", title: "Opendatabot", subtitle: "Відкриті дані", updated: demoDateTime("16.05", "09:15"), status: "Активне", enabled: true, cadence: "кожні 30 хв" },
+  { id: "court", title: "Судові рішення", subtitle: "Єдиний держреєстр", updated: demoDateTime("16.05", "09:20"), status: "Активне", enabled: true, cadence: "кожні 2 год" },
+  { id: "social", title: "Соцмережі", subtitle: "Facebook, Instagram, LinkedIn", updated: demoDateTime("16.05", "08:10"), status: "Активне", enabled: true, cadence: "кожні 4 год" },
+  { id: "telegram", title: "Telegram", subtitle: "Канали та групи", updated: demoDateTime("16.05", "09:05"), status: "Активне", enabled: true, cadence: "кожні 20 хв" },
+  { id: "news", title: "Новини", subtitle: "ЗМІ та новинні сайти", updated: demoDateTime("16.05", "08:50"), status: "Активне", enabled: true, cadence: "кожні 45 хв" }
 ];
 
 const OSINT_REGISTRY_ROWS = [
-  ["ЄДР", "Компанії, ФОП, бенефіціари", "Підключено", "16.05.2024 09:00"],
-  ["Судовий реєстр", "Рішення та процесуальні згадки", "Підключено", "16.05.2024 09:20"],
-  ["Боржники", "Виконавчі провадження та борги", "Потребує уваги", "15.05.2024 18:10"],
-  ["Санкції", "Санкційні списки та обмеження", "Підключено", "15.05.2024 17:00"]
+  ["ЄДР", "Компанії, ФОП, бенефіціари", "Підключено", demoDateTime("16.05", "09:00")],
+  ["Судовий реєстр", "Рішення та процесуальні згадки", "Підключено", demoDateTime("16.05", "09:20")],
+  ["Боржники", "Виконавчі провадження та борги", "Потребує уваги", demoDateTime("15.05", "18:10")],
+  ["Санкції", "Санкційні списки та обмеження", "Підключено", demoDateTime("15.05", "17:00")]
 ];
 
 function osintTone(value = "") {
@@ -155,7 +162,7 @@ function osintMentions(state) {
       title: source === "Opendatabot" ? "Зміна в компанії" : source === "Telegram" ? "Повідомлення в Telegram" : "Нове судове рішення",
       text: `${item.title} · ${clientName(state, item)}`,
       caseId: item.id,
-      time: item.history?.[0]?.date || "16.05.2024 09:20",
+      time: item.history?.[0]?.date || demoDateTime("16.05", "09:20"),
       tone: item.priority === "Високий" || hasDebt ? "red" : item.priority === "Середній" ? "amber" : "blue",
       status: item.priority === "Високий" || hasDebt ? "Негативна" : item.priority === "Середній" ? "Важлива" : "Нейтральна"
     };
@@ -165,7 +172,7 @@ function osintMentions(state) {
     title: check.title,
     text: `${check.object} · ${check.status}`,
     caseId: check.caseId,
-    time: "16.05.2024 09:30",
+    time: demoDateTime("16.05", "09:30"),
     tone: check.risks?.length ? "amber" : "blue",
     status: check.risks?.length ? "Важлива" : "Нейтральна"
   }));
@@ -337,7 +344,7 @@ function activeCasesList(state, badge) {
       title: item.title,
       risk: tone === "red" ? "Високий ризик" : tone === "amber" ? "Середній ризик" : "Низький ризик",
       progress: Math.min(95, 35 + (item.documents?.length || 0) * 7 + (item.tasks?.length || 0) * 6 + (check ? 12 : 0)),
-      updated: item.history?.[0]?.date || "16.05.2024 09:15",
+      updated: item.history?.[0]?.date || demoDateTime("16.05", "09:15"),
       tone
     };
   });
@@ -629,9 +636,9 @@ function secondaryWorkspace(state, badge, icon) {
   }
   if (tab === "reports") {
     const reports = state.osintReports || [
-      { title: "Звіт по ризиках", description: "Негативні згадки, ризики по справам та рекомендовані дії.", created: "16.05.2024 10:20" },
-      { title: "Звіт по згадках", description: "Публічні згадки з Facebook, Telegram, ЗМІ та реєстрів.", created: "16.05.2024 09:45" },
-      { title: "Звіт по реєстрах", description: "Зміни по компаніях, судових рішеннях і відкритих базах.", created: "15.05.2024 18:30" }
+      { title: "Звіт по ризиках", description: "Негативні згадки, ризики по справам та рекомендовані дії.", created: demoDateTime("16.05", "10:20") },
+      { title: "Звіт по згадках", description: "Публічні згадки з Facebook, Telegram, ЗМІ та реєстрів.", created: demoDateTime("16.05", "09:45") },
+      { title: "Звіт по реєстрах", description: "Зміни по компаніях, судових рішеннях і відкритих базах.", created: demoDateTime("15.05", "18:30") }
     ];
     return `
       <section class="panel osint-wide-card osint-tab-workspace">
@@ -677,9 +684,9 @@ export function renderOSINTScreen(ctx) {
   state.osintTab = state.osintTab || "overview";
   ensureOsintSources(state);
   state.osintReports = Array.isArray(state.osintReports) ? state.osintReports : [
-    { title: "Звіт по ризиках", description: "Негативні згадки, ризики по справам та рекомендовані дії.", created: "16.05.2024 10:20" },
-    { title: "Звіт по згадках", description: "Публічні згадки з Facebook, Telegram, ЗМІ та реєстрів.", created: "16.05.2024 09:45" },
-    { title: "Звіт по реєстрах", description: "Зміни по компаніях, судових рішеннях і відкритих базах.", created: "15.05.2024 18:30" }
+    { title: "Звіт по ризиках", description: "Негативні згадки, ризики по справам та рекомендовані дії.", created: demoDateTime("16.05", "10:20") },
+    { title: "Звіт по згадках", description: "Публічні згадки з Facebook, Telegram, ЗМІ та реєстрів.", created: demoDateTime("16.05", "09:45") },
+    { title: "Звіт по реєстрах", description: "Зміни по компаніях, судових рішеннях і відкритих базах.", created: demoDateTime("15.05", "18:30") }
   ];
   state.osintDateStart = state.osintDateStart || OSINT_DEFAULT_START;
   state.osintDateEnd = state.osintDateEnd || OSINT_DEFAULT_END;
