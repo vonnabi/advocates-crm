@@ -12,6 +12,10 @@ from apps.finance.models import Expense, Invoice, Payment
 from apps.tasks.models import Task
 
 
+def demo_case_number(suffix):
+    return f"{timezone.localdate().year}/{suffix}"
+
+
 class DemoApiTests(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -78,7 +82,7 @@ class DemoApiTests(TestCase):
             status="active",
         )
         manual_case = Case.objects.create(
-            number="2026/9001",
+            number=demo_case_number("9001"),
             title="Реальна справа",
             client=manual_client,
             practice_area="Цивільна",
@@ -147,7 +151,7 @@ class DemoApiTests(TestCase):
         self.assertTrue(get_user_model().objects.filter(email="petrenko@advocates.crm").exists())
 
     def test_demo_clear_preserves_user_records_attached_to_demo_parent(self):
-        demo_case = Case.objects.get(number="2024/12345")
+        demo_case = Case.objects.get(number=demo_case_number("12345"))
         demo_client_id = demo_case.client_id
         user_document = CaseDocument.objects.create(
             case=demo_case,
@@ -165,7 +169,7 @@ class DemoApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["demoData"]["enabled"])
         self.assertTrue(CaseDocument.objects.filter(pk=user_document.pk, is_demo=False).exists())
-        self.assertTrue(Case.objects.filter(number="2024/12345", is_demo=False).exists())
+        self.assertTrue(Case.objects.filter(number=demo_case_number("12345"), is_demo=False).exists())
         self.assertTrue(Client.objects.filter(pk=demo_client_id, is_demo=False).exists())
         self.assertEqual(Case.objects.filter(is_demo=True).count(), 0)
         self.assertEqual(Client.objects.filter(is_demo=True).count(), 0)
@@ -294,18 +298,18 @@ class DemoApiTests(TestCase):
             "role": "Помічник",
             "access": "Індивідуальний доступ",
             "permissionKeys": ["manage_tasks"],
-            "assignedCaseIds": ["2024/5678"],
+            "assignedCaseIds": [demo_case_number("5678")],
         }
 
         create_response = self.client.post("/api/users/", payload, content_type="application/json")
         self.assertEqual(create_response.status_code, 200)
         created = create_response.json()
         self.assertEqual(created["permissionKeys"], ["manage_tasks"])
-        self.assertEqual(created["assignedCaseIds"], ["2024/5678"])
+        self.assertEqual(created["assignedCaseIds"], [demo_case_number("5678")])
         self.assertEqual(created["assignedCasesCount"], 1)
 
         user = get_user_model().objects.get(email="scope.user@example.com")
-        self.assertTrue(CaseMember.objects.filter(user=user, case__number="2024/5678").exists())
+        self.assertTrue(CaseMember.objects.filter(user=user, case__number=demo_case_number("5678")).exists())
 
         self.client.post("/api/auth/logout/", {}, content_type="application/json")
         login_response = self.client.post(
@@ -319,7 +323,7 @@ class DemoApiTests(TestCase):
         self.assertFalse(permissions["canManageDocuments"])
 
         bootstrap = self.client.get("/api/bootstrap/").json()
-        self.assertEqual([item["id"] for item in bootstrap["cases"]], ["2024/5678"])
+        self.assertEqual([item["id"] for item in bootstrap["cases"]], [demo_case_number("5678")])
 
     def test_role_permissions_limit_write_actions(self):
         assistant_login = self.client.post(
@@ -409,7 +413,7 @@ class DemoApiTests(TestCase):
             photo_label="БА",
         )
         CaseMember.objects.create(
-            case=Case.objects.get(number="2024/12345"),
+            case=Case.objects.get(number=demo_case_number("12345")),
             user=accountant,
             role=CaseMember.Role.ACCOUNTANT,
         )
@@ -429,7 +433,7 @@ class DemoApiTests(TestCase):
         self.assertTrue(any(item["income"] > 0 for item in accountant_bootstrap["cases"]))
         accountant_task_response = self.client.post(
             "/api/tasks/",
-            {"caseId": "2024/12345", "title": "Бухгалтерська задача"},
+            {"caseId": demo_case_number("12345"), "title": "Бухгалтерська задача"},
             content_type="application/json",
         )
         self.assertEqual(accountant_task_response.status_code, 403)
@@ -475,7 +479,7 @@ class DemoApiTests(TestCase):
             "title": "API повідомлення клієнту",
             "status": "Надіслано",
             "author": "Іваненко А.Ю.",
-            "caseId": "2024/12345",
+            "caseId": demo_case_number("12345"),
         }
 
         create_response = self.client.post("/api/clients/1/communications/", payload, content_type="application/json")
@@ -483,7 +487,7 @@ class DemoApiTests(TestCase):
         created = create_response.json()
         self.assertEqual(created["clientId"], 1)
         self.assertEqual(created["title"], payload["title"])
-        self.assertEqual(created["caseId"], "2024/12345")
+        self.assertEqual(created["caseId"], demo_case_number("12345"))
 
         list_response = self.client.get("/api/clients/1/communications/")
         self.assertEqual(list_response.status_code, 200)
@@ -523,7 +527,7 @@ class DemoApiTests(TestCase):
         self.assertEqual(create_response.status_code, 200)
         created = create_response.json()
         self.assertEqual(created["title"], payload["title"])
-        self.assertTrue(created["id"].startswith("2026/"))
+        self.assertTrue(created["id"].startswith(f"{timezone.localdate().year}/"))
 
         update_response = self.client.put(
             f"/api/cases/{created['id']}/",
@@ -542,7 +546,7 @@ class DemoApiTests(TestCase):
 
     def test_task_create_update_and_delete_api(self):
         payload = {
-            "caseId": "2024/12345",
+            "caseId": demo_case_number("12345"),
             "clientId": 1,
             "title": "API задача по справі",
             "status": "Нова",
@@ -562,7 +566,7 @@ class DemoApiTests(TestCase):
         self.assertEqual(create_response.status_code, 200)
         created = create_response.json()
         self.assertEqual(created["title"], payload["title"])
-        self.assertEqual(created["caseId"], "2024/12345")
+        self.assertEqual(created["caseId"], demo_case_number("12345"))
         self.assertTrue(created["id"])
 
         update_response = self.client.put(
@@ -581,7 +585,7 @@ class DemoApiTests(TestCase):
 
     def test_document_create_update_and_delete_api(self):
         payload = {
-            "caseId": "2024/12345",
+            "caseId": demo_case_number("12345"),
             "name": "API документ.docx",
             "type": "Позов",
             "folder": "Позови",
@@ -597,7 +601,7 @@ class DemoApiTests(TestCase):
         self.assertEqual(create_response.status_code, 200)
         created = create_response.json()
         self.assertEqual(created["name"], payload["name"])
-        self.assertEqual(created["caseId"], "2024/12345")
+        self.assertEqual(created["caseId"], demo_case_number("12345"))
         self.assertEqual(created["folder"], "Позови")
 
         update_response = self.client.put(
@@ -616,7 +620,7 @@ class DemoApiTests(TestCase):
 
     def test_event_create_update_and_delete_api(self):
         payload = {
-            "caseId": "2024/12345",
+            "caseId": demo_case_number("12345"),
             "clientId": 1,
             "title": "API судове засідання",
             "type": "Судове засідання",
@@ -638,7 +642,7 @@ class DemoApiTests(TestCase):
         self.assertEqual(create_response.status_code, 200)
         created = create_response.json()
         self.assertEqual(created["title"], payload["title"])
-        self.assertEqual(created["caseId"], "2024/12345")
+        self.assertEqual(created["caseId"], demo_case_number("12345"))
         self.assertEqual(created["date"], "2026-06-25")
 
         update_response = self.client.put(
@@ -658,7 +662,7 @@ class DemoApiTests(TestCase):
     def test_finance_operation_create_list_and_delete_api(self):
         payload = {
             "action": "income",
-            "caseId": "2024/12345",
+            "caseId": demo_case_number("12345"),
             "title": "API оплата клієнта",
             "amount": 2500,
             "date": "2026-06-30",

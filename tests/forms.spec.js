@@ -191,7 +191,7 @@ test("settings invite form adds a bureau user", async ({ page }) => {
   ]);
   await page.locator('[data-settings-case-search]').fill("немає такої справи");
   await expect(page.locator(".settings-case-empty")).toBeVisible();
-  await page.locator('[data-settings-case-search]').fill("2024");
+  await page.locator('[data-settings-case-search]').fill(String(new Date().getFullYear()));
   await expect(page.locator(".settings-case-choice").first()).toBeVisible();
   await page.locator('#settings-invite-form button[type="submit"]').click();
 

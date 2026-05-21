@@ -34,6 +34,16 @@ let syncNavigationState;
 let showToast;
 
 const completedCaseStatuses = new Set(["Завершено", "Закрито", "Архів"]);
+const demoCaseYear = new Date().getFullYear();
+
+function isDemoCaseNumber(value) {
+  const text = String(value || "");
+  return text.startsWith(`${demoCaseYear}/`) || text.startsWith("2024/");
+}
+
+function demoDisplayDate(dayMonth) {
+  return `${dayMonth}.${demoCaseYear}`;
+}
 
 function isCaseCompleted(item) {
   return completedCaseStatuses.has(item?.status);
@@ -1155,35 +1165,35 @@ function caseActionRows(item, filter = "all") {
 
 export function caseProceduralItems(item) {
   if (Array.isArray(item.proceduralActions)) return item.proceduralActions;
-  if (!String(item.id).startsWith("2024/")) return [];
+  if (!isDemoCaseNumber(item.id)) return [];
   item.proceduralActions = [
     {
       action: "Подано адміністративний позов",
       initiator: "Адвокат",
-      initiated: "15.05.2024",
-      due: "20.05.2024",
+      initiated: demoDisplayDate("15.05"),
+      due: demoDisplayDate("20.05"),
       status: "В процесі",
       tone: "amber"
     },
     {
       action: "Клопотання про забезпечення позову",
       initiator: "Адвокат",
-      initiated: "16.05.2024",
-      due: "19.05.2024",
+      initiated: demoDisplayDate("16.05"),
+      due: demoDisplayDate("19.05"),
       status: "Не розпочато"
     },
     {
       action: "Отримання витребуваних документів",
       initiator: "Суд",
-      initiated: "17.05.2024",
-      due: "27.05.2024",
+      initiated: demoDisplayDate("17.05"),
+      due: demoDisplayDate("27.05"),
       status: "Не розпочато"
     },
     {
       action: "Судове засідання",
       initiator: "Суд",
       initiated: "-",
-      due: "10.06.2024",
+      due: `10.06.${demoCaseYear}`,
       status: "Заплановано",
       tone: "blue"
     }
@@ -1247,49 +1257,49 @@ function caseDocumentRows(item) {
 
 export function caseFolders(item) {
   if (!item.folders) {
-    if (!String(item.id).startsWith("2024/")) {
+    if (!isDemoCaseNumber(item.id)) {
       item.folders = [];
       return item.folders;
     }
     item.folders = [
       {
         name: "Позови",
-        updated: "17.05.2024",
+        updated: demoDisplayDate("17.05"),
         files: [
-          { name: "Адміністративний позов.docx", status: "Чернетка", updated: "17.05.2024" },
-          { name: "Додатки до позову.pdf", status: "Готово", updated: "17.05.2024" },
-          { name: "Квитанція судового збору.pdf", status: "Потрібно перевірити", updated: "16.05.2024" }
+          { name: "Адміністративний позов.docx", status: "Чернетка", updated: demoDisplayDate("17.05") },
+          { name: "Додатки до позову.pdf", status: "Готово", updated: demoDisplayDate("17.05") },
+          { name: "Квитанція судового збору.pdf", status: "Потрібно перевірити", updated: demoDisplayDate("16.05") }
         ]
       },
       {
         name: "Клопотання",
-        updated: "16.05.2024",
+        updated: demoDisplayDate("16.05"),
         files: [
-          { name: "Клопотання про забезпечення позову.docx", status: "В роботі", updated: "16.05.2024" },
-          { name: "Проєкт додатків.docx", status: "Чернетка", updated: "16.05.2024" }
+          { name: "Клопотання про забезпечення позову.docx", status: "В роботі", updated: demoDisplayDate("16.05") },
+          { name: "Проєкт додатків.docx", status: "Чернетка", updated: demoDisplayDate("16.05") }
         ]
       },
       {
         name: "Запити",
-        updated: "17.05.2024",
+        updated: demoDisplayDate("17.05"),
         files: [
-          { name: "Запит документів до ТЦК.docx", status: "Подано", updated: "17.05.2024" },
-          { name: "Адвокатський запит до ВЛК.docx", status: "Чернетка", updated: "16.05.2024" },
-          { name: "Вхідний опис документів.pdf", status: "Отримано", updated: "15.05.2024" },
-          { name: "Поштова квитанція.pdf", status: "Отримано", updated: "17.05.2024" }
+          { name: "Запит документів до ТЦК.docx", status: "Подано", updated: demoDisplayDate("17.05") },
+          { name: "Адвокатський запит до ВЛК.docx", status: "Чернетка", updated: demoDisplayDate("16.05") },
+          { name: "Вхідний опис документів.pdf", status: "Отримано", updated: demoDisplayDate("15.05") },
+          { name: "Поштова квитанція.pdf", status: "Отримано", updated: demoDisplayDate("17.05") }
         ]
       },
       {
         name: "Відповіді та ухвали",
-        updated: "15.05.2024",
-        files: [{ name: "Ухвала про відкриття провадження.pdf", status: "Отримано", updated: "15.05.2024" }]
+        updated: demoDisplayDate("15.05"),
+        files: [{ name: "Ухвала про відкриття провадження.pdf", status: "Отримано", updated: demoDisplayDate("15.05") }]
       },
       {
         name: "Інші документи",
-        updated: "12.05.2024",
+        updated: demoDisplayDate("12.05"),
         files: [
-          { name: "Паспорт клієнта.pdf", status: "Отримано", updated: "12.05.2024" },
-          { name: "ІПН клієнта.pdf", status: "Отримано", updated: "12.05.2024" }
+          { name: "Паспорт клієнта.pdf", status: "Отримано", updated: demoDisplayDate("12.05") },
+          { name: "ІПН клієнта.pdf", status: "Отримано", updated: demoDisplayDate("12.05") }
         ]
       }
     ];

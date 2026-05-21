@@ -76,9 +76,10 @@ test("global documents screen exposes document actions", async ({ page }) => {
 
 test("case procedural action edit opens dialog", async ({ page }) => {
   await openApp(page);
+  const demoCaseId = `${new Date().getFullYear()}/12345`;
 
   await page.locator('.nav-item[data-view="cases"]').click();
-  await page.locator('[data-open-case="2024/12345"]').first().click();
+  await page.locator(`[data-open-case="${demoCaseId}"]`).first().click();
   await expect(page.locator("#case-detail")).toContainText("5. ПРОЦЕСУАЛЬНІ ДІЇ");
 
   await page.locator(".procedural-actions-table [data-action-menu-trigger]").nth(1).click();

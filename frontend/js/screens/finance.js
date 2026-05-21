@@ -11,6 +11,15 @@ import { normalizeFinanceOperation } from "../state.js";
 
 const DEFAULT_START = DEMO_START;
 const DEFAULT_END = DEMO_END;
+const demoCaseYear = new Date().getFullYear();
+
+function demoCaseId(value) {
+  return String(value).replace(/^2024\//, `${demoCaseYear}/`);
+}
+
+function demoCaseText(value) {
+  return String(value).replace(/№2024\//g, `№${demoCaseYear}/`);
+}
 
 const FINANCE_TABS = [
   ["overview", "Огляд"],
@@ -30,7 +39,7 @@ const FINANCE_OPERATIONS = [
     date: "15.05.2024",
     type: "Надходження",
     title: "Оплата за правову допомогу",
-    caseId: "2024/12345",
+    caseId: demoCaseId("2024/12345"),
     client: "Петренко Микола",
     amount: 50000,
     status: "Оплачено",
@@ -40,7 +49,7 @@ const FINANCE_OPERATIONS = [
     date: "14.05.2024",
     type: "Витрата",
     title: "Судовий збір",
-    caseId: "2024/5678",
+    caseId: demoCaseId("2024/5678"),
     client: "ТОВ «Будівельник»",
     amount: -5368,
     status: "Оплачено",
@@ -50,7 +59,7 @@ const FINANCE_OPERATIONS = [
     date: "14.05.2024",
     type: "Надходження",
     title: "Оплата за консультацію",
-    caseId: "2024/4321",
+    caseId: demoCaseId("2024/4321"),
     client: "Коваленко Ольга",
     amount: 10000,
     status: "Оплачено",
@@ -60,7 +69,7 @@ const FINANCE_OPERATIONS = [
     date: "13.05.2024",
     type: "Витрата",
     title: "Поштові витрати",
-    caseId: "2024/9999",
+    caseId: demoCaseId("2024/9999"),
     client: "Іванов Іван",
     amount: -350,
     status: "Оплачено",
@@ -70,7 +79,7 @@ const FINANCE_OPERATIONS = [
     date: "13.05.2024",
     type: "Надходження",
     title: "Оплата за правову допомогу",
-    caseId: "2024/4321",
+    caseId: demoCaseId("2024/4321"),
     client: "ТОВ «Альфа»",
     amount: 75000,
     status: "Частково",
@@ -87,11 +96,11 @@ const INCOME_STRUCTURE = [
 ];
 
 const INCOME_BY_CASE = [
-  ["№2024/1234 Петренко М.М.", 150000],
-  ["№2024/5678 ТОВ «Будівельник»", 120000],
-  ["№2024/9012 Коваленко О.В.", 80000],
-  ["№2024/1357 ТОВ «Альфа»", 75000],
-  ["№2024/2468 Іванов І.І.", 60000]
+  [demoCaseText("№2024/1234 Петренко М.М."), 150000],
+  [demoCaseText("№2024/5678 ТОВ «Будівельник»"), 120000],
+  [demoCaseText("№2024/9012 Коваленко О.В."), 80000],
+  [demoCaseText("№2024/1357 ТОВ «Альфа»"), 75000],
+  [demoCaseText("№2024/2468 Іванов І.І."), 60000]
 ];
 
 const EXPENSE_CATEGORIES = [

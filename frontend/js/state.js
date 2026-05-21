@@ -3,6 +3,7 @@ import { apiBaseUrl } from "./api.js?v=demo-data-2";
 const DEMO_DATE_ANCHOR = new Date(2024, 4, 15);
 const ISO_DATE_RE = /(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)/g;
 const DISPLAY_DATE_RE = /(?<!\d)(\d{2})\.(\d{2})\.(\d{4})(?!\d)/g;
+const DEMO_CASE_YEAR_RE = /(?<!\d)2024\/(?=\d)/g;
 
 function localDateOnly(value = new Date()) {
   return new Date(value.getFullYear(), value.getMonth(), value.getDate());
@@ -34,10 +35,13 @@ function displayFromIso(value) {
 
 function shiftDemoDateString(value) {
   const days = demoDateDeltaDays();
-  if (!days) return value;
-  return String(value)
-    .replace(ISO_DATE_RE, (_match, year, month, day) => localIsoDate(addDays(new Date(Number(year), Number(month) - 1, Number(day)), days)))
-    .replace(DISPLAY_DATE_RE, (_match, day, month, year) => displayFromIso(localIsoDate(addDays(new Date(Number(year), Number(month) - 1, Number(day)), days))));
+  const source = String(value);
+  const shiftedDates = days
+    ? source
+      .replace(ISO_DATE_RE, (_match, year, month, day) => localIsoDate(addDays(new Date(Number(year), Number(month) - 1, Number(day)), days)))
+      .replace(DISPLAY_DATE_RE, (_match, day, month, year) => displayFromIso(localIsoDate(addDays(new Date(Number(year), Number(month) - 1, Number(day)), days))))
+    : source;
+  return shiftedDates.replace(DEMO_CASE_YEAR_RE, `${new Date().getFullYear()}/`);
 }
 
 function shiftDemoPayloadDates(value) {
@@ -47,6 +51,10 @@ function shiftDemoPayloadDates(value) {
   }
   if (typeof value === "string") return shiftDemoDateString(value);
   return value;
+}
+
+function demoCaseId(value) {
+  return String(value || "").replace(DEMO_CASE_YEAR_RE, `${new Date().getFullYear()}/`);
 }
 
 async function readDataFile(path) {
@@ -292,7 +300,7 @@ export async function createInitialState() {
     demoDataStatus,
     selectedClientId: 1,
     selectedClientKeys: [],
-    selectedCaseId: "2024/12345",
+    selectedCaseId: demoCaseId("2024/12345"),
     caseScreen: "list",
     casePage: 1,
     casePageSize: 6,
@@ -337,7 +345,7 @@ export async function createInitialState() {
     folderDialogReturnView: "cases",
     financeQuery: "",
     financeStatusFilter: "all",
-    selectedFinanceCaseId: "2024/12345",
+    selectedFinanceCaseId: demoCaseId("2024/12345"),
     financeTab: "overview",
     financeDateStart: demoRangeStart,
     financeDateEnd: demoRangeEnd,
@@ -359,7 +367,7 @@ export async function createInitialState() {
     analyticsDateEnd: demoRangeEnd,
     analyticsDatePickerOpen: false,
     aiSelectedHelper: "Військове право",
-    aiSelectedCaseId: "2024/12345",
+    aiSelectedCaseId: demoCaseId("2024/12345"),
     aiMessages: [],
     aiSearchQuery: "",
     aiCaseStatusFilter: "all",
@@ -378,7 +386,7 @@ export async function createInitialState() {
       {
         id: "osint-1",
         title: "Перевірка контрагента по договору",
-        caseId: "2024/5678",
+        caseId: demoCaseId("2024/5678"),
         object: "ТОВ / контрагент",
         sources: ["ЄДР", "Судові рішення", "Борги"],
         risks: ["Є виконавче провадження", "Потрібна перевірка бенефіціарів"],
@@ -387,7 +395,7 @@ export async function createInitialState() {
       {
         id: "osint-2",
         title: "Аналіз відкритих джерел клієнта",
-        caseId: "2024/9999",
+        caseId: demoCaseId("2024/9999"),
         object: "Клієнт / публічні згадки",
         sources: ["Пошук", "Реєстри", "Документи"],
         risks: ["Знайдено розбіжності у датах"],
@@ -396,7 +404,7 @@ export async function createInitialState() {
       {
         id: "osint-3",
         title: "Моніторинг судових реєстрів",
-        caseId: "2024/12345",
+        caseId: demoCaseId("2024/12345"),
         object: "Активні справи бюро",
         sources: ["Судовий реєстр", "Календар", "Справи"],
         risks: [],

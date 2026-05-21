@@ -18,6 +18,15 @@ const OSINT_TABS = [
 
 const OSINT_DEFAULT_START = DEMO_START;
 const OSINT_DEFAULT_END = DEMO_END;
+const demoCaseYear = new Date().getFullYear();
+
+function demoCaseId(value) {
+  return String(value).replace(/^2024\//, `${demoCaseYear}/`);
+}
+
+function demoDateTime(dayMonth, clock) {
+  return `${dayMonth}.${demoCaseYear} ${clock}`;
+}
 
 const OSINT_SUBTABS = [
   ["mentions", "Останні згадки"],
@@ -46,19 +55,19 @@ const OSINT_SOURCE_SPLIT = [
 ];
 
 const OSINT_MENTIONS = [
-  { source: "Facebook", title: "Згадка у Facebook", text: "Олександр Петренко згаданий у коментарях до публікації", caseId: "2024/12345", time: "16.05.2024 09:20", tone: "red", status: "Негативна" },
-  { source: "Opendatabot", title: "Зміна в компанії", text: "ТОВ «Альфа» змінило кінцевого бенефіціара", caseId: "2024/9012", time: "16.05.2024 09:10", tone: "blue", status: "Нейтральна" },
-  { source: "Судовий реєстр", title: "Нове судове рішення", text: "Знайдено рішення у справі №755/1234/24", caseId: "2024/5678", time: "16.05.2024 08:45", tone: "amber", status: "Важлива" },
-  { source: "Telegram", title: "Повідомлення в Telegram", text: "Знайдено згадку в каналі «Правовий контроль»", caseId: "2024/2468", time: "16.05.2024 08:30", tone: "red", status: "Негативна" },
-  { source: "Новини", title: "Публікація в ЗМІ", text: "Опубліковано статтю про судову справу", caseId: "2024/1357", time: "16.05.2024 08:15", tone: "blue", status: "Нейтральна" }
+  { source: "Facebook", title: "Згадка у Facebook", text: "Олександр Петренко згаданий у коментарях до публікації", caseId: demoCaseId("2024/12345"), time: demoDateTime("16.05", "09:20"), tone: "red", status: "Негативна" },
+  { source: "Opendatabot", title: "Зміна в компанії", text: "ТОВ «Альфа» змінило кінцевого бенефіціара", caseId: demoCaseId("2024/9012"), time: demoDateTime("16.05", "09:10"), tone: "blue", status: "Нейтральна" },
+  { source: "Судовий реєстр", title: "Нове судове рішення", text: "Знайдено рішення у справі №755/1234/24", caseId: demoCaseId("2024/5678"), time: demoDateTime("16.05", "08:45"), tone: "amber", status: "Важлива" },
+  { source: "Telegram", title: "Повідомлення в Telegram", text: "Знайдено згадку в каналі «Правовий контроль»", caseId: demoCaseId("2024/2468"), time: demoDateTime("16.05", "08:30"), tone: "red", status: "Негативна" },
+  { source: "Новини", title: "Публікація в ЗМІ", text: "Опубліковано статтю про судову справу", caseId: demoCaseId("2024/1357"), time: demoDateTime("16.05", "08:15"), tone: "blue", status: "Нейтральна" }
 ];
 
 const OSINT_ACTIVE_CASES = [
-  { caseId: "2024/1234", title: "Оскарження дій ТЦК щодо мобілізації", risk: "Високий ризик", progress: 78, updated: "16.05.2024 09:15", tone: "red" },
-  { caseId: "2024/5678", title: "Шахрайство в особливо великих розмірах", risk: "Середній ризик", progress: 64, updated: "16.05.2024 08:40", tone: "amber" },
-  { caseId: "2024/9012", title: "Корпоративний спір між засновниками", risk: "Низький ризик", progress: 42, updated: "15.05.2024 17:30", tone: "green" },
-  { caseId: "2024/2468", title: "Визнання договору недійсним", risk: "Низький ризик", progress: 35, updated: "15.05.2024 16:10", tone: "green" },
-  { caseId: "2024/1357", title: "Стягнення заборгованості з контрагента", risk: "Середній ризик", progress: 58, updated: "15.05.2024 14:55", tone: "amber" }
+  { caseId: demoCaseId("2024/1234"), title: "Оскарження дій ТЦК щодо мобілізації", risk: "Високий ризик", progress: 78, updated: demoDateTime("16.05", "09:15"), tone: "red" },
+  { caseId: demoCaseId("2024/5678"), title: "Шахрайство в особливо великих розмірах", risk: "Середній ризик", progress: 64, updated: demoDateTime("16.05", "08:40"), tone: "amber" },
+  { caseId: demoCaseId("2024/9012"), title: "Корпоративний спір між засновниками", risk: "Низький ризик", progress: 42, updated: demoDateTime("15.05", "17:30"), tone: "green" },
+  { caseId: demoCaseId("2024/2468"), title: "Визнання договору недійсним", risk: "Низький ризик", progress: 35, updated: demoDateTime("15.05", "16:10"), tone: "green" },
+  { caseId: demoCaseId("2024/1357"), title: "Стягнення заборгованості з контрагента", risk: "Середній ризик", progress: 58, updated: demoDateTime("15.05", "14:55"), tone: "amber" }
 ];
 
 const OSINT_DATA_TYPES = [

@@ -48,6 +48,10 @@ const QUICK_QUESTIONS = [
   "Яка відповідальність за ст. 121 КК?"
 ];
 
+function fallbackDemoCaseId(suffix = "12345") {
+  return `${new Date().getFullYear()}/${suffix}`;
+}
+
 function escapeHtml(value = "") {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -108,7 +112,7 @@ function defaultMessages(caseItem, helperLabel = "AI консультант") {
   return [
     {
       role: "assistant",
-      text: `Я відкрив справу №${caseItem?.id || "2024/12345"} і бачу фокус: ${caseItem?.stage || "підготовка позиції"}. Можу підготувати план, перевірити ризики або сформувати список доказів.`
+      text: `Я відкрив справу №${caseItem?.id || fallbackDemoCaseId()} і бачу фокус: ${caseItem?.stage || "підготовка позиції"}. Можу підготувати план, перевірити ризики або сформувати список доказів.`
     },
     {
       role: "user",
