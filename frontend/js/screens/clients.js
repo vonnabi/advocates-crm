@@ -41,10 +41,10 @@ export function renderClientsScreen(ctx) {
           <div class="telegram-connect">
             <h3>Підключення Telegram</h3>
             <p class="muted">Підключіть свій Telegram-акаунт для спілкування з клієнтами та розсилки повідомлень.</p>
-            <div class="side-row"><span class="status-line">${icon("check")} Telegram підключено</span><button class="secondary">Налаштування</button></div>
+            <div class="side-row"><span class="status-line">${icon("check")} Telegram підключено</span><button class="secondary" type="button" data-client-telegram-settings>Налаштування</button></div>
           </div>
         </div>
-        <div class="panel side-card">
+        <div class="panel side-card" data-client-mailing-panel>
           <h2>Інформаційна розсилка</h2>
           <div class="mailing-grid">
             <div><span class="muted">Одержувачі</span><strong>124 клієнти</strong></div>
@@ -54,7 +54,7 @@ export function renderClientsScreen(ctx) {
           <p class="muted">Кількість символів: <span id="client-mailing-count">0</span></p>
           <h3>Попередній перегляд</h3>
           <div class="message-preview" id="client-mailing-preview"></div>
-          <button class="primary full-width icon-text">${icon("telegram")} Надіслати розсилку</button>
+          <button class="primary full-width icon-text" type="button" data-client-mailing-action>${icon("telegram")} Надіслати розсилку</button>
         </div>
       </aside>
     </div>
@@ -170,7 +170,7 @@ function updateClientBulkHeader(ctx, filteredClients) {
   bulkBar.innerHTML = selectedCount ? `
     <em>${selectedCount}</em>
     <button class="task-bulk-icon bulk-work" type="button" data-client-bulk-action="telegram" data-tooltip="Підключити Telegram" aria-label="Підключити Telegram вибраним клієнтам">${icon("telegram")}</button>
-    <button class="task-bulk-icon bulk-planner" type="button" data-client-bulk-action="mailing" data-tooltip="Додати в розсилку" aria-label="Додати вибраних клієнтів в розсилку">${icon("mail")}</button>
+    <button class="task-bulk-icon bulk-planner" type="button" data-client-bulk-action="mailing" data-client-mailing-action data-tooltip="Додати в розсилку" aria-label="Додати вибраних клієнтів в розсилку">${icon("mail")}</button>
     <button class="task-bulk-icon bulk-delete" type="button" data-client-bulk-action="delete" data-tooltip="Видалити вибрані" aria-label="Видалити вибраних клієнтів">${icon("trash")}</button>
     <button class="task-bulk-icon bulk-clear" type="button" data-client-bulk-action="clear" data-tooltip="Скинути вибір" aria-label="Скинути вибір клієнтів">×</button>
   ` : "";

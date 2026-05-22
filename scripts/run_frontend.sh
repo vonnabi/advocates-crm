@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 cd "$(dirname "$0")/.."
-python3 scripts/dev_server.py
+npm run serve

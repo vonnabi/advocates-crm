@@ -23,7 +23,10 @@ const criticalViews = [
 ];
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => window.localStorage.clear());
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+    window.localStorage.setItem("crmApiMode", "static");
+  });
 });
 
 for (const viewport of viewports) {

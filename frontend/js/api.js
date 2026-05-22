@@ -1,4 +1,5 @@
 export function apiBaseUrl() {
+  if (window.CRM_API_MODE === "static" || localStorage.getItem("crmApiMode") === "static") return "";
   const configured = window.CRM_API_BASE || localStorage.getItem("crmApiBase");
   if (configured) return configured.replace(/\/$/, "");
   const hostname = window.location.hostname;
@@ -91,6 +92,75 @@ export function getSessionFromApi() {
 
 export function getDemoDataStatusFromApi() {
   return apiRequest("/api/demo-data/");
+}
+
+export function getAuditLogsFromApi(limit = 50) {
+  return apiRequest(`/api/audit-logs/?limit=${encodeURIComponent(limit)}`);
+}
+
+export function clearAuditLogsFromApi() {
+  return apiRequest("/api/audit-logs/", { method: "DELETE" });
+}
+
+export function saveCrmSettingsToApi(settings) {
+  return apiRequest("/api/settings/", {
+    method: "PUT",
+    body: { settings }
+  });
+}
+
+export function getMailingProviderStatusFromApi() {
+  return apiRequest("/api/settings/provider-status/");
+}
+
+export function testMailingProviderInApi(channel) {
+  return apiRequest("/api/settings/provider-status/", {
+    method: "POST",
+    body: { channel }
+  });
+}
+
+export function saveMailingTemplateToApi(template) {
+  const hasId = template.id !== undefined && template.id !== null && template.id !== "";
+  return apiRequest(hasId ? `/api/mailings/templates/${template.id}/` : "/api/mailings/templates/", {
+    method: hasId ? "PUT" : "POST",
+    body: template
+  });
+}
+
+export function deleteMailingTemplateFromApi(templateId) {
+  return apiRequest(`/api/mailings/templates/${templateId}/`, { method: "DELETE" });
+}
+
+export function saveMailingCampaignToApi(campaign) {
+  const hasId = campaign.id !== undefined && campaign.id !== null && campaign.id !== "";
+  return apiRequest(hasId ? `/api/mailings/campaigns/${campaign.id}/` : "/api/mailings/campaigns/", {
+    method: hasId ? "PUT" : "POST",
+    body: campaign
+  });
+}
+
+export function deleteMailingCampaignFromApi(campaignId) {
+  return apiRequest(`/api/mailings/campaigns/${campaignId}/`, { method: "DELETE" });
+}
+
+export function sendMailingCampaignInApi(campaignId) {
+  return apiRequest(`/api/mailings/campaigns/${campaignId}/send/`, { method: "POST" });
+}
+
+export function saveMailingAutomationRuleToApi(rule) {
+  const hasId = rule.id !== undefined && rule.id !== null && rule.id !== "";
+  return apiRequest(hasId ? `/api/mailings/automation-rules/${rule.id}/` : "/api/mailings/automation-rules/", {
+    method: hasId ? "PUT" : "POST",
+    body: rule
+  });
+}
+
+export function updateMailingDeliveryInApi(deliveryId, payload) {
+  return apiRequest(`/api/mailings/deliveries/${deliveryId}/`, {
+    method: "PUT",
+    body: payload
+  });
 }
 
 export function clearDemoDataInApi() {

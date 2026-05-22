@@ -45,3 +45,20 @@ class MessageDelivery(models.Model):
     sent_at = models.DateTimeField(null=True, blank=True)
     delivered_at = models.DateTimeField(null=True, blank=True)
     is_demo = models.BooleanField(default=False, db_index=True)
+
+
+class AutomationRule(models.Model):
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    channel = models.CharField(max_length=64, default="Telegram")
+    enabled = models.BooleanField(default=True)
+    position = models.PositiveIntegerField(default=0, db_index=True)
+    is_demo = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("position", "id")
+
+    def __str__(self):
+        return self.title

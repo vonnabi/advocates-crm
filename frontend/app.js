@@ -1,4 +1,4 @@
-import { createInitialState } from "./js/state.js?v=live-demo-1";
+import { createInitialState } from "./js/state.js?v=mailings-api-65";
 import {
   closeTopbarPanels as closeTopbarPanelsInChrome,
   isTopbarPanelOpen,
@@ -38,17 +38,17 @@ import {
   renderClientProfile as renderClientProfileScreen,
   renderClientRows as renderClientRowsScreen,
   renderClientsScreen
-} from "./js/screens/clients.js";
+} from "./js/screens/clients.js?v=role-ui-1";
 import { renderDashboardScreen } from "./js/screens/dashboard.js?v=live-demo-1";
 import { renderDocumentsScreen } from "./js/screens/documents.js";
 import {
   renderMailingsScreen,
   setMailingTab as setMailingTabScreen
-} from "./js/screens/mailings.js?v=empty-kpi-2";
+} from "./js/screens/mailings.js?v=mailings-api-65";
 import { renderFinanceScreen } from "./js/screens/finance.js?v=live-demo-1";
 import { renderOSINTScreen } from "./js/screens/osint.js?v=live-demo-1";
 import { renderPlannerScreen } from "./js/screens/planner.js";
-import { renderSettingsScreen } from "./js/screens/settings.js?v=demo-admin-1";
+import { renderSettingsScreen } from "./js/screens/settings.js?v=mailings-api-65";
 import {
   allCaseTasks as allCaseTasksScreen,
   renderTasksScreen
@@ -81,7 +81,7 @@ import {
   taskTone,
   todayIso,
   weekDayNames
-} from "./js/ui.js?v=live-demo-1";
+} from "./js/ui.js?v=settings-icons-5";
 
 const state = await createInitialState();
 document.documentElement.dataset.dataSource = state.dataSource || "json";
@@ -157,7 +157,7 @@ const permissionControlRules = [
       "[data-edit-client]",
       "[data-delete-client]",
       "[data-client-bulk-action]",
-      "[data-ai-create-case]"
+      "[data-client-communication]"
     ]
   },
   {
@@ -183,7 +183,16 @@ const permissionControlRules = [
       "[data-edit-subtask-task]",
       "[data-delete-subtask-task]",
       "[data-task-bulk-action]",
-      "[data-edit-planner-task]"
+      "[data-task-status-pick]",
+      "[data-edit-planner-task]",
+      "[data-complete-planner-task]",
+      "[data-reschedule-planner-task]",
+      "[data-important-planner-task]",
+      "[data-remove-planner-task]",
+      "[data-task-drag]",
+      "#task-create-from-section",
+      "#add-plan-task",
+      "#add-plan-task-bottom"
     ]
   },
   {
@@ -191,6 +200,15 @@ const permissionControlRules = [
     selectors: [
       "[data-add-document]",
       "[data-add-folder]",
+      "[data-documents-add]",
+      "[data-documents-add-current]",
+      "[data-documents-add-empty]",
+      "[data-documents-add-folder]",
+      "[data-documents-edit-folder]",
+      "[data-documents-template]",
+      "[data-document-status-pick]",
+      "[data-document-status-change]",
+      "[data-document-date-change]",
       "[data-edit-document]",
       "[data-edit-global-document]",
       "[data-delete-global-document]",
@@ -204,11 +222,23 @@ const permissionControlRules = [
   {
     permission: "canManageCalendar",
     selectors: [
+      "#add-event",
       "[data-add-event]",
+      "[data-reschedule-calendar-event]",
+      "[data-complete-calendar-event]",
+      "[data-send-calendar-reminder]",
+      "[data-send-selected-reminder]",
       "[data-edit-calendar-event]",
       "[data-delete-calendar-event]",
       "[data-edit-procedural-action]",
       "[data-delete-procedural-action]"
+    ]
+  },
+  {
+    permission: "canSeeFinance",
+    selectors: [
+      "[data-export-finance]",
+      "[data-finance-payments]"
     ]
   },
   {
@@ -227,12 +257,75 @@ const permissionControlRules = [
     ]
   },
   {
+    permission: "canManageMailings",
+    selectors: [
+      "[data-mailing-action]",
+      "[data-client-telegram-settings]",
+      "[data-client-mailing-panel]",
+      "[data-client-mailing-action]",
+      "[data-use-template]",
+      "[data-edit-template]",
+      "[data-delete-template]",
+      "[data-save-mailing-template]",
+      "[data-recipient-mode]",
+      "[data-message-channel]",
+      "[data-mail-var]",
+      "[data-insert-mailing]",
+      "[data-wrap-mailing]",
+      "[data-toggle-automation]",
+      "[data-automation-channel]",
+      "[data-edit-mailing-campaign]",
+      "[data-delete-mailing-campaign]",
+      "[data-send-mailing-campaign]",
+      "[data-toggle-mailing-deliveries]",
+      "[data-update-delivery]",
+      "[data-mailing-channel-toggle]",
+      "[data-test-contact]",
+      "[data-mailing-schedule-date]",
+      "[data-mailing-schedule-time]"
+    ]
+  },
+  {
     permission: "canManageUsers",
     selectors: [
       "[data-save-settings]",
       "[data-settings-action='invite']",
+      "[data-settings-user-edit]",
+      "[data-settings-user-delivery]",
       "[data-settings-user-delete]",
+      "[data-settings-role-defaults]",
+      "[data-settings-user-submit]",
+      "[data-settings-delivery-refresh]",
+      "[data-settings-delivery-copy]",
+      "[data-settings-integration]",
+      "[data-settings-notification]",
+      "[data-settings-refresh-audit]",
+      "[data-settings-clear-audit]",
       "[data-demo-data-toggle]"
+    ]
+  },
+  {
+    permission: "canUseAi",
+    selectors: [
+      "[data-documents-ai]",
+      "[data-ai-create-global]",
+      "[data-ai-create-case]",
+      "[data-ai-row-action]",
+      "[data-ai-send]",
+      "[data-ai-question]",
+      "[data-ai-quick]"
+    ]
+  },
+  {
+    permission: "canUseOsint",
+    selectors: [
+      "[data-create-osint]",
+      "[data-osint-export]",
+      "[data-osint-monitor]",
+      "[data-osint-source-toggle]",
+      "[data-osint-source-refresh]",
+      "[data-osint-sync]",
+      "[data-osint-quick]"
     ]
   }
 ];

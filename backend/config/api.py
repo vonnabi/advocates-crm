@@ -12,11 +12,14 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
-from apps.accounts.models import UserProfile
+from apps.accounts.models import CRMSettings, UserProfile
+from apps.audit.models import AuditLog
 from apps.calendar_app.models import CalendarEvent
 from apps.cases.demo_data import clear_demo_business_data, demo_data_counts
 from apps.cases.models import Case, CaseDocument, CaseMember
 from apps.clients.models import Client, ClientCommunication
+from apps.communications.models import AutomationRule, Campaign, MessageDelivery, MessageTemplate
+from apps.communications.providers import provider_status_payload, send_delivery_with_provider, test_provider_channel
 from apps.finance.models import Expense, Invoice, Payment
 from apps.tasks.models import Task
 
@@ -43,6 +46,35 @@ def parse_body(request):
     if not request.body:
         return {}
     return json.loads(request.body.decode("utf-8"))
+
+
+def clean_string_map(source, defaults, max_lengths=None):
+    payload = source if isinstance(source, dict) else {}
+    max_lengths = max_lengths or {}
+    return {
+        key: str(payload.get(key, defaults[key]) or "").strip()[:max_lengths.get(key, 255)]
+        for key in defaults
+    }
+
+
+def clean_bool_map(source, defaults):
+    payload = source if isinstance(source, dict) else {}
+    return {
+        key: bool(payload.get(key, defaults[key]))
+        for key in defaults
+    }
+
+
+def clean_nested_string_map(source, defaults):
+    payload = source if isinstance(source, dict) else {}
+    result = {}
+    for group, fields in defaults.items():
+        values = payload.get(group) if isinstance(payload.get(group), dict) else {}
+        result[group] = {
+            key: str(values.get(key, default) or "").strip()[:500]
+            for key, default in fields.items()
+        }
+    return result
 
 
 def parse_date(value):
@@ -960,6 +992,398 @@ def demo_data_status_payload():
     }
 
 
+def crm_settings_instance():
+    settings, _created = CRMSettings.objects.get_or_create(key="global")
+    return settings
+
+
+def serialize_crm_settings(settings=None):
+    settings = settings or crm_settings_instance()
+    return {
+        "bureau": clean_string_map(settings.bureau, CRMSettings.DEFAULT_BUREAU, {"logo": 200000}),
+        "integrations": clean_bool_map(settings.integrations, CRMSettings.DEFAULT_INTEGRATIONS),
+        "integrationSettings": clean_nested_string_map(settings.integration_settings, CRMSettings.DEFAULT_INTEGRATION_SETTINGS),
+        "notifications": clean_bool_map(settings.notifications, CRMSettings.DEFAULT_NOTIFICATIONS),
+    }
+
+
+def mailing_provider_status_payload():
+    settings = serialize_crm_settings()
+    return {
+        "provider": "mock",
+        "channels": provider_status_payload(settings["integrations"], settings["integrationSettings"]),
+    }
+
+
+def apply_crm_settings_payload(settings, payload):
+    settings.bureau = clean_string_map(payload.get("bureau"), CRMSettings.DEFAULT_BUREAU, {"logo": 200000})
+    settings.integrations = clean_bool_map(payload.get("integrations"), CRMSettings.DEFAULT_INTEGRATIONS)
+    settings.integration_settings = clean_nested_string_map(payload.get("integrationSettings"), CRMSettings.DEFAULT_INTEGRATION_SETTINGS)
+    settings.notifications = clean_bool_map(payload.get("notifications"), CRMSettings.DEFAULT_NOTIFICATIONS)
+    settings.save(update_fields=["bureau", "integrations", "integration_settings", "notifications", "updated_at"])
+    return settings
+
+
+MAILING_CHANNELS = ("Telegram", "SMS", "Email")
+DEFAULT_AUTOMATION_RULES = (
+    {
+        "title": "Напоминание за день до события",
+        "description": "Автоматически отправлять клиенту напоминание за 24 часа до события в календаре.",
+        "channel": "Telegram",
+        "enabled": True,
+    },
+    {
+        "title": "Поздравление с днём рождения",
+        "description": "Отправлять персональное поздравление клиентам с заполненной датой рождения.",
+        "channel": "SMS",
+        "enabled": False,
+    },
+    {
+        "title": "Пропускать отписанных клиентов",
+        "description": "Исключать клиентов без согласия на информационные сообщения из любых рассылок.",
+        "channel": "Все каналы",
+        "enabled": True,
+    },
+)
+MAILING_STATUS_LABELS = {
+    Campaign.Status.DRAFT: "Готова к отправке",
+    Campaign.Status.PLANNED: "Запланирована",
+    Campaign.Status.SENDING: "Відправляється",
+    Campaign.Status.SENT: "Відправлено",
+    Campaign.Status.PARTIAL: "Частично отправлено",
+    Campaign.Status.ERROR: "Помилка",
+    Campaign.Status.CANCELLED: "Скасована",
+}
+
+
+def mailing_channels_payload(value):
+    if isinstance(value, dict):
+        return {channel: bool(value.get(channel)) for channel in MAILING_CHANNELS}
+    if isinstance(value, list):
+        selected = set(value)
+        return {channel: channel in selected for channel in MAILING_CHANNELS}
+    return {channel: False for channel in MAILING_CHANNELS}
+
+
+def mailing_status_from_label(label, send_mode="now"):
+    label = str(label or "").strip()
+    if label == "Запланирована" or send_mode == "later":
+        return Campaign.Status.PLANNED
+    if label in ("Тест отправлен", "Відправлено", "Отправлено"):
+        return Campaign.Status.SENT
+    if label in ("Помилка", "Ошибка"):
+        return Campaign.Status.ERROR
+    return Campaign.Status.DRAFT
+
+
+def scheduled_at_from_payload(data):
+    if data.get("sendMode") != "later":
+        return None
+    if data.get("scheduleDate"):
+        return parse_datetime(f"{data.get('scheduleDate')} {data.get('scheduleTime') or '09:00'}")
+    return parse_datetime(data.get("scheduledAt"))
+
+
+def serialize_mailing_template(item):
+    return {
+        "id": item.id,
+        "title": item.title,
+        "type": item.category,
+        "text": item.body,
+        "createdAt": datetime_value(item.created_at),
+    }
+
+
+def upsert_mailing_template(data, item=None):
+    item = item or MessageTemplate()
+    item.title = str(data.get("title") or item.title or "Шаблон розсилки").strip()[:255]
+    item.category = str(data.get("type") or data.get("category") or item.category or "Telegram").strip()[:128]
+    item.body = str(data.get("text") or data.get("body") or item.body or "").strip()
+    item.save()
+    return item
+
+
+def campaign_channels_record(data):
+    channels = mailing_channels_payload(data.get("channels"))
+    return {
+        **channels,
+        "__meta": str(data.get("meta") or "").strip()[:500],
+        "__statusLabel": str(data.get("status") or "").strip()[:128],
+        "__sendMode": str(data.get("sendMode") or "now").strip()[:32],
+        "__scheduleDate": str(data.get("scheduleDate") or "").strip()[:32],
+        "__scheduleTime": str(data.get("scheduleTime") or "").strip()[:16],
+        "__recipientMode": str(data.get("recipientMode") or "segment").strip()[:32],
+        "__manualClientIds": [int(client_id) for client_id in data.get("manualClientIds") or [] if str(client_id).isdigit()],
+        "__filters": [str(value)[:255] for value in data.get("filters") or []],
+        "__recipientCount": int(data.get("recipientCount") or 0),
+    }
+
+
+def campaign_status_label(item):
+    channels = item.channels if isinstance(item.channels, dict) else {}
+    return channels.get("__statusLabel") or MAILING_STATUS_LABELS.get(item.status, item.get_status_display())
+
+
+def campaign_meta(item):
+    channels = item.channels if isinstance(item.channels, dict) else {}
+    if channels.get("__meta"):
+        return channels["__meta"]
+    enabled_channels = [name for name, enabled in mailing_channels_payload(item.channels).items() if enabled]
+    scheduled = item.scheduled_at.strftime("%d.%m.%Y %H:%M") if item.scheduled_at else "сейчас"
+    return f"{' + '.join(enabled_channels) or 'Каналы не выбраны'} · {scheduled}"
+
+
+DELIVERY_STATUS_LABELS = {
+    "pending": "Ожидает",
+    "queued": "В очереди",
+    "sent": "Отправлено",
+    "delivered": "Доставлено",
+    "error": "Ошибка",
+}
+
+
+def serialize_message_delivery(item):
+    return {
+        "id": item.id,
+        "clientId": item.client_id,
+        "client": item.client.full_name if item.client else "",
+        "channel": item.channel,
+        "status": item.status,
+        "statusLabel": DELIVERY_STATUS_LABELS.get(item.status, item.status),
+        "error": item.error,
+        "provider": (item.campaign.channels if isinstance(item.campaign.channels, dict) else {}).get("__provider", "mock"),
+        "sentAt": datetime_value(item.sent_at),
+        "deliveredAt": datetime_value(item.delivered_at),
+    }
+
+
+def campaign_delivery_stats(item):
+    stats = {
+        "total": 0,
+        "pending": 0,
+        "queued": 0,
+        "sent": 0,
+        "delivered": 0,
+        "error": 0,
+        "byChannel": {channel: 0 for channel in MAILING_CHANNELS},
+    }
+    for delivery in MessageDelivery.objects.filter(campaign=item):
+        stats["total"] += 1
+        stats[delivery.status] = stats.get(delivery.status, 0) + 1
+        if delivery.channel in stats["byChannel"]:
+            stats["byChannel"][delivery.channel] += 1
+    return stats
+
+
+def serialize_mailing_campaign(item):
+    channels = item.channels if isinstance(item.channels, dict) else {}
+    schedule_date = date_value(item.scheduled_at.date()) if item.scheduled_at else channels.get("__scheduleDate", "")
+    schedule_time = item.scheduled_at.strftime("%H:%M") if item.scheduled_at else channels.get("__scheduleTime", "")
+    deliveries = list(item.deliveries.select_related("client").order_by("client__full_name", "channel")[:30])
+    return {
+        "id": item.id,
+        "title": item.title,
+        "status": campaign_status_label(item),
+        "meta": campaign_meta(item),
+        "createdAt": datetime_value(item.created_at),
+        "text": item.body,
+        "channels": mailing_channels_payload(item.channels),
+        "sendMode": channels.get("__sendMode") or ("later" if item.scheduled_at else "now"),
+        "scheduleDate": schedule_date,
+        "scheduleTime": schedule_time,
+        "recipientMode": channels.get("__recipientMode") or "segment",
+        "manualClientIds": channels.get("__manualClientIds") or [],
+        "filters": channels.get("__filters") or [],
+        "recipientCount": channels.get("__recipientCount") or campaign_delivery_stats(item)["total"],
+        "deliveryStats": campaign_delivery_stats(item),
+        "deliveries": [serialize_message_delivery(delivery) for delivery in deliveries],
+    }
+
+
+def ensure_default_automation_rules():
+    if AutomationRule.objects.exists():
+        return
+    for position, rule in enumerate(DEFAULT_AUTOMATION_RULES):
+        AutomationRule.objects.create(position=position, is_demo=True, **rule)
+
+
+def serialize_automation_rule(item):
+    return {
+        "id": item.id,
+        "title": item.title,
+        "description": item.description,
+        "channel": item.channel,
+        "enabled": item.enabled,
+        "position": item.position,
+    }
+
+
+def upsert_automation_rule(data, item=None):
+    item = item or AutomationRule()
+    item.title = str(data.get("title") or item.title or "Правило автоматизації").strip()[:255]
+    item.description = str(data.get("description") or item.description or "").strip()
+    item.channel = str(data.get("channel") or item.channel or "Telegram").strip()[:64]
+    item.enabled = bool(data.get("enabled", item.enabled))
+    item.position = int(data.get("position", item.position or 0) or 0)
+    item.save()
+    return item
+
+
+def delivery_channel_available(client, channel):
+    if channel == "Telegram":
+        return client.telegram_connected or bool(client.telegram_username or client.telegram_chat_id)
+    if channel == "SMS":
+        return bool(client.phone)
+    if channel == "Email":
+        return bool(client.email)
+    return False
+
+
+def status_values_for_filter(filter_text):
+    source = filter_text.casefold()
+    values = []
+    if "нов" in source:
+        values.extend(["new", "Новий", "Новый"])
+    if "актив" in source:
+        values.extend(["active", "Активний", "Активный"])
+    if "пост" in source:
+        values.extend(["regular", "Постійний клієнт", "Постоянный"])
+    if "не турб" in source:
+        values.extend(["do_not_contact", "Не турбувати"])
+    return values
+
+
+def campaign_recipient_queryset(data):
+    mode = data.get("recipientMode") or "segment"
+    queryset = Client.objects.exclude(status__in=["do_not_contact", "Не турбувати"])
+    if mode == "manual":
+        ids = [int(client_id) for client_id in data.get("manualClientIds") or [] if str(client_id).isdigit()]
+        return queryset.filter(pk__in=ids)
+    if mode == "all":
+        return queryset
+    for filter_text in data.get("filters") or []:
+        if "Telegram: Подключен" in filter_text:
+            queryset = queryset.filter(telegram_connected=True)
+        if "SMS: Доступен" in filter_text:
+            queryset = queryset.exclude(phone="")
+        if "Email: Заполнен" in filter_text:
+            queryset = queryset.exclude(email="")
+        if "Есть согласие" in filter_text:
+            queryset = queryset.filter(consent_to_marketing=True)
+        status_values = status_values_for_filter(filter_text) if "Статус клиента" in filter_text else []
+        if status_values:
+            queryset = queryset.filter(status__in=status_values)
+    return queryset
+
+
+def sync_campaign_deliveries(item, data):
+    if campaign_status_label(item) == "Тест отправлен":
+        item.deliveries.all().delete()
+        return
+    enabled_channels = [channel for channel, enabled in mailing_channels_payload(item.channels).items() if enabled]
+    recipients = list(campaign_recipient_queryset(data).order_by("full_name", "id"))
+    item.deliveries.all().delete()
+    rows = []
+    queued_status = "pending" if item.status == Campaign.Status.PLANNED else "queued"
+    for client in recipients:
+        for channel in enabled_channels:
+            available = delivery_channel_available(client, channel)
+            rows.append(MessageDelivery(
+                campaign=item,
+                client=client,
+                channel=channel,
+                status=queued_status if available else "error",
+                error="" if available else "Немає контакту для цього каналу.",
+            ))
+    if rows:
+        MessageDelivery.objects.bulk_create(rows)
+
+
+def update_message_delivery(data, item):
+    status = str(data.get("status") or item.status or "queued").strip()
+    if status not in DELIVERY_STATUS_LABELS:
+        status = "queued"
+    now = timezone.now()
+    item.status = status
+    item.error = str(data.get("error") or ("Помилка доставки." if status == "error" else "")).strip()[:500]
+    if status in ("sent", "delivered") and not item.sent_at:
+        item.sent_at = now
+    if status == "delivered" and not item.delivered_at:
+        item.delivered_at = now
+    if status in ("pending", "queued"):
+        item.error = ""
+        item.sent_at = None
+        item.delivered_at = None
+    item.save(update_fields=["status", "error", "sent_at", "delivered_at"])
+    return item
+
+
+def refresh_campaign_status_from_deliveries(item):
+    stats = campaign_delivery_stats(item)
+    channels = item.channels if isinstance(item.channels, dict) else {}
+    if stats["total"] and not stats["pending"] and not stats["queued"]:
+        if stats["error"]:
+            item.status = Campaign.Status.PARTIAL if stats["sent"] or stats["delivered"] else Campaign.Status.ERROR
+            channels["__statusLabel"] = "Частично отправлено" if item.status == Campaign.Status.PARTIAL else "Помилка"
+        else:
+            item.status = Campaign.Status.SENT
+            channels["__statusLabel"] = "Відправлено"
+    item.channels = channels
+    item.save(update_fields=["status", "channels"])
+    return item
+
+
+def send_campaign_deliveries(item):
+    now = timezone.now()
+    queryset = item.deliveries.filter(status__in=["pending", "queued"]).select_related("client")
+    settings = serialize_crm_settings()
+    integrations = settings["integrations"]
+    integration_settings = settings["integrationSettings"]
+    channels = item.channels if isinstance(item.channels, dict) else {}
+    channels["__provider"] = "mock"
+    item.channels = channels
+    item.save(update_fields=["channels"])
+    sent_count = 0
+    for delivery in queryset:
+        result = send_delivery_with_provider(delivery, integrations, integration_settings)
+        if not result.ok:
+            delivery.status = result.status
+            delivery.error = result.error
+            delivery.save(update_fields=["status", "error"])
+            continue
+        delivery.status = result.status
+        delivery.error = ""
+        delivery.sent_at = now
+        delivery.save(update_fields=["status", "error", "sent_at"])
+        sent_count += 1
+    refresh_campaign_status_from_deliveries(item)
+    return sent_count
+
+
+def upsert_mailing_campaign(data, item=None, author=None):
+    item = item or Campaign()
+    send_mode = str(data.get("sendMode") or "now")
+    status = mailing_status_from_label(data.get("status"), send_mode)
+    item.title = str(data.get("title") or item.title or "Розсилка").strip()[:255]
+    item.body = str(data.get("text") or data.get("body") or item.body or "").strip()
+    item.channels = campaign_channels_record({**data, "status": data.get("status") or MAILING_STATUS_LABELS.get(status)})
+    item.author = author or item.author
+    item.scheduled_at = scheduled_at_from_payload(data)
+    item.status = status
+    item.save()
+    sync_campaign_deliveries(item, data)
+    return item
+
+
+def mailing_payload():
+    ensure_default_automation_rules()
+    return {
+        "templates": [serialize_mailing_template(item) for item in MessageTemplate.objects.order_by("-created_at", "-id")],
+        "campaigns": [serialize_mailing_campaign(item) for item in Campaign.objects.prefetch_related("deliveries__client").order_by("-created_at", "-id")],
+        "automationRules": [serialize_automation_rule(item) for item in AutomationRule.objects.order_by("position", "id")],
+    }
+
+
 def clear_crm_business_data():
     clear_demo_business_data()
 
@@ -1188,6 +1612,67 @@ def session_payload(request):
     }
 
 
+AUDIT_TONES = {
+    AuditLog.Action.CREATE: "green",
+    AuditLog.Action.UPDATE: "blue",
+    AuditLog.Action.DELETE: "red",
+    AuditLog.Action.LOGIN: "green",
+    AuditLog.Action.LOGOUT: "blue",
+    AuditLog.Action.SYSTEM: "amber",
+}
+
+
+def request_ip_address(request):
+    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if forwarded:
+        return forwarded.split(",", 1)[0].strip() or None
+    return request.META.get("REMOTE_ADDR") or None
+
+
+def audit_entity_id(value):
+    return str(value or "")[:128]
+
+
+def audit_entity_label(value):
+    return str(value or "")[:255]
+
+
+def log_crm_action(request, action, entity_type, entity_id="", entity_label="", summary="", metadata=None, actor=None):
+    user = actor or current_demo_user(request)
+    AuditLog.objects.create(
+        actor=user if getattr(user, "pk", None) else None,
+        actor_label=user_name(user) if user else "Система",
+        action=action,
+        entity_type=entity_type,
+        entity_id=audit_entity_id(entity_id),
+        entity_label=audit_entity_label(entity_label),
+        summary=str(summary or "")[:500],
+        metadata=metadata or {},
+        ip_address=request_ip_address(request),
+        user_agent=str(request.META.get("HTTP_USER_AGENT", ""))[:255],
+    )
+
+
+def serialize_audit_log(item):
+    return {
+        "id": item.id,
+        "date": datetime_value(item.created_at),
+        "actor": item.actor_label,
+        "action": item.action,
+        "actionLabel": item.get_action_display(),
+        "entityType": item.entity_type,
+        "entityId": item.entity_id,
+        "entityLabel": item.entity_label,
+        "summary": item.summary,
+        "tone": AUDIT_TONES.get(item.action, "blue"),
+        "metadata": item.metadata,
+    }
+
+
+def recent_audit_logs(limit=30):
+    return [serialize_audit_log(item) for item in AuditLog.objects.select_related("actor").all()[:limit]]
+
+
 @csrf_exempt
 @require_http_methods(["POST", "OPTIONS"])
 def login_api(request):
@@ -1208,6 +1693,15 @@ def login_api(request):
     profile = profile_for_user(authenticated)
     profile.last_login_at = timezone.now()
     profile.save(update_fields=["last_login_at", "updated_at"])
+    log_crm_action(
+        request,
+        AuditLog.Action.LOGIN,
+        "user",
+        authenticated.id,
+        user_name(authenticated),
+        f"{user_name(authenticated)} увійшов у CRM.",
+        actor=authenticated,
+    )
     return json_response(session_payload(request))
 
 
@@ -1216,6 +1710,16 @@ def login_api(request):
 def logout_api(request):
     if request.method == "OPTIONS":
         return empty_response()
+    if request.user.is_authenticated:
+        log_crm_action(
+            request,
+            AuditLog.Action.LOGOUT,
+            "user",
+            request.user.id,
+            user_name(request.user),
+            f"{user_name(request.user)} вийшов із CRM.",
+            actor=request.user,
+        )
     auth_logout(request)
     return json_response(session_payload(request))
 
@@ -1240,6 +1744,15 @@ def change_password_api(request):
     profile.last_login_at = now
     profile.save(update_fields=["password_temporary", "password_updated_at", "last_login_at", "updated_at"])
     update_session_auth_hash(request, request.user)
+    log_crm_action(
+        request,
+        AuditLog.Action.UPDATE,
+        "user",
+        request.user.id,
+        user_name(request.user),
+        f"{user_name(request.user)} змінив пароль доступу.",
+        actor=request.user,
+    )
     return json_response(session_payload(request))
 
 
@@ -1253,6 +1766,7 @@ def users_api(request):
         if forbidden:
             return forbidden
         user = upsert_system_user(parse_body(request))
+        log_crm_action(request, AuditLog.Action.CREATE, "user", user.id, user_name(user), f"Додано користувача {user_name(user)}.")
         return json_response(serialize_system_user(user))
     return json_response({"results": [serialize_system_user(user) for user in system_users_queryset()]})
 
@@ -1277,11 +1791,14 @@ def user_detail_api(request, user_id):
         profile.save(update_fields=["is_active_member", "updated_at"])
         user.is_active = False
         user.save(update_fields=["is_active"])
+        log_crm_action(request, AuditLog.Action.DELETE, "user", user.id, user_name(user), f"Видалено користувача {user_name(user)}.")
         return json_response({"deleted": user_id})
     forbidden = require_permission(request, "manage_users", "Користувачами може керувати тільки адміністратор.")
     if forbidden:
         return forbidden
-    return json_response(serialize_system_user(upsert_system_user(parse_body(request), user)))
+    updated = upsert_system_user(parse_body(request), user)
+    log_crm_action(request, AuditLog.Action.UPDATE, "user", updated.id, user_name(updated), f"Оновлено доступ користувача {user_name(updated)}.")
+    return json_response(serialize_system_user(updated))
 
 
 @require_GET
@@ -1299,6 +1816,7 @@ def clients_api(request):
         if forbidden:
             return forbidden
         client = upsert_client(parse_body(request))
+        log_crm_action(request, AuditLog.Action.CREATE, "client", client.id, client.full_name, f"Створено клієнта {client.full_name}.")
         return json_response(serialize_client(client))
     items = accessible_client_queryset(request).prefetch_related("communications", "cases").order_by("full_name")
     return json_response({"results": [serialize_client(item) for item in items]})
@@ -1324,12 +1842,15 @@ def client_detail_api(request, client_id):
         Task.objects.filter(client=client).delete()
         CalendarEvent.objects.filter(client=client).delete()
         client.cases.all().delete()
+        log_crm_action(request, AuditLog.Action.DELETE, "client", client.id, client.full_name, f"Видалено клієнта {client.full_name}.")
         client.delete()
         return json_response({"deleted": client_id})
     forbidden = require_permission(request, "manage_clients", "Клієнтами можуть керувати адміністратор або адвокат.")
     if forbidden:
         return forbidden
-    return json_response(serialize_client(upsert_client(parse_body(request), client)))
+    updated = upsert_client(parse_body(request), client)
+    log_crm_action(request, AuditLog.Action.UPDATE, "client", updated.id, updated.full_name, f"Оновлено клієнта {updated.full_name}.")
+    return json_response(serialize_client(updated))
 
 
 @csrf_exempt
@@ -1348,6 +1869,7 @@ def client_communications_api(request, client_id):
         if forbidden:
             return forbidden
         item = upsert_client_communication({**parse_body(request), "clientId": client.id}, client=client)
+        log_crm_action(request, AuditLog.Action.CREATE, "client_communication", item.id, item.title, f"Додано комунікацію з клієнтом {client.full_name}: {item.title}.")
         return json_response(serialize_client_communication(item))
     items = client.communications.select_related("author", "case").order_by("-date", "-id")
     return json_response({"results": [serialize_client_communication(item) for item in items]})
@@ -1370,12 +1892,15 @@ def client_communication_detail_api(request, communication_id):
         forbidden = require_permission(request, "manage_clients", "Комунікації клієнта можуть змінювати адміністратор або адвокат.")
         if forbidden:
             return forbidden
+        log_crm_action(request, AuditLog.Action.DELETE, "client_communication", item.id, item.title, f"Видалено комунікацію з клієнтом {item.client.full_name}: {item.title}.")
         item.delete()
         return json_response({"deleted": communication_id})
     forbidden = require_permission(request, "manage_clients", "Комунікації клієнта можуть змінювати адміністратор або адвокат.")
     if forbidden:
         return forbidden
-    return json_response(serialize_client_communication(upsert_client_communication(parse_body(request), item)))
+    updated = upsert_client_communication(parse_body(request), item)
+    log_crm_action(request, AuditLog.Action.UPDATE, "client_communication", updated.id, updated.title, f"Оновлено комунікацію з клієнтом {updated.client.full_name}: {updated.title}.")
+    return json_response(serialize_client_communication(updated))
 
 
 @csrf_exempt
@@ -1394,6 +1919,7 @@ def cases_api(request):
             data["responsible"] = user_name(current_user)
         item = upsert_case(data)
         ensure_case_member(item, current_user)
+        log_crm_action(request, AuditLog.Action.CREATE, "case", item.number, item.title, f"Створено справу №{item.number}: {item.title}.")
         return json_response(serialize_case(item, include_finance=include_finance))
     items = accessible_case_queryset(request).select_related("client", "responsible").prefetch_related("documents", "tasks", "events", "team_members").order_by("client__full_name", "opened_at")
     return json_response({"results": [serialize_case(item, include_finance=include_finance) for item in items]})
@@ -1420,13 +1946,16 @@ def case_detail_api(request, case_number):
             return forbidden
         Task.objects.filter(case=item).delete()
         CalendarEvent.objects.filter(case=item).delete()
+        log_crm_action(request, AuditLog.Action.DELETE, "case", item.number, item.title, f"Видалено справу №{item.number}: {item.title}.")
         item.delete()
         return json_response({"deleted": case_number})
     forbidden = require_permission(request, "manage_cases", "Справами можуть керувати адміністратор або адвокат.")
     if forbidden:
         return forbidden
     data = sanitize_case_payload_for_permissions(request, parse_body(request))
-    return json_response(serialize_case(upsert_case(data, item), include_finance=include_finance))
+    updated = upsert_case(data, item)
+    log_crm_action(request, AuditLog.Action.UPDATE, "case", updated.number, updated.title, f"Оновлено справу №{updated.number}: {updated.title}.")
+    return json_response(serialize_case(updated, include_finance=include_finance))
 
 
 @csrf_exempt
@@ -1443,6 +1972,7 @@ def tasks_api(request):
         if forbidden:
             return forbidden
         item = upsert_task(data)
+        log_crm_action(request, AuditLog.Action.CREATE, "task", item.id, item.title, f"Створено задачу {item.title}.")
         return json_response(serialize_task(item))
     items = accessible_task_queryset(request).select_related("client", "case", "responsible").order_by("due_at", "id")
     return json_response({"results": [serialize_task(item) for item in items]})
@@ -1462,6 +1992,7 @@ def documents_api(request):
         if forbidden:
             return forbidden
         item = upsert_document(data)
+        log_crm_action(request, AuditLog.Action.CREATE, "document", item.id, item.title, f"Створено документ {item.title}.")
         return json_response(serialize_document(item))
     items = accessible_document_queryset(request).select_related("case").order_by("case__number", "folder", "title")
     return json_response({"results": [serialize_document(item) for item in items]})
@@ -1485,6 +2016,7 @@ def document_detail_api(request, document_id):
         forbidden = require_permission(request, "manage_documents", "Документами можуть керувати адміністратор, адвокат або помічник.")
         if forbidden:
             return forbidden
+        log_crm_action(request, AuditLog.Action.DELETE, "document", item.id, item.title, f"Видалено документ {item.title}.")
         item.delete()
         return json_response({"deleted": document_id})
     forbidden = require_permission(request, "manage_documents", "Документами можуть керувати адміністратор, адвокат або помічник.")
@@ -1494,7 +2026,9 @@ def document_detail_api(request, document_id):
     forbidden = require_case_access(request, case_from_payload(data, fallback=item.case))
     if forbidden:
         return forbidden
-    return json_response(serialize_document(upsert_document(data, item)))
+    updated = upsert_document(data, item)
+    log_crm_action(request, AuditLog.Action.UPDATE, "document", updated.id, updated.title, f"Оновлено документ {updated.title}.")
+    return json_response(serialize_document(updated))
 
 
 @csrf_exempt
@@ -1514,6 +2048,7 @@ def task_detail_api(request, task_id):
         forbidden = require_permission(request, "manage_tasks", "Задачами можуть керувати адміністратор, адвокат або помічник.")
         if forbidden:
             return forbidden
+        log_crm_action(request, AuditLog.Action.DELETE, "task", item.id, item.title, f"Видалено задачу {item.title}.")
         item.delete()
         return json_response({"deleted": task_id})
     forbidden = require_permission(request, "manage_tasks", "Задачами можуть керувати адміністратор, адвокат або помічник.")
@@ -1523,7 +2058,9 @@ def task_detail_api(request, task_id):
     forbidden = require_case_access(request, case_from_payload(data, fallback=item.case))
     if forbidden:
         return forbidden
-    return json_response(serialize_task(upsert_task(data, item)))
+    updated = upsert_task(data, item)
+    log_crm_action(request, AuditLog.Action.UPDATE, "task", updated.id, updated.title, f"Оновлено задачу {updated.title}.")
+    return json_response(serialize_task(updated))
 
 
 @csrf_exempt
@@ -1541,6 +2078,7 @@ def events_api(request):
             if forbidden:
                 return forbidden
         item = upsert_event(data)
+        log_crm_action(request, AuditLog.Action.CREATE, "calendar_event", item.id, item.title, f"Створено подію календаря {item.title}.")
         return json_response(serialize_event(item))
     items = accessible_event_queryset(request).select_related("client", "case", "responsible").order_by("starts_at", "id")
     return json_response({"results": [serialize_event(item) for item in items]})
@@ -1563,6 +2101,7 @@ def event_detail_api(request, event_id):
         forbidden = require_permission(request, "manage_calendar", "Календарем можуть керувати адміністратор, адвокат або помічник.")
         if forbidden:
             return forbidden
+        log_crm_action(request, AuditLog.Action.DELETE, "calendar_event", item.id, item.title, f"Видалено подію календаря {item.title}.")
         item.delete()
         return json_response({"deleted": event_id})
     forbidden = require_permission(request, "manage_calendar", "Календарем можуть керувати адміністратор, адвокат або помічник.")
@@ -1574,7 +2113,9 @@ def event_detail_api(request, event_id):
         forbidden = require_case_access(request, target_case)
         if forbidden:
             return forbidden
-    return json_response(serialize_event(upsert_event(data, item)))
+    updated = upsert_event(data, item)
+    log_crm_action(request, AuditLog.Action.UPDATE, "calendar_event", updated.id, updated.title, f"Оновлено подію календаря {updated.title}.")
+    return json_response(serialize_event(updated))
 
 
 @csrf_exempt
@@ -1590,7 +2131,18 @@ def finance_operations_api(request):
         forbidden = require_case_access(request, case_from_payload(data))
         if forbidden:
             return forbidden
-        return json_response(create_finance_operation(data))
+        result = create_finance_operation(data)
+        operation = result.get("operation") or {}
+        operation_title = operation.get("title") or "Фінансова операція"
+        log_crm_action(
+            request,
+            AuditLog.Action.CREATE,
+            "finance_operation",
+            operation.get("id", ""),
+            operation_title,
+            f"Створено фінансову операцію: {operation_title}.",
+        )
+        return json_response(result)
     forbidden = require_permission(request, "view_finance", "Фінанси доступні адміністратору або бухгалтеру.")
     if forbidden:
         return forbidden
@@ -1616,6 +2168,7 @@ def finance_operation_detail_api(request, operation_id):
         delete_finance_operation(operation_id)
     except (Payment.DoesNotExist, Expense.DoesNotExist, Invoice.DoesNotExist, CaseDocument.DoesNotExist) as exc:
         raise Http404("Finance operation not found") from exc
+    log_crm_action(request, AuditLog.Action.DELETE, "finance_operation", operation_id, operation_id, f"Видалено фінансову операцію {operation_id}.")
     return json_response({"deleted": operation_id})
 
 
@@ -1625,6 +2178,185 @@ def finance_summary_api(request):
     if forbidden:
         return forbidden
     return json_response(finance_summary_payload(finance_cases_scope(request)))
+
+
+@require_GET
+def mailings_api(request):
+    forbidden = require_permission(request, "manage_mailings", "Розсилками може керувати тільки користувач з доступом до розсилок.")
+    if forbidden:
+        return forbidden
+    return json_response(mailing_payload())
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST", "OPTIONS"])
+def mailing_templates_api(request):
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_mailings", "Шаблонами розсилок може керувати тільки користувач з доступом до розсилок.")
+    if forbidden:
+        return forbidden
+    if request.method == "POST":
+        item = upsert_mailing_template(parse_body(request))
+        log_crm_action(request, AuditLog.Action.CREATE, "mailing_template", item.id, item.title, f"Створено шаблон розсилки «{item.title}».")
+        return json_response(serialize_mailing_template(item))
+    return json_response({"results": mailing_payload()["templates"]})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "PUT", "PATCH", "DELETE", "OPTIONS"])
+def mailing_template_detail_api(request, template_id):
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_mailings", "Шаблонами розсилок може керувати тільки користувач з доступом до розсилок.")
+    if forbidden:
+        return forbidden
+    try:
+        item = MessageTemplate.objects.get(pk=template_id)
+    except MessageTemplate.DoesNotExist as exc:
+        raise Http404("Mailing template not found") from exc
+    if request.method == "GET":
+        return json_response(serialize_mailing_template(item))
+    if request.method == "DELETE":
+        title = item.title
+        item.delete()
+        log_crm_action(request, AuditLog.Action.DELETE, "mailing_template", template_id, title, f"Видалено шаблон розсилки «{title}».")
+        return json_response({"deleted": template_id})
+    updated = upsert_mailing_template(parse_body(request), item)
+    log_crm_action(request, AuditLog.Action.UPDATE, "mailing_template", updated.id, updated.title, f"Оновлено шаблон розсилки «{updated.title}».")
+    return json_response(serialize_mailing_template(updated))
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST", "OPTIONS"])
+def mailing_campaigns_api(request):
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_mailings", "Розсилками може керувати тільки користувач з доступом до розсилок.")
+    if forbidden:
+        return forbidden
+    if request.method == "POST":
+        item = upsert_mailing_campaign(parse_body(request), author=current_demo_user(request))
+        log_crm_action(request, AuditLog.Action.CREATE, "mailing_campaign", item.id, item.title, f"Створено розсилку «{item.title}».")
+        return json_response(serialize_mailing_campaign(item))
+    return json_response({"results": mailing_payload()["campaigns"]})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "PUT", "PATCH", "DELETE", "OPTIONS"])
+def mailing_campaign_detail_api(request, campaign_id):
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_mailings", "Розсилками може керувати тільки користувач з доступом до розсилок.")
+    if forbidden:
+        return forbidden
+    try:
+        item = Campaign.objects.get(pk=campaign_id)
+    except Campaign.DoesNotExist as exc:
+        raise Http404("Mailing campaign not found") from exc
+    if request.method == "GET":
+        return json_response(serialize_mailing_campaign(item))
+    if request.method == "DELETE":
+        title = item.title
+        item.delete()
+        log_crm_action(request, AuditLog.Action.DELETE, "mailing_campaign", campaign_id, title, f"Видалено розсилку «{title}».")
+        return json_response({"deleted": campaign_id})
+    updated = upsert_mailing_campaign(parse_body(request), item, author=current_demo_user(request))
+    log_crm_action(request, AuditLog.Action.UPDATE, "mailing_campaign", updated.id, updated.title, f"Оновлено розсилку «{updated.title}».")
+    return json_response(serialize_mailing_campaign(updated))
+
+
+@csrf_exempt
+@require_http_methods(["POST", "OPTIONS"])
+def mailing_campaign_send_api(request, campaign_id):
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_mailings", "Відправкою розсилок може керувати тільки користувач з доступом до розсилок.")
+    if forbidden:
+        return forbidden
+    try:
+        item = Campaign.objects.prefetch_related("deliveries__client").get(pk=campaign_id)
+    except Campaign.DoesNotExist as exc:
+        raise Http404("Mailing campaign not found") from exc
+    sent_count = send_campaign_deliveries(item)
+    item = Campaign.objects.prefetch_related("deliveries__client").get(pk=campaign_id)
+    log_crm_action(
+        request,
+        AuditLog.Action.UPDATE,
+        "mailing_campaign",
+        item.id,
+        item.title,
+        f"Запущено mock-відправку розсилки «{item.title}»: відправлено {sent_count} доставок.",
+        metadata={"sent": sent_count, "deliveryStats": campaign_delivery_stats(item)},
+    )
+    return json_response({"campaign": serialize_mailing_campaign(item), "sent": sent_count})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "PUT", "PATCH", "OPTIONS"])
+def mailing_delivery_detail_api(request, delivery_id):
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_mailings", "Доставками розсилок може керувати тільки користувач з доступом до розсилок.")
+    if forbidden:
+        return forbidden
+    try:
+        item = MessageDelivery.objects.select_related("client", "campaign").get(pk=delivery_id)
+    except MessageDelivery.DoesNotExist as exc:
+        raise Http404("Mailing delivery not found") from exc
+    if request.method == "GET":
+        return json_response({"delivery": serialize_message_delivery(item), "campaign": serialize_mailing_campaign(item.campaign)})
+    updated = update_message_delivery(parse_body(request), item)
+    log_crm_action(
+        request,
+        AuditLog.Action.UPDATE,
+        "mailing_delivery",
+        updated.id,
+        f"{updated.client.full_name} · {updated.channel}",
+        f"Оновлено доставку розсилки «{updated.campaign.title}»: {updated.client.full_name}, {updated.channel}, {DELIVERY_STATUS_LABELS.get(updated.status, updated.status)}.",
+    )
+    campaign = Campaign.objects.prefetch_related("deliveries__client").get(pk=updated.campaign_id)
+    return json_response({"delivery": serialize_message_delivery(updated), "campaign": serialize_mailing_campaign(campaign)})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST", "OPTIONS"])
+def mailing_automation_rules_api(request):
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_mailings", "Автоматизацією розсилок може керувати тільки користувач з доступом до розсилок.")
+    if forbidden:
+        return forbidden
+    ensure_default_automation_rules()
+    if request.method == "POST":
+        item = upsert_automation_rule(parse_body(request))
+        log_crm_action(request, AuditLog.Action.CREATE, "mailing_automation", item.id, item.title, f"Створено правило автоматизації «{item.title}».")
+        return json_response(serialize_automation_rule(item))
+    return json_response({"results": mailing_payload()["automationRules"]})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "PUT", "PATCH", "DELETE", "OPTIONS"])
+def mailing_automation_rule_detail_api(request, rule_id):
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_mailings", "Автоматизацією розсилок може керувати тільки користувач з доступом до розсилок.")
+    if forbidden:
+        return forbidden
+    try:
+        item = AutomationRule.objects.get(pk=rule_id)
+    except AutomationRule.DoesNotExist as exc:
+        raise Http404("Mailing automation rule not found") from exc
+    if request.method == "GET":
+        return json_response(serialize_automation_rule(item))
+    if request.method == "DELETE":
+        title = item.title
+        item.delete()
+        log_crm_action(request, AuditLog.Action.DELETE, "mailing_automation", rule_id, title, f"Видалено правило автоматизації «{title}».")
+        return json_response({"deleted": rule_id})
+    updated = upsert_automation_rule(parse_body(request), item)
+    log_crm_action(request, AuditLog.Action.UPDATE, "mailing_automation", updated.id, updated.title, f"Оновлено правило автоматизації «{updated.title}».")
+    return json_response(serialize_automation_rule(updated))
 
 
 @csrf_exempt
@@ -1642,12 +2374,100 @@ def demo_data_api(request):
     action = parse_body(request).get("action")
     if action == "clear":
         clear_crm_business_data()
+        log_crm_action(request, AuditLog.Action.SYSTEM, "demo_data", "clear", "Демо-дані", "Демо-дані очищено.")
         return json_response({"demoData": demo_data_status_payload(), "message": "Демо-дані очищено."})
     if action == "restore":
         clear_crm_business_data()
         call_command("seed_demo", verbosity=0)
+        log_crm_action(request, AuditLog.Action.SYSTEM, "demo_data", "restore", "Демо-дані", "Демо-дані відновлено.")
         return json_response({"demoData": demo_data_status_payload(), "message": "Демо-дані відновлено."})
     return json_response({"error": "Unsupported action"}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["GET", "DELETE", "OPTIONS"])
+def audit_logs_api(request):
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_users", "Журнал дій доступний тільки адміністратору.")
+    if forbidden:
+        return forbidden
+    if request.method == "DELETE":
+        deleted_count, _deleted_by_model = AuditLog.objects.all().delete()
+        return json_response({"results": [], "deleted": deleted_count})
+    try:
+        limit = max(1, min(int(request.GET.get("limit", 50)), 100))
+    except ValueError:
+        limit = 50
+    return json_response({"results": recent_audit_logs(limit)})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "PUT", "PATCH", "OPTIONS"])
+def settings_api(request):
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_users", "Налаштування доступні тільки адміністратору.")
+    if forbidden:
+        return forbidden
+
+    settings = crm_settings_instance()
+    if request.method == "GET":
+        return json_response({"settings": serialize_crm_settings(settings)})
+
+    payload = parse_body(request)
+    settings = apply_crm_settings_payload(settings, payload.get("settings") or payload)
+    log_crm_action(
+        request,
+        AuditLog.Action.UPDATE,
+        "settings",
+        "global",
+        "Налаштування CRM",
+        "Оновлено налаштування бюро, інтеграцій та сповіщень.",
+        metadata=serialize_crm_settings(settings),
+    )
+    return json_response({
+        "settings": serialize_crm_settings(settings),
+        "auditLogs": recent_audit_logs(),
+    })
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST", "OPTIONS"])
+def settings_provider_status_api(request):
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_users", "Перевірка інтеграцій доступна тільки адміністратору.")
+    if forbidden:
+        return forbidden
+
+    if request.method == "GET":
+        return json_response({"providerStatus": mailing_provider_status_payload()})
+
+    payload = parse_body(request)
+    channel = str(payload.get("channel") or "").strip()
+    settings = serialize_crm_settings()
+    result = test_provider_channel(channel, settings["integrations"], settings["integrationSettings"])
+    log_crm_action(
+        request,
+        AuditLog.Action.SYSTEM,
+        "settings",
+        f"provider:{channel or 'unknown'}",
+        "Перевірка інтеграції",
+        f"Тест {channel or 'каналу'} через mock-провайдер: {result.status}.",
+        metadata={"channel": channel, "provider": result.provider, "ok": result.ok, "error": result.error},
+    )
+    return json_response({
+        "result": {
+            "channel": channel,
+            "provider": result.provider,
+            "ok": result.ok,
+            "status": result.status,
+            "error": result.error,
+        },
+        "providerStatus": mailing_provider_status_payload(),
+        "auditLogs": recent_audit_logs(),
+    })
 
 
 @require_GET
@@ -1674,6 +2494,9 @@ def bootstrap_api(_request):
         "events": [serialize_event(item) for item in events],
         "financeOperations": finance_operations_payload(finance_cases) if can_see_finance else [],
         "finance": finance_summary_payload(finance_cases) if can_see_finance else empty_finance_summary_payload(),
+        "mailing": mailing_payload() if "manage_mailings" in permissions_for_user(current_user) else {},
+        "settings": serialize_crm_settings(),
+        "auditLogs": recent_audit_logs() if "manage_users" in permissions_for_user(current_user) else [],
         "meta": {
             "clients": clients.count(),
             "cases": cases.count(),

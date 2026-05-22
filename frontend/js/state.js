@@ -1,4 +1,4 @@
-import { apiBaseUrl } from "./api.js?v=demo-data-2";
+import { apiBaseUrl } from "./api.js?v=mailings-api-65";
 
 const DEMO_DATE_ANCHOR = new Date(2024, 4, 15);
 const ISO_DATE_RE = /(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)/g;
@@ -180,6 +180,15 @@ export function normalizeFinanceOperation(operation) {
   };
 }
 
+export function normalizeAuditLog(item) {
+  return {
+    ...item,
+    date: displayDateTime(item.date, item.date || ""),
+    text: item.summary || item.text || "",
+    tone: item.tone || "blue"
+  };
+}
+
 export function normalizeSettingsUser(user) {
   const passwordTemporary = Boolean(user.passwordTemporary || user.mustChangePassword);
   return {
@@ -214,8 +223,33 @@ function normalizeBackendPayload(payload) {
     events: payload.events.map(normalizeEvent),
     financeOperations: (payload.financeOperations || []).map(normalizeFinanceOperation),
     finance: payload.finance || {},
+    mailing: payload.mailing || {},
+    settings: payload.settings || {},
+    auditLogs: (payload.auditLogs || []).map(normalizeAuditLog),
     meta: payload.meta || {},
     source: "api"
+  };
+}
+
+function mergeSettings(fallback, incoming = {}) {
+  return {
+    bureau: { ...(fallback?.bureau || {}), ...(incoming?.bureau || {}) },
+    integrations: { ...(fallback?.integrations || {}), ...(incoming?.integrations || {}) },
+    integrationSettings: { ...(fallback?.integrationSettings || {}), ...(incoming?.integrationSettings || {}) },
+    notifications: { ...(fallback?.notifications || {}), ...(incoming?.notifications || {}) }
+  };
+}
+
+function mergeMailing(fallback, incoming = {}) {
+  return {
+    ...fallback,
+    ...incoming,
+    channels: { ...(fallback?.channels || {}), ...(incoming?.channels || {}) },
+    testContacts: incoming?.testContacts || fallback?.testContacts || [],
+    filters: incoming?.filters || fallback?.filters || [],
+    templates: incoming?.templates || fallback?.templates || [],
+    campaigns: incoming?.campaigns || fallback?.campaigns || [],
+    automationRules: incoming?.automationRules || fallback?.automationRules || []
   };
 }
 
@@ -228,7 +262,7 @@ async function loadDemoData() {
   const settings = shiftDemoPayloadDates(rawSettings);
   try {
     const apiData = normalizeBackendPayload(await readApiBootstrap());
-    if (apiData) return { ...apiData, mailing, settings };
+    if (apiData) return { ...apiData, mailing: mergeMailing(mailing, apiData.mailing), settings: mergeSettings(settings, apiData.settings) };
   } catch (_error) {
     // The static prototype must keep working when Django is not running.
   }
@@ -351,6 +385,7 @@ export async function createInitialState() {
     financeDateEnd: demoRangeEnd,
     financeDatePickerOpen: false,
     financeOperations: demoData.financeOperations || [],
+    auditLogs: demoData.auditLogs || [],
     salaryRows: [],
     salaryFilter: "all",
     salaryMenuId: "",
@@ -448,9 +483,11 @@ export async function createInitialState() {
     mailingCampaigns: demoData.mailing.campaigns || [],
     mailingCampaignFilter: "all",
     mailingCampaignQuery: "",
+    openMailingCampaignId: "",
     mailingAutomationRules: demoData.mailing.automationRules,
     bureauSettings: demoData.settings.bureau,
     settingsIntegrations: demoData.settings.integrations,
+    settingsIntegrationSettings: demoData.settings.integrationSettings || {},
     settingsNotifications: demoData.settings.notifications,
     settingsAudit: [
       { date: shiftDemoDateString("16.05.2024 09:30"), text: "Синхронізовано канали Telegram та SMS.", tone: "green" },

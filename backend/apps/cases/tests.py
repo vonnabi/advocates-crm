@@ -4,10 +4,12 @@ from django.db.models import Q
 from django.test import TestCase
 from django.utils import timezone
 
-from apps.accounts.models import UserProfile
+from apps.accounts.models import CRMSettings, UserProfile
+from apps.audit.models import AuditLog
 from apps.calendar_app.models import CalendarEvent
 from apps.cases.models import Case, CaseDocument, CaseMember
 from apps.clients.models import Client, ClientCommunication
+from apps.communications.models import AutomationRule, Campaign, MessageDelivery, MessageTemplate
 from apps.finance.models import Expense, Invoice, Payment
 from apps.tasks.models import Task
 
@@ -182,6 +184,10 @@ class DemoApiTests(TestCase):
             "/api/tasks/",
             "/api/calendar/events/",
             "/api/finance/operations/",
+            "/api/audit-logs/",
+            "/api/mailings/templates/",
+            "/api/mailings/campaigns/",
+            "/api/mailings/automation-rules/",
         ]
 
         for endpoint in endpoints:
@@ -189,6 +195,303 @@ class DemoApiTests(TestCase):
                 response = self.client.get(endpoint)
                 self.assertEqual(response.status_code, 200)
                 self.assertIn("results", response.json())
+
+    def test_audit_log_api_records_crm_actions(self):
+        create_response = self.client.post(
+            "/api/clients/",
+            {
+                "name": "Клієнт для аудиту",
+                "phone": "+380 50 222 33 44",
+                "request": "Перевірити журнал дій.",
+                "status": "Активний",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(create_response.status_code, 200)
+        created = create_response.json()
+
+        update_response = self.client.put(
+            f"/api/clients/{created['id']}/",
+            {**created, "name": "Клієнт для аудиту оновлений"},
+            content_type="application/json",
+        )
+        self.assertEqual(update_response.status_code, 200)
+
+        delete_response = self.client.delete(f"/api/clients/{created['id']}/")
+        self.assertEqual(delete_response.status_code, 200)
+
+        logs = AuditLog.objects.filter(entity_type="client", entity_id=str(created["id"]))
+        self.assertEqual(logs.count(), 3)
+        self.assertEqual(set(logs.values_list("action", flat=True)), {"create", "update", "delete"})
+
+        api_response = self.client.get("/api/audit-logs/")
+        self.assertEqual(api_response.status_code, 200)
+        api_logs = api_response.json()["results"]
+        self.assertTrue(any(item["summary"] == "Видалено клієнта Клієнт для аудиту оновлений." for item in api_logs))
+
+        clear_response = self.client.delete("/api/audit-logs/")
+        self.assertEqual(clear_response.status_code, 200)
+        self.assertEqual(clear_response.json()["results"], [])
+        self.assertEqual(AuditLog.objects.count(), 0)
+
+        bootstrap = self.client.get("/api/bootstrap/")
+        self.assertEqual(bootstrap.status_code, 200)
+        self.assertEqual(bootstrap.json()["auditLogs"], [])
+
+    def test_settings_api_persists_integrations_notifications_and_audit(self):
+        payload = {
+            "settings": {
+                "bureau": {
+                    "name": "Test Bureau",
+                    "email": "office@test.example",
+                    "phone": "+380 44 111 22 33",
+                    "address": "Kyiv",
+                    "logo": "data:image/png;base64," + "a" * 300,
+                    "telegram": "@test_bureau",
+                    "whatsapp": "+380 67 111 22 33",
+                    "instagram": "test.bureau",
+                    "facebook": "TestBureau",
+                    "tiktok": "test.bureau",
+                    "website": "https://test.example",
+                },
+                "integrations": {
+                    "Telegram": False,
+                    "SMS": True,
+                    "Email": True,
+                    "AI": False,
+                },
+                "integrationSettings": {
+                    "Telegram": {
+                        "botToken": "telegram-secret",
+                        "chatId": "@admin",
+                        "webhookUrl": "https://test.example/telegram",
+                    },
+                    "SMS": {
+                        "provider": "TurboSMS",
+                        "sender": "TestSender",
+                        "apiKey": "sms-secret",
+                    },
+                    "Email": {
+                        "senderEmail": "office@test.example",
+                        "senderName": "Test Bureau",
+                        "smtpHost": "smtp.test.example",
+                        "smtpPort": "587",
+                    },
+                    "AI": {
+                        "model": "demo",
+                        "workspace": "cases",
+                    },
+                },
+                "notifications": {
+                    "deadlines": False,
+                    "court": True,
+                    "mailings": False,
+                },
+            }
+        }
+
+        response = self.client.put("/api/settings/", payload, content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        settings_payload = response.json()["settings"]
+        self.assertEqual(settings_payload["bureau"]["name"], "Test Bureau")
+        self.assertEqual(settings_payload["bureau"]["telegram"], "@test_bureau")
+        self.assertEqual(settings_payload["bureau"]["website"], "https://test.example")
+        self.assertGreater(len(settings_payload["bureau"]["logo"]), 255)
+        self.assertFalse(settings_payload["integrations"]["Telegram"])
+        self.assertTrue(settings_payload["integrations"]["Email"])
+        self.assertEqual(settings_payload["integrationSettings"]["SMS"]["sender"], "TestSender")
+        self.assertEqual(settings_payload["integrationSettings"]["Email"]["smtpHost"], "smtp.test.example")
+        self.assertFalse(settings_payload["notifications"]["deadlines"])
+
+        settings = CRMSettings.objects.get(key="global")
+        self.assertEqual(settings.bureau["email"], "office@test.example")
+        self.assertEqual(settings.integration_settings["Telegram"]["chatId"], "@admin")
+        self.assertTrue(AuditLog.objects.filter(entity_type="settings", entity_id="global").exists())
+
+        bootstrap = self.client.get("/api/bootstrap/")
+        self.assertEqual(bootstrap.status_code, 200)
+        self.assertEqual(bootstrap.json()["settings"]["bureau"]["name"], "Test Bureau")
+
+        provider_status = self.client.get("/api/settings/provider-status/")
+        self.assertEqual(provider_status.status_code, 200)
+        provider_channels = {item["channel"]: item for item in provider_status.json()["providerStatus"]["channels"]}
+        self.assertEqual(provider_channels["Telegram"]["status"], "disabled")
+        self.assertEqual(provider_channels["SMS"]["status"], "ready")
+
+        provider_test = self.client.post("/api/settings/provider-status/", {"channel": "SMS"}, content_type="application/json")
+        self.assertEqual(provider_test.status_code, 200)
+        self.assertTrue(provider_test.json()["result"]["ok"])
+
+        settings.integration_settings = {
+            **settings.integration_settings,
+            "SMS": {"provider": "TurboSMS", "sender": "TestSender", "apiKey": ""},
+        }
+        settings.save(update_fields=["integration_settings"])
+        missing_status = self.client.get("/api/settings/provider-status/")
+        missing_channels = {item["channel"]: item for item in missing_status.json()["providerStatus"]["channels"]}
+        self.assertEqual(missing_channels["SMS"]["status"], "setup")
+        missing_test = self.client.post("/api/settings/provider-status/", {"channel": "SMS"}, content_type="application/json")
+        self.assertEqual(missing_test.status_code, 200)
+        self.assertFalse(missing_test.json()["result"]["ok"])
+        self.assertIn("API key", missing_test.json()["result"]["error"])
+
+        disabled_provider_test = self.client.post("/api/settings/provider-status/", {"channel": "Telegram"}, content_type="application/json")
+        self.assertEqual(disabled_provider_test.status_code, 200)
+        self.assertFalse(disabled_provider_test.json()["result"]["ok"])
+        self.assertIn("вимкнено", disabled_provider_test.json()["result"]["error"])
+
+        self.client.post("/api/auth/logout/", {}, content_type="application/json")
+        self.client.post(
+            "/api/auth/login/",
+            {"email": "kravchuk@advocates.crm", "password": "demo12345"},
+            content_type="application/json",
+        )
+        forbidden = self.client.put("/api/settings/", payload, content_type="application/json")
+        self.assertEqual(forbidden.status_code, 403)
+
+    def test_mailings_api_persists_templates_campaigns_and_audit(self):
+        template_response = self.client.post(
+            "/api/mailings/templates/",
+            {
+                "title": "Судове нагадування",
+                "type": "Telegram",
+                "text": "Шановний {{client_name}}, нагадуємо про засідання.",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(template_response.status_code, 200)
+        template = template_response.json()
+        self.assertEqual(template["title"], "Судове нагадування")
+        self.assertTrue(MessageTemplate.objects.filter(pk=template["id"], body__contains="засідання").exists())
+
+        campaign_response = self.client.post(
+            "/api/mailings/campaigns/",
+            {
+                "title": "Інформаційна розсилка",
+                "status": "Запланирована",
+                "meta": "Telegram + SMS · 4 получателей · 25.05.2026 10:30",
+                "text": "Текст розсилки",
+                "channels": {"Telegram": True, "SMS": True, "Email": False},
+                "sendMode": "later",
+                "scheduleDate": "2026-05-25",
+                "scheduleTime": "10:30",
+                "recipientMode": "all",
+                "recipientCount": 4,
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(campaign_response.status_code, 200)
+        campaign = campaign_response.json()
+        self.assertEqual(campaign["status"], "Запланирована")
+        self.assertTrue(campaign["channels"]["Telegram"])
+        self.assertEqual(campaign["scheduleTime"], "10:30")
+        self.assertTrue(Campaign.objects.filter(pk=campaign["id"], status=Campaign.Status.PLANNED).exists())
+        self.assertGreater(MessageDelivery.objects.filter(campaign_id=campaign["id"]).count(), 0)
+        self.assertEqual(campaign["deliveryStats"]["total"], MessageDelivery.objects.filter(campaign_id=campaign["id"]).count())
+        self.assertIn(campaign["deliveries"][0]["status"], {"pending", "error"})
+        delivery = MessageDelivery.objects.filter(campaign_id=campaign["id"]).exclude(status="error").first()
+        self.assertIsNotNone(delivery)
+        delivery_response = self.client.put(
+            f"/api/mailings/deliveries/{delivery.id}/",
+            {"status": "sent"},
+            content_type="application/json",
+        )
+        self.assertEqual(delivery_response.status_code, 200)
+        delivery.refresh_from_db()
+        self.assertEqual(delivery.status, "sent")
+        self.assertIsNotNone(delivery.sent_at)
+        self.assertEqual(delivery_response.json()["campaign"]["deliveryStats"]["sent"], 1)
+
+        retry_response = self.client.put(
+            f"/api/mailings/deliveries/{delivery.id}/",
+            {"status": "queued"},
+            content_type="application/json",
+        )
+        self.assertEqual(retry_response.status_code, 200)
+        delivery.refresh_from_db()
+        self.assertEqual(delivery.status, "queued")
+        self.assertEqual(delivery.error, "")
+        self.assertIsNone(delivery.sent_at)
+        self.assertTrue(AuditLog.objects.filter(entity_type="mailing_delivery", entity_id=str(delivery.id)).exists())
+
+        settings, _created = CRMSettings.objects.get_or_create(key="global")
+        settings.integration_settings = {
+            "Telegram": {"botToken": "telegram-secret", "chatId": "@admin", "webhookUrl": ""},
+            "SMS": {"provider": "TurboSMS", "sender": "Advocates", "apiKey": "sms-secret"},
+            "Email": {"senderEmail": "admin@advocates.ua", "senderName": "Advocates Bureau", "smtpHost": "smtp.example", "smtpPort": "587"},
+            "AI": {"model": "demo", "workspace": "cases"},
+        }
+        settings.save(update_fields=["integration_settings"])
+
+        send_response = self.client.post(f"/api/mailings/campaigns/{campaign['id']}/send/")
+        self.assertEqual(send_response.status_code, 200)
+        send_payload = send_response.json()
+        self.assertGreater(send_payload["sent"], 0)
+        self.assertEqual(send_payload["campaign"]["deliveryStats"]["queued"], 0)
+        self.assertGreater(send_payload["campaign"]["deliveryStats"]["sent"], 0)
+        self.assertTrue(AuditLog.objects.filter(entity_type="mailing_campaign", entity_id=str(campaign["id"]), summary__contains="mock").exists())
+
+        settings = CRMSettings.objects.get(key="global")
+        settings.integrations = {**settings.integrations, "SMS": False}
+        settings.save(update_fields=["integrations"])
+        disabled_channel_response = self.client.post(
+            "/api/mailings/campaigns/",
+            {
+                "title": "SMS disabled campaign",
+                "status": "Готова к отправке",
+                "text": "Текст розсилки",
+                "channels": {"Telegram": False, "SMS": True, "Email": False},
+                "sendMode": "now",
+                "recipientMode": "all",
+                "recipientCount": 4,
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(disabled_channel_response.status_code, 200)
+        disabled_campaign = disabled_channel_response.json()
+        disabled_send = self.client.post(f"/api/mailings/campaigns/{disabled_campaign['id']}/send/")
+        self.assertEqual(disabled_send.status_code, 200)
+        disabled_payload = disabled_send.json()
+        self.assertEqual(disabled_payload["sent"], 0)
+        self.assertEqual(disabled_payload["campaign"]["deliveryStats"]["sent"], 0)
+        self.assertGreater(disabled_payload["campaign"]["deliveryStats"]["error"], 0)
+        self.assertTrue(MessageDelivery.objects.filter(campaign_id=disabled_campaign["id"], error__contains="вимкнено").exists())
+
+        bootstrap = self.client.get("/api/bootstrap/")
+        self.assertEqual(bootstrap.status_code, 200)
+        self.assertTrue(any(item["id"] == template["id"] for item in bootstrap.json()["mailing"]["templates"]))
+        self.assertTrue(any(item["id"] == campaign["id"] for item in bootstrap.json()["mailing"]["campaigns"]))
+        self.assertTrue(AuditLog.objects.filter(entity_type="mailing_campaign", entity_id=str(campaign["id"])).exists())
+
+        automation_rule = bootstrap.json()["mailing"]["automationRules"][0]
+        automation_response = self.client.put(
+            f"/api/mailings/automation-rules/{automation_rule['id']}/",
+            {**automation_rule, "enabled": False, "channel": "Email"},
+            content_type="application/json",
+        )
+        self.assertEqual(automation_response.status_code, 200)
+        updated_rule = automation_response.json()
+        self.assertFalse(updated_rule["enabled"])
+        self.assertEqual(updated_rule["channel"], "Email")
+        self.assertTrue(AutomationRule.objects.filter(pk=updated_rule["id"], enabled=False, channel="Email").exists())
+        self.assertTrue(AuditLog.objects.filter(entity_type="mailing_automation", entity_id=str(updated_rule["id"])).exists())
+
+        delete_response = self.client.delete(f"/api/mailings/templates/{template['id']}/")
+        self.assertEqual(delete_response.status_code, 200)
+        self.assertFalse(MessageTemplate.objects.filter(pk=template["id"]).exists())
+
+        self.client.post("/api/auth/logout/", {}, content_type="application/json")
+        self.client.post(
+            "/api/auth/login/",
+            {"email": "kravchuk@advocates.crm", "password": "demo12345"},
+            content_type="application/json",
+        )
+        forbidden = self.client.post(
+            "/api/mailings/templates/",
+            {"title": "Forbidden", "type": "SMS", "text": "Nope"},
+            content_type="application/json",
+        )
+        self.assertEqual(forbidden.status_code, 403)
 
     def test_users_api_returns_session_and_manages_roles(self):
         session_response = self.client.get("/api/session/")

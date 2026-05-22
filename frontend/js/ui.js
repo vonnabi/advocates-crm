@@ -272,12 +272,15 @@ export function icon(name) {
     warning: `<svg viewBox="0 0 24 24"><path d="M10.4 4.1 2.7 18a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.6 4.1a1.8 1.8 0 0 0-3.2 0Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>`,
     file: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"></path><path d="M14 2v6h6"></path></svg>`,
     fileUp: `<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"></path><path d="M14 2v6h6"></path><path d="M12 18v-7"></path><path d="m9 14 3-3 3 3"></path></svg>`,
+    upload: `<svg viewBox="0 0 24 24"><path d="M12 3v12"></path><path d="m7 8 5-5 5 5"></path><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"></path></svg>`,
+    imageUp: `<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"></rect><path d="m7 15 3-3 2 2 2.5-3 2.5 4"></path><circle cx="8.5" cy="9.5" r="1.2"></circle><path d="M12 3v6"></path><path d="m9.5 5.5 2.5-2.5 2.5 2.5"></path></svg>`,
     eye: `<svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>`,
     tag: `<svg viewBox="0 0 24 24"><path d="M20.6 13.1 13.1 20.6a2 2 0 0 1-2.8 0L3 13.3V4h9.3l8.3 8.3a2 2 0 0 1 0 2.8Z"></path><circle cx="8" cy="8" r="1.5"></circle></svg>`,
     edit: `<svg viewBox="0 0 24 24"><path d="M16.9 3.7a2.1 2.1 0 0 1 3 3L8.4 18.2l-4.1 1.2 1.2-4.1L16.9 3.7Z"></path><path d="m15.5 5.1 3.4 3.4"></path></svg>`,
     trash: `<svg viewBox="0 0 24 24"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="m19 6-1 15H6L5 6"></path><path d="M10 11v6M14 11v6"></path></svg>`,
     refresh: `<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 1-14.6 4.5"></path><path d="M4 12A8 8 0 0 1 18.6 7.5"></path><path d="M18 3v5h-5"></path><path d="M6 21v-5h5"></path></svg>`,
     check: `<svg viewBox="0 0 24 24"><path d="m20 6-11 11-5-5"></path></svg>`,
+    x: `<svg viewBox="0 0 24 24"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>`,
     gear: `<svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"></path><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 0 1 4.2 17l.1-.1A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.6-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.3 7A2 2 0 0 1 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 0 1 19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1a2 2 0 0 1 0 4H21a1.7 1.7 0 0 0-1.6 1Z"></path></svg>`
   };
   return `<span class="ui-icon">${icons[name] || ""}</span>`;

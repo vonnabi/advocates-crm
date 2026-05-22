@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from apps.calendar_app.models import CalendarEvent, Reminder
 from apps.cases.models import Case, CaseDocument, CaseMember
 from apps.clients.models import Client, ClientCommunication
-from apps.communications.models import Campaign, MessageDelivery, MessageTemplate
+from apps.communications.models import AutomationRule, Campaign, MessageDelivery, MessageTemplate
 from apps.finance.models import Expense, Invoice, Payment
 from apps.tasks.models import Task
 
@@ -62,6 +62,7 @@ def client_has_user_records(client):
 def clear_demo_business_data():
     with transaction.atomic():
         MessageDelivery.objects.filter(is_demo=True).delete()
+        AutomationRule.objects.filter(is_demo=True).delete()
         Campaign.objects.filter(is_demo=True).delete()
         MessageTemplate.objects.filter(is_demo=True).delete()
         Reminder.objects.filter(is_demo=True).delete()

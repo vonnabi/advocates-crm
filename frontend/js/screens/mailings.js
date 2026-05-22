@@ -1,3 +1,5 @@
+import { deleteMailingCampaignFromApi, deleteMailingTemplateFromApi, saveMailingAutomationRuleToApi, saveMailingCampaignToApi, saveMailingTemplateToApi, sendMailingCampaignInApi, shouldUseApi, updateMailingDeliveryInApi } from "../api.js?v=mailings-api-65";
+
 export function setMailingTab(ctx, tab, remember = true) {
   const { state } = ctx;
   if (remember && tab !== state.mailingMainTab) {
@@ -11,6 +13,7 @@ export function renderMailingsScreen(ctx) {
   const setTab = (tab, remember = true) => setMailingTab(ctx, tab, remember);
   const rerender = () => renderMailingsScreen(ctx);
   const realDataMode = state.dataSource === "api";
+  const persistMailings = shouldUseApi(state);
   if (!realDataMode && !state.mailingTemplates.length) {
     state.mailingTemplates = [
       { title: "Нагадування про подію", type: "Нагадування", text: "Шановний {{client_name}}, нагадуємо про заплановану подію у вашій справі." },
@@ -52,12 +55,44 @@ export function renderMailingsScreen(ctx) {
     if (status === "Запланирована") return { icon: "calendar", tone: "violet", label: "Запланированные" };
     if (status === "Тест отправлен") return { icon: "telegram", tone: "blue", label: "Тестовые" };
     if (status === "Готова к отправке") return { icon: "clock", tone: "amber", label: "Готовые" };
+    if (status === "Частично отправлено") return { icon: "bell", tone: "amber", label: "Частичные" };
     if (status === "Відправлено" || status === "Отправлено") return { icon: "check", tone: "green", label: "Отправленные" };
     return { icon: "file", tone: "blue", label: "Кампании" };
+  };
+  const deliverySummary = (item) => {
+    const stats = item.deliveryStats || {};
+    if (!stats.total) return "";
+    const pending = Number(stats.pending || 0) + Number(stats.queued || 0);
+    const sent = Number(stats.sent || 0) + Number(stats.delivered || 0);
+    const error = Number(stats.error || 0);
+    return `<span class="mailing-delivery-summary">
+      <b class="mailing-channel-mini muted">${icon("clock")}${pending} ожидает</b>
+      <b class="mailing-channel-mini green">${icon("check")}${sent} отправлено</b>
+      ${error ? `<b class="mailing-channel-mini red">${icon("bell")}${error} ошибок</b>` : ""}
+    </span>`;
   };
   const campaignChannels = (item) => {
     if (item.channels) return Object.entries(item.channels).filter(([, enabled]) => enabled).map(([name]) => name);
     return ["Telegram", "SMS", "Email"].filter((name) => String(item.meta || "").includes(name));
+  };
+  const statusTone = (status = "") => status === "error" ? "red" : status === "sent" || status === "delivered" ? "green" : "muted";
+  const statusIcon = (status = "") => status === "error" ? "bell" : status === "sent" || status === "delivered" ? "check" : "clock";
+  const deliveryRows = (item, rowIndex) => {
+    if (!item.id || state.openMailingCampaignId !== item.id) return "";
+    const rows = item.deliveries || [];
+    if (!rows.length) return `<div class="mailing-delivery-panel"><p class="muted">Для этой кампании пока нет доставок.</p></div>`;
+    return `<div class="mailing-delivery-panel">
+      <div class="mailing-delivery-head"><strong>Доставки по клиентам</strong><span>${item.deliveryStats?.total || rows.length} записей</span></div>
+      ${rows.map((delivery) => `<div class="mailing-delivery-row">
+        <span><strong>${delivery.client}</strong><em>${delivery.channel}</em></span>
+        <b class="mailing-channel-mini ${statusTone(delivery.status)}">${icon(statusIcon(delivery.status))}${delivery.statusLabel || delivery.status}</b>
+        <div class="mailing-delivery-actions">
+          ${delivery.status !== "sent" && delivery.status !== "delivered" ? `<button type="button" class="secondary" data-update-delivery="${delivery.id}" data-delivery-status="sent" data-campaign-index="${rowIndex}">${icon("check")} Отправлено</button>` : ""}
+          ${delivery.status !== "error" ? `<button type="button" class="secondary danger-text" data-update-delivery="${delivery.id}" data-delivery-status="error" data-campaign-index="${rowIndex}">${icon("bell")} Ошибка</button>` : ""}
+          ${delivery.status === "error" ? `<button type="button" class="secondary" data-update-delivery="${delivery.id}" data-delivery-status="queued" data-campaign-index="${rowIndex}">${icon("refresh")} Повторить</button>` : ""}
+        </div>
+      </div>`).join("")}
+    </div>`;
   };
   const campaignStats = [
     { label: "Всего", value: baseCampaignRows.length, icon: "file", tone: "blue" },
@@ -71,16 +106,22 @@ export function renderMailingsScreen(ctx) {
     const rowIndex = sourceIndex >= 0 ? sourceIndex : 0;
     const statusMeta = campaignStatusMeta(item.status);
     const channels = campaignChannels(item);
-    return `<div class="mailing-history-row ${statusMeta.tone}">
+    const queuedCount = Number(item.deliveryStats?.pending || 0) + Number(item.deliveryStats?.queued || 0);
+    const deliveryToggle = item.deliveryStats?.total ? { label: state.openMailingCampaignId === item.id ? "Скрыть доставки" : "Доставки", icon: "filter", attrs: { "data-toggle-mailing-deliveries": rowIndex } } : null;
+    const menuItems = [{ label: "Редактировать", icon: "edit", attrs: { "data-edit-mailing-campaign": rowIndex } }, ...(deliveryToggle ? [deliveryToggle] : []), { label: "Удалить", icon: "trash", danger: true, attrs: { "data-delete-mailing-campaign": rowIndex } }];
+    const sendButton = queuedCount && item.id ? `<button type="button" class="primary mailing-send-toggle" data-send-mailing-campaign="${rowIndex}">${icon("telegram")} Запустить</button>` : "";
+    const deliveryButton = deliveryToggle ? `<button type="button" class="secondary mailing-delivery-toggle ${state.openMailingCampaignId === item.id ? "active" : ""}" data-toggle-mailing-deliveries="${rowIndex}">${icon("filter")} ${state.openMailingCampaignId === item.id ? "Скрыть доставки" : "Доставки"}</button>` : "";
+    return `<div class="mailing-campaign-block"><div class="mailing-history-row ${statusMeta.tone}">
       <i class="mailing-campaign-icon">${icon(statusMeta.icon)}</i>
       <div class="mailing-campaign-main">
         <strong>${item.title}</strong>
         <em>${item.meta || item.createdAt}</em>
         <span>${channels.map((channel) => `<b class="mailing-channel-mini ${channel.toLowerCase()}">${icon(channel === "Telegram" ? "telegram" : channel === "SMS" ? "message" : "mail")}${channel}</b>`).join("") || `<b class="mailing-channel-mini muted">${statusMeta.label}</b>`}</span>
+        ${deliverySummary(item)}
       </div>
       ${badge(item.status, statusMeta.tone)}
-      <div class="mailing-row-actions">${actionMenu([{ label: "Редактировать", icon: "edit", attrs: { "data-edit-mailing-campaign": rowIndex } }, { label: "Удалить", icon: "trash", danger: true, attrs: { "data-delete-mailing-campaign": rowIndex } }], { label: "Дії рассылки" })}</div>
-    </div>`;
+      <div class="mailing-row-actions">${sendButton}${deliveryButton}${actionMenu(menuItems, { label: "Дії рассылки" })}</div>
+    </div>${deliveryRows(item, rowIndex)}</div>`;
   }).join("") : `<p class="muted">По этому запросу рассылок не найдено.</p>`;
   const channelIcon = (channel = "") => channel === "SMS" ? "message" : channel === "Email" ? "mail" : channel === "Telegram" ? "telegram" : channel === "Все каналы" ? "filter" : "file";
   const channelClass = (channel = "") => ["Telegram", "SMS", "Email"].includes(channel) ? channel.toLowerCase() : "all";
@@ -378,11 +419,19 @@ export function renderMailingsScreen(ctx) {
     textarea.value = `${textarea.value.slice(0, start)}${marker}${selected}${marker}${textarea.value.slice(end)}`;
     update();
   }));
-  document.querySelector("[data-save-mailing-template]")?.addEventListener("click", () => {
-    state.mailingTemplates.unshift({ title: `Шаблон ${state.mailingTemplates.length + 1}`, type: state.mailingEditorChannel, text: state.mailingText });
-    state.mailingStatusNotice = "Шаблон сохранён и доступен во вкладке «Шаблоны сообщений».";
-    rerender();
-    showToast("Шаблон сохранён.");
+  document.querySelector("[data-save-mailing-template]")?.addEventListener("click", async () => {
+    const template = { title: `Шаблон ${state.mailingTemplates.length + 1}`, type: state.mailingEditorChannel, text: state.mailingText };
+    try {
+      const saved = persistMailings ? await saveMailingTemplateToApi(template) : template;
+      state.mailingTemplates.unshift(saved);
+      state.mailingStatusNotice = "Шаблон сохранён и доступен во вкладке «Шаблоны сообщений».";
+      rerender();
+      showToast("Шаблон сохранён.");
+    } catch (error) {
+      state.mailingStatusNotice = "Не удалось сохранить шаблон на сервере.";
+      rerender();
+      showToast(error.message || "Не удалось сохранить шаблон.", "danger");
+    }
   });
   document.querySelectorAll("[data-use-template]").forEach((button) => button.addEventListener("click", () => {
     const template = state.mailingTemplates[Number(button.dataset.useTemplate)];
@@ -404,27 +453,62 @@ export function renderMailingsScreen(ctx) {
     rerender();
     showToast("Шаблон открыт для редактирования.");
   }));
-  document.querySelectorAll("[data-delete-template]").forEach((button) => button.addEventListener("click", () => {
+  document.querySelectorAll("[data-delete-template]").forEach((button) => button.addEventListener("click", async () => {
     const index = Number(button.dataset.deleteTemplate);
-    const [removed] = state.mailingTemplates.splice(index, 1);
-    state.mailingStatusNotice = removed ? `Шаблон «${removed.title}» удалён.` : "";
-    rerender();
-    if (removed) showToast("Шаблон удалён.", "danger");
+    const removed = state.mailingTemplates[index];
+    if (!removed) return;
+    try {
+      if (persistMailings && removed.id) await deleteMailingTemplateFromApi(removed.id);
+      state.mailingTemplates.splice(index, 1);
+      state.mailingStatusNotice = `Шаблон «${removed.title}» удалён.`;
+      rerender();
+      showToast("Шаблон удалён.", "danger");
+    } catch (error) {
+      state.mailingStatusNotice = "Не удалось удалить шаблон на сервере.";
+      rerender();
+      showToast(error.message || "Не удалось удалить шаблон.", "danger");
+    }
   }));
   document.querySelectorAll("[data-toggle-automation]").forEach((input) => input.addEventListener("change", () => {
     const rule = state.mailingAutomationRules[Number(input.dataset.toggleAutomation)];
     if (!rule) return;
+    const previous = rule.enabled;
     rule.enabled = input.checked;
-    state.mailingStatusNotice = `Автоматизация «${rule.title}» ${rule.enabled ? "включена" : "выключена"}.`;
-    rerender();
-    showToast(rule.enabled ? "Автоматизация включена." : "Автоматизация выключена.", rule.enabled ? "success" : "warning");
+    const save = async () => {
+      try {
+        const saved = persistMailings ? await saveMailingAutomationRuleToApi(rule) : rule;
+        state.mailingAutomationRules[Number(input.dataset.toggleAutomation)] = saved;
+        state.mailingStatusNotice = `Автоматизация «${saved.title}» ${saved.enabled ? "включена" : "выключена"}.`;
+        rerender();
+        showToast(saved.enabled ? "Автоматизация включена." : "Автоматизация выключена.", saved.enabled ? "success" : "warning");
+      } catch (error) {
+        rule.enabled = previous;
+        state.mailingStatusNotice = "Не удалось сохранить правило автоматизации на сервере.";
+        rerender();
+        showToast(error.message || "Не удалось сохранить правило.", "danger");
+      }
+    };
+    save();
   }));
   document.querySelectorAll("[data-automation-channel]").forEach((select) => select.addEventListener("change", () => {
     const rule = state.mailingAutomationRules[Number(select.dataset.automationChannel)];
     if (!rule) return;
+    const previous = rule.channel;
     rule.channel = select.value;
-    state.mailingStatusNotice = `Для автоматизации «${rule.title}» выбран канал: ${rule.channel}.`;
-    rerender();
+    const save = async () => {
+      try {
+        const saved = persistMailings ? await saveMailingAutomationRuleToApi(rule) : rule;
+        state.mailingAutomationRules[Number(select.dataset.automationChannel)] = saved;
+        state.mailingStatusNotice = `Для автоматизации «${saved.title}» выбран канал: ${saved.channel}.`;
+        rerender();
+      } catch (error) {
+        rule.channel = previous;
+        state.mailingStatusNotice = "Не удалось сохранить канал автоматизации на сервере.";
+        rerender();
+        showToast(error.message || "Не удалось сохранить канал.", "danger");
+      }
+    };
+    save();
   }));
   document.querySelectorAll("[data-edit-mailing-campaign]").forEach((button) => button.addEventListener("click", () => {
     const campaign = state.mailingCampaigns[Number(button.dataset.editMailingCampaign)];
@@ -444,7 +528,49 @@ export function renderMailingsScreen(ctx) {
     rerender();
     showToast("Рассылка открыта для редактирования.");
   }));
-  document.querySelectorAll("[data-delete-mailing-campaign]").forEach((button) => button.addEventListener("click", () => {
+  document.querySelectorAll("[data-toggle-mailing-deliveries]").forEach((button) => button.addEventListener("click", () => {
+    const campaign = state.mailingCampaigns[Number(button.dataset.toggleMailingDeliveries)];
+    if (!campaign?.id) return;
+    state.openMailingCampaignId = state.openMailingCampaignId === campaign.id ? "" : campaign.id;
+    state.mailingStatusNotice = state.openMailingCampaignId ? `Открыты доставки рассылки «${campaign.title}».` : "";
+    rerender();
+  }));
+  document.querySelectorAll("[data-update-delivery]").forEach((button) => button.addEventListener("click", async () => {
+    const campaignIndex = Number(button.dataset.campaignIndex);
+    const status = button.dataset.deliveryStatus;
+    try {
+      const response = persistMailings
+        ? await updateMailingDeliveryInApi(button.dataset.updateDelivery, { status })
+        : null;
+      if (response?.campaign) state.mailingCampaigns[campaignIndex] = response.campaign;
+      state.openMailingCampaignId = response?.campaign?.id || state.openMailingCampaignId;
+      state.mailingStatusNotice = status === "error" ? "Доставка помечена как ошибка." : status === "queued" ? "Доставка возвращена в очередь." : "Доставка помечена как отправленная.";
+      rerender();
+      showToast(state.mailingStatusNotice, status === "error" ? "warning" : "success");
+    } catch (error) {
+      state.mailingStatusNotice = "Не удалось обновить статус доставки на сервере.";
+      rerender();
+      showToast(error.message || "Не удалось обновить доставку.", "danger");
+    }
+  }));
+  document.querySelectorAll("[data-send-mailing-campaign]").forEach((button) => button.addEventListener("click", async () => {
+    const campaignIndex = Number(button.dataset.sendMailingCampaign);
+    const campaign = state.mailingCampaigns[campaignIndex];
+    if (!campaign?.id) return;
+    try {
+      const response = persistMailings ? await sendMailingCampaignInApi(campaign.id) : null;
+      if (response?.campaign) state.mailingCampaigns[campaignIndex] = response.campaign;
+      state.openMailingCampaignId = response?.campaign?.id || state.openMailingCampaignId;
+      state.mailingStatusNotice = `Mock-отправка запущена: отправлено ${response?.sent || 0} доставок.`;
+      rerender();
+      showToast(state.mailingStatusNotice, "success");
+    } catch (error) {
+      state.mailingStatusNotice = "Не удалось запустить отправку на сервере.";
+      rerender();
+      showToast(error.message || "Не удалось запустить отправку.", "danger");
+    }
+  }));
+  document.querySelectorAll("[data-delete-mailing-campaign]").forEach((button) => button.addEventListener("click", async () => {
     const index = Number(button.dataset.deleteMailingCampaign);
     if (!state.mailingCampaigns[index]) {
       state.mailingStatusNotice = "Примерную рассылку удалить нельзя. Она исчезнет, когда появятся ваши рассылки.";
@@ -452,10 +578,19 @@ export function renderMailingsScreen(ctx) {
       showToast("Примерную рассылку нельзя удалить.", "warning");
       return;
     }
-    const [removed] = state.mailingCampaigns.splice(index, 1);
-    state.mailingStatusNotice = `Рассылка «${removed.title}» удалена.`;
-    rerender();
-    showToast("Рассылка удалена.", "danger");
+    const removed = state.mailingCampaigns[index];
+    try {
+      if (persistMailings && removed.id) await deleteMailingCampaignFromApi(removed.id);
+      state.mailingCampaigns.splice(index, 1);
+      if (state.openMailingCampaignId === removed.id) state.openMailingCampaignId = "";
+      state.mailingStatusNotice = `Рассылка «${removed.title}» удалена.`;
+      rerender();
+      showToast("Рассылка удалена.", "danger");
+    } catch (error) {
+      state.mailingStatusNotice = "Не удалось удалить рассылку на сервере.";
+      rerender();
+      showToast(error.message || "Не удалось удалить рассылку.", "danger");
+    }
   }));
   document.querySelectorAll("[data-mailing-channel-toggle]").forEach((input) => input.addEventListener("change", () => {
     state.mailingChannels[input.dataset.mailingChannelToggle] = input.checked;
@@ -478,7 +613,7 @@ export function renderMailingsScreen(ctx) {
   document.querySelector("[data-mailing-schedule-time]")?.addEventListener("change", (event) => {
     state.mailingScheduleTime = event.target.value;
   });
-  document.querySelectorAll("[data-mailing-action]").forEach((button) => button.addEventListener("click", () => {
+  document.querySelectorAll("[data-mailing-action]").forEach((button) => button.addEventListener("click", async () => {
     const action = button.dataset.mailingAction;
     const enabledChannels = Object.entries(state.mailingChannels).filter(([, enabled]) => enabled).map(([name]) => name);
     const enabledTestContacts = state.mailingTestContacts.filter((contact) => contact.enabled);
@@ -523,11 +658,33 @@ export function renderMailingsScreen(ctx) {
     const plannedAt = state.mailingSendMode === "later" ? `${formatDate(state.mailingScheduleDate)} ${state.mailingScheduleTime}` : "сейчас";
     const status = action === "test" ? "Тест отправлен" : state.mailingSendMode === "later" ? "Запланирована" : "Готова к отправке";
     const testMeta = enabledTestContacts.map((contact) => `${contact.channel}: ${contact.value}`).join(" · ");
-    state.mailingCampaigns.unshift({ title, status, meta: action === "test" ? testMeta : `${enabledChannels.join(" + ")} · ${recipients} получателей · ${plannedAt}`, createdAt: new Date().toLocaleString("uk-UA"), text: state.mailingText, channels: { ...state.mailingChannels }, sendMode: state.mailingSendMode, scheduleDate: state.mailingScheduleDate, scheduleTime: state.mailingScheduleTime });
-    setTab("campaigns");
-    state.mailingStatusNotice = action === "test" ? `Тестовая отправка создана: ${testMeta}.` : `Рассылка добавлена во вкладку «Мои рассылки»: ${plannedAt}.`;
-    rerender();
-    showToast(action === "test" ? "Тестовая отправка создана." : "Рассылка добавлена в «Мои рассылки».");
+    const campaign = {
+      title,
+      status,
+      meta: action === "test" ? testMeta : `${enabledChannels.join(" + ")} · ${recipients} получателей · ${plannedAt}`,
+      createdAt: new Date().toLocaleString("uk-UA"),
+      text: state.mailingText,
+      channels: { ...state.mailingChannels },
+      sendMode: state.mailingSendMode,
+      scheduleDate: state.mailingScheduleDate,
+      scheduleTime: state.mailingScheduleTime,
+      recipientMode: state.mailingRecipientMode,
+      manualClientIds: state.mailingManualClientIds,
+      filters: activeMailingFilters,
+      recipientCount: recipients
+    };
+    try {
+      const saved = persistMailings ? await saveMailingCampaignToApi(campaign) : campaign;
+      state.mailingCampaigns.unshift(saved);
+      setTab("campaigns");
+      state.mailingStatusNotice = action === "test" ? `Тестовая отправка создана: ${testMeta}.` : `Рассылка добавлена во вкладку «Мои рассылки»: ${plannedAt}.`;
+      rerender();
+      showToast(action === "test" ? "Тестовая отправка создана." : "Рассылка добавлена в «Мои рассылки».");
+    } catch (error) {
+      state.mailingStatusNotice = "Не удалось сохранить рассылку на сервере.";
+      rerender();
+      showToast(error.message || "Не удалось сохранить рассылку.", "danger");
+    }
   }));
   document.querySelectorAll("[data-preview-action]").forEach((button) => button.addEventListener("click", () => {
     const messages = {

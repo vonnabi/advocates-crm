@@ -6,12 +6,12 @@ export default defineConfig({
   fullyParallel: false,
   reporter: "list",
   use: {
-    baseURL: "http://127.0.0.1:8000",
+    baseURL: "http://127.0.0.1:8001",
     trace: "on-first-retry"
   },
   webServer: {
-    command: "npm run serve",
-    url: "http://127.0.0.1:8000",
+    command: "cd backend && ../.venv/bin/python manage.py runserver 127.0.0.1:8001",
+    url: "http://127.0.0.1:8001",
     reuseExistingServer: true,
     timeout: 10_000
   },

@@ -1,6 +1,6 @@
-import { deleteSettingsUserFromApi, saveSettingsUserToApi, shouldUseApi } from "../api.js";
-import { navIconName } from "../ui.js?v=settings-icons-1";
-import { normalizeSettingsUser } from "../state.js";
+import { clearAuditLogsFromApi, deleteSettingsUserFromApi, getAuditLogsFromApi, getMailingProviderStatusFromApi, saveCrmSettingsToApi, saveSettingsUserToApi, shouldUseApi, testMailingProviderInApi } from "../api.js?v=mailings-api-65";
+import { icon, navIconName } from "../ui.js?v=settings-icons-5";
+import { normalizeAuditLog, normalizeSettingsUser } from "../state.js?v=mailings-api-65";
 
 const roleAccessMap = {
   "Адміністратор": "Повний доступ",
@@ -27,6 +27,38 @@ const permissionOptions = [
 ];
 
 const allPermissionKeys = permissionOptions.map((item) => item.key).filter(Boolean);
+const clientPickerRenderLimit = 80;
+
+const integrationConfigFields = {
+  Telegram: [
+    ["botToken", "Bot token", "Наприклад, 123456:telegram-token", true],
+    ["chatId", "Тестовий chat ID", "@ivanenko_admin або 123456789", true],
+    ["webhookUrl", "Webhook URL", "https://example.com/telegram/webhook", false]
+  ],
+  SMS: [
+    ["provider", "Провайдер", "TurboSMS", true],
+    ["sender", "Відправник", "Advocates", true],
+    ["apiKey", "API key", "sms-api-key", true]
+  ],
+  Email: [
+    ["senderEmail", "Email відправника", "admin@advocates.ua", true],
+    ["senderName", "Ім'я відправника", "Advocates Bureau", false],
+    ["smtpHost", "SMTP host", "smtp.example.com", true],
+    ["smtpPort", "SMTP port", "587", true]
+  ],
+  AI: [
+    ["model", "Модель", "demo", false],
+    ["workspace", "Контекст", "cases", false]
+  ]
+};
+
+const integrationConfigIcons = {
+  Telegram: "telegram",
+  SMS: "message",
+  Email: "mail",
+  AI: "search"
+};
+const defaultBureauLogo = "assets/advocates-crm-logo.png";
 
 const accessPermissionMap = {
   "Повний доступ": allPermissionKeys,
@@ -54,6 +86,15 @@ function cleanAttribute(value) {
   return cleanSettingValue(value).replace(/["'`]/g, "");
 }
 
+function integrationConfigProgress(channel, state) {
+  const fields = integrationConfigFields[channel] || [];
+  const required = fields.filter((field) => field[3]);
+  const values = state.settingsIntegrationSettings?.[channel] || {};
+  if (!required.length) return { filled: fields.length, total: fields.length, label: "Налаштовано" };
+  const filled = required.filter(([key]) => cleanSettingValue(values[key])).length;
+  return { filled, total: required.length, label: `${filled}/${required.length} обов'язкових` };
+}
+
 function isNeutralDemoAdminState(state) {
   return shouldUseApi(state) && !state.sessionAuthenticated && state.demoDataStatus?.enabled === false;
 }
@@ -66,6 +107,66 @@ function displaySettingsUser(user, state) {
     photo: "AD",
     email: "admin@advocates.ua"
   };
+}
+
+function bureauLogoValue(settings = {}) {
+  return cleanSettingValue(settings.logo || "") || defaultBureauLogo;
+}
+
+function bureauLogoDisplayValue(settings = {}) {
+  const logo = bureauLogoValue(settings);
+  return logo.startsWith("data:image/") ? "Завантажений логотип" : logo;
+}
+
+function isBureauLogoImage(value = "") {
+  return /^(https?:\/\/|assets\/|data:image\/)/i.test(value);
+}
+
+function renderBureauLogo(settings = {}) {
+  const logo = bureauLogoValue(settings);
+  const name = cleanSettingValue(settings.name || "AB");
+  if (isBureauLogoImage(logo)) {
+    return `<img src="${cleanAttribute(logo)}" alt="${cleanAttribute(name)}">`;
+  }
+  return `<span>${cleanSettingValue(logo || userInitials(name) || "AB").slice(0, 4)}</span>`;
+}
+
+function bureauFaviconHref(settings = {}) {
+  const logo = bureauLogoValue(settings);
+  if (isBureauLogoImage(logo)) return logo;
+  const label = cleanSettingValue(logo || userInitials(settings.name || "") || "AB").slice(0, 4);
+  const safeLabel = label.replace(/&/g, "&amp;");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#1f4e79"/><text x="32" y="39" text-anchor="middle" font-family="Arial,sans-serif" font-size="21" font-weight="800" fill="#fff">${safeLabel}</text></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+function syncBureauBrand(settings = {}) {
+  const brandLogo = document.querySelector("[data-brand-logo]");
+  const favicon = document.querySelector("[data-brand-favicon]") || document.querySelector('link[rel="icon"]');
+  if (brandLogo) brandLogo.innerHTML = renderBureauLogo(settings);
+  if (favicon) favicon.href = bureauFaviconHref(settings);
+}
+
+function brandIcon(name) {
+  const icons = {
+    telegram: `<svg viewBox="0 0 24 24"><path d="M21 4 3.8 10.8c-.8.3-.8 1.4.1 1.6l4.3 1.3 1.7 5.1c.2.7 1.1.9 1.6.3l2.5-2.9 4.5 3.4c.6.5 1.5.1 1.7-.7L22.5 5c.2-.7-.7-1.3-1.5-1Z"></path><path d="m8.4 13.6 8.2-5.2-6.4 7.4"></path></svg>`,
+    whatsapp: `<svg viewBox="0 0 24 24"><path d="M20 11.6a8 8 0 0 1-11.9 7l-3.6 1 1-3.5A8 8 0 1 1 20 11.6Z"></path><path d="M9.4 8.7c.2-.4.4-.4.7-.4h.5c.2 0 .4.1.5.4l.7 1.7c.1.3.1.5-.1.7l-.4.5c-.1.1-.2.3 0 .5.5.9 1.3 1.7 2.4 2.2.2.1.4.1.5-.1l.7-.8c.2-.2.4-.2.7-.1l1.7.8c.3.1.4.3.4.5 0 .6-.4 1.5-1 1.7-.6.3-2.8.2-5.1-1.8-2.1-1.8-3.3-4.3-3.3-5.2 0-.5.5-1.3.7-1.6Z"></path></svg>`,
+    instagram: `<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="5"></rect><circle cx="12" cy="12" r="3.4"></circle><circle cx="17" cy="7" r="1"></circle></svg>`,
+    facebook: `<svg viewBox="0 0 24 24"><path d="M14 8h2V4h-2c-3 0-5 2-5 5v2H7v4h2v5h4v-5h3l1-4h-4V9c0-.6.4-1 1-1Z"></path></svg>`,
+    tiktok: `<svg viewBox="0 0 24 24"><path d="M14 4c.5 3 2.2 4.8 5 5v3c-1.9 0-3.5-.6-5-1.7V16a5 5 0 1 1-5-5c.4 0 .7 0 1 .1v3.2a2 2 0 1 0 1.2 1.8V4h2.8Z"></path></svg>`,
+    phone: `<svg viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.7 19.7 0 0 1-8.6-3.1 19.3 19.3 0 0 1-6-6A19.7 19.7 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.5c1 .3 1.9.6 2.9.7A2 2 0 0 1 22 16.9Z"></path></svg>`,
+    website: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18"></path><path d="M12 3c2.5 2.5 3.8 5.5 3.8 9S14.5 18.5 12 21c-2.5-2.5-3.8-5.5-3.8-9S9.5 5.5 12 3Z"></path></svg>`
+  };
+  return `<span class="settings-brand-icon ${name}" aria-hidden="true">${icons[name] || ""}</span>`;
+}
+
+function readImageAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result || "")));
+    reader.addEventListener("error", () => reject(reader.error));
+    reader.readAsDataURL(file);
+  });
 }
 
 function userInitials(name) {
@@ -93,6 +194,115 @@ function addSettingsAudit(state, text, tone = "blue") {
     { date: formatAuditTime(), text, tone },
     ...(state.settingsAudit || [])
   ].slice(0, 8);
+}
+
+async function persistCrmSettings(ctx) {
+  const { state } = ctx;
+  if (!shouldUseApi(state)) return true;
+  const payload = await saveCrmSettingsToApi({
+    bureau: state.bureauSettings,
+    integrations: state.settingsIntegrations,
+    integrationSettings: state.settingsIntegrationSettings,
+    notifications: state.settingsNotifications
+  });
+  if (payload.settings) {
+    state.bureauSettings = payload.settings.bureau || state.bureauSettings;
+    state.settingsIntegrations = payload.settings.integrations || state.settingsIntegrations;
+    state.settingsIntegrationSettings = payload.settings.integrationSettings || state.settingsIntegrationSettings;
+    state.settingsNotifications = payload.settings.notifications || state.settingsNotifications;
+  }
+  if (payload.auditLogs) {
+    state.auditLogs = payload.auditLogs.map(normalizeAuditLog);
+  }
+  return true;
+}
+
+async function refreshMailingProviderStatus(ctx) {
+  const { state } = ctx;
+  if (!shouldUseApi(state)) return null;
+  const payload = await getMailingProviderStatusFromApi();
+  state.mailingProviderStatus = payload.providerStatus || state.mailingProviderStatus;
+  return state.mailingProviderStatus;
+}
+
+function ensureIntegrationConfigDialog(ctx) {
+  let dialog = document.querySelector("#settings-integration-config-dialog");
+  if (dialog) return dialog;
+  dialog = document.createElement("dialog");
+  dialog.id = "settings-integration-config-dialog";
+  dialog.innerHTML = `
+    <form method="dialog" class="modal-form crm-modal-form settings-integration-config-form" id="settings-integration-config-form">
+      <div class="modal-head crm-modal-head settings-integration-config-head">
+        <div class="crm-modal-title settings-integration-config-title">
+          <span class="crm-modal-title-icon settings-integration-config-title-icon" data-settings-integration-config-icon></span>
+          <div>
+            <h2 data-settings-integration-config-title>Налаштування інтеграції</h2>
+            <p class="muted" data-settings-integration-config-note></p>
+          </div>
+        </div>
+        <button class="crm-modal-close settings-modal-close" type="button" data-settings-integration-config-close aria-label="Закрити" title="Закрити">${icon("x")}</button>
+      </div>
+      <div class="crm-modal-status settings-integration-config-status" data-settings-integration-config-status></div>
+      <div class="crm-modal-grid settings-integration-config-grid" data-settings-integration-config-fields></div>
+      <div class="crm-modal-actions settings-integration-config-actions">
+        <button type="submit" class="primary">Зберегти підключення</button>
+      </div>
+    </form>
+  `;
+  document.body.append(dialog);
+  dialog.querySelector("[data-settings-integration-config-close]")?.addEventListener("click", () => dialog.close());
+  dialog.querySelector("#settings-integration-config-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const { state, saveNavigationState, showToast } = ctx;
+    const form = event.currentTarget;
+    const channel = form.dataset.channel;
+    const nextSettings = { ...(state.settingsIntegrationSettings?.[channel] || {}) };
+    (integrationConfigFields[channel] || []).forEach(([key]) => {
+      nextSettings[key] = cleanSettingValue(form.elements[key]?.value || "");
+    });
+    state.settingsIntegrationSettings = {
+      ...(state.settingsIntegrationSettings || {}),
+      [channel]: nextSettings
+    };
+    addSettingsAudit(state, `${channel}: оновлено параметри підключення.`, "blue");
+    try {
+      await persistCrmSettings(ctx);
+      await refreshMailingProviderStatus(ctx);
+    } catch (_error) {
+      showToast("Не вдалося зберегти параметри інтеграції.", "danger");
+      return;
+    }
+    dialog.close();
+    saveNavigationState();
+    renderSettingsScreen(ctx);
+    showToast(`${channel}: підключення збережено.`);
+  });
+  return dialog;
+}
+
+function fillIntegrationConfigDialog(dialog, ctx, channel) {
+  const { state } = ctx;
+  const form = dialog.querySelector("#settings-integration-config-form");
+  const fieldsWrap = dialog.querySelector("[data-settings-integration-config-fields]");
+  const statusWrap = dialog.querySelector("[data-settings-integration-config-status]");
+  const config = state.settingsIntegrationSettings?.[channel] || {};
+  const providerStatus = (state.mailingProviderStatus?.channels || []).find((item) => item.channel === channel);
+  const progress = integrationConfigProgress(channel, state);
+  form.dataset.channel = channel;
+  dialog.querySelector("[data-settings-integration-config-icon]").innerHTML = icon(integrationConfigIcons[channel] || "gear");
+  dialog.querySelector("[data-settings-integration-config-title]").textContent = `${channel}: підключення`;
+  dialog.querySelector("[data-settings-integration-config-note]").textContent = "Поля зберігаються в налаштуваннях CRM і використовуються для тестових відправок та майбутнього реального провайдера.";
+  statusWrap.innerHTML = `
+    <span class="${providerStatus?.status === "ready" ? "ready" : providerStatus?.status === "disabled" ? "disabled" : "setup"}">${providerStatus?.label || "Параметри"}</span>
+    <strong>${progress.label}</strong>
+    <em>${cleanSettingValue(providerStatus?.detail || "Параметри можна оновити нижче.")}</em>
+  `;
+  fieldsWrap.innerHTML = (integrationConfigFields[channel] || []).map(([key, label, placeholder, required]) => `
+    <label class="crm-modal-field settings-integration-config-field ${required ? "required" : ""}">
+      <span class="settings-field-label">${label}${required ? `<em>Обов'язково</em>` : ""}</span>
+      <input name="${key}" value="${cleanAttribute(config[key] || "")}" placeholder="${cleanAttribute(placeholder)}" autocomplete="off" ${required ? "required" : ""} />
+    </label>
+  `).join("");
 }
 
 function generateTemporaryPassword() {
@@ -213,8 +423,12 @@ function renderCasePreview(user) {
 
 function selectedCaseIds(user) {
   const direct = Array.isArray(user?.assignedCaseIds) ? user.assignedCaseIds : [];
-  const nested = Array.isArray(user?.assignedCases) ? user.assignedCases.map((item) => item.id) : [];
+  const nested = Array.isArray(user?.assignedCases) ? user.assignedCases.map((item) => caseAccessKey(item)) : [];
   return new Set([...direct, ...nested].filter(Boolean));
+}
+
+function caseAccessKey(caseItem) {
+  return caseItem?.id || caseItem?.number || "";
 }
 
 function readStoredCaseIds(form) {
@@ -229,6 +443,42 @@ function writeStoredCaseIds(form, selectedIds) {
   form.dataset.selectedCaseIds = JSON.stringify([...selectedIds]);
 }
 
+function readVisibleCaseIds(form) {
+  try {
+    return new Set(JSON.parse(form.dataset.visibleCaseIds || "[]").filter(Boolean));
+  } catch (_error) {
+    return new Set();
+  }
+}
+
+function writeVisibleCaseIds(form, visibleIds = new Set()) {
+  form.dataset.visibleCaseIds = JSON.stringify([...visibleIds]);
+}
+
+function readAccessClientNames(form) {
+  try {
+    return new Set(JSON.parse(form.dataset.accessClientNames || "[]").filter(Boolean));
+  } catch (_error) {
+    return new Set();
+  }
+}
+
+function writeAccessClientNames(form, clients = new Set()) {
+  form.dataset.accessClientNames = JSON.stringify([...clients]);
+}
+
+function readHiddenCaseIds(form) {
+  try {
+    return new Set(JSON.parse(form.dataset.hiddenCaseIds || "[]").filter(Boolean));
+  } catch (_error) {
+    return new Set();
+  }
+}
+
+function writeHiddenCaseIds(form, hiddenIds = new Set()) {
+  form.dataset.hiddenCaseIds = JSON.stringify([...hiddenIds]);
+}
+
 function syncStoredCaseIdsFromForm(form) {
   const selectedIds = readStoredCaseIds(form);
   form.querySelectorAll("input[name='assignedCaseIds']").forEach((input) => {
@@ -239,17 +489,50 @@ function syncStoredCaseIdsFromForm(form) {
   return selectedIds;
 }
 
-function caseClientOptions(state) {
-  return [...new Set((state.cases || []).map((caseItem) => caseItem.client).filter(Boolean))].sort((a, b) => a.localeCompare(b, "uk"));
+function caseClientName(state, caseItem) {
+  if (caseItem?.client) return caseItem.client;
+  if (caseItem?.clientName) return caseItem.clientName;
+  const client = (state.clients || []).find((item) => String(item.id) === String(caseItem?.clientId));
+  return client?.name || "";
 }
 
-function filteredCases(state, search = "", client = "") {
+function caseClientOptions(state) {
+  return [...new Set((state.cases || []).map((caseItem) => caseClientName(state, caseItem)).filter(Boolean))].sort((a, b) => a.localeCompare(b, "uk"));
+}
+
+function casesForClient(state, client = "") {
+  return (state.cases || []).filter((caseItem) => caseClientName(state, caseItem) === client);
+}
+
+function selectedClientNames(state, selectedIds = new Set()) {
+  return caseClientOptions(state).filter((client) => casesForClient(state, client).some((caseItem) => selectedIds.has(caseAccessKey(caseItem))));
+}
+
+function clientMatchesQuery(state, client, query = "") {
+  const normalizedQuery = cleanSettingValue(query).toLowerCase();
+  if (!normalizedQuery) return true;
+  const caseText = casesForClient(state, client)
+    .map((caseItem) => [caseAccessKey(caseItem), caseItem.title, caseItem.stage].join(" "))
+    .join(" ");
+  return [client, caseText].join(" ").toLowerCase().includes(normalizedQuery);
+}
+
+function filteredCases(state, search = "") {
   const query = cleanSettingValue(search).toLowerCase();
   return (state.cases || []).filter((caseItem) => {
-    const matchesClient = !client || caseItem.client === client;
-    const haystack = [caseItem.id, caseItem.client, caseItem.title, caseItem.stage].join(" ").toLowerCase();
-    return matchesClient && (!query || haystack.includes(query));
+    const haystack = [caseAccessKey(caseItem), caseClientName(state, caseItem), caseItem.title, caseItem.stage].join(" ").toLowerCase();
+    return !query || haystack.includes(query);
   });
+}
+
+function accessGridCases(form, state, selectedIds = new Set(), search = "") {
+  if (cleanSettingValue(search)) return filteredCases(state, search);
+  const hiddenIds = readHiddenCaseIds(form);
+  const visibleIds = readVisibleCaseIds(form);
+  if (!visibleIds.size && selectedIds.size) writeVisibleCaseIds(form, selectedIds);
+  writeAccessClientNames(form, selectedClientNames(state, selectedIds));
+  const idsToShow = visibleIds.size ? visibleIds : selectedIds;
+  return (state.cases || []).filter((caseItem) => idsToShow.has(caseAccessKey(caseItem)) && !hiddenIds.has(caseAccessKey(caseItem)));
 }
 
 function renderPermissionCheckboxes(icon, checkedKeys = []) {
@@ -266,33 +549,392 @@ function renderPermissionCheckboxes(icon, checkedKeys = []) {
   `).join("");
 }
 
-function renderCaseCheckboxes(cases, checkedIds = new Set()) {
-  if (!cases.length) {
-    return `<div class="settings-case-empty">Нічого не знайдено за цими фільтрами.</div>`;
+function readOpenCaseClients(form) {
+  try {
+    return new Set(JSON.parse(form.dataset.openCaseClients || "[]").filter(Boolean));
+  } catch (_error) {
+    return new Set();
   }
-  return cases.map((caseItem) => `
-    <label class="settings-case-choice">
-      <input type="checkbox" name="assignedCaseIds" value="${caseItem.id}" ${checkedIds.has(caseItem.id) ? "checked" : ""} />
-      <span>
-        <strong>№${caseItem.id}</strong>
-        <em>${caseItem.client || ""}</em>
-      </span>
-      <small>${caseItem.title || ""}</small>
-    </label>
-  `).join("");
 }
 
-function refreshCaseGrid(form, state) {
-  const selectedIds = syncStoredCaseIdsFromForm(form);
+function writeOpenCaseClients(form, clients = new Set()) {
+  form.dataset.openCaseClients = JSON.stringify([...clients]);
+}
+
+function rememberOpenCaseGroups(form) {
+  const openClients = new Set();
+  form.querySelectorAll(".settings-case-group[open]").forEach((group) => {
+    const client = group.dataset.caseClient;
+    if (client) openClients.add(client);
+  });
+  if (openClients.size) writeOpenCaseClients(form, openClients);
+}
+
+function renderCaseCheckboxes(cases, checkedIds = new Set(), state = {}, emptyText = "Нічого не знайдено за цими фільтрами.", openClients = new Set(), forceOpen = false) {
+  if (!cases.length) {
+    return `
+      <div class="settings-case-empty">
+        <strong>${emptyText}</strong>
+        <span>Додайте клієнта через вибір клієнтів або знайдіть конкретну справу пошуком.</span>
+        <button type="button" class="secondary compact" data-settings-open-client-picker>${icon("users")} Вибрати клієнтів</button>
+      </div>`;
+  }
+  const groups = new Map();
+  cases.forEach((caseItem) => {
+    const client = caseClientName(state, caseItem) || "Без клієнта";
+    groups.set(client, [...(groups.get(client) || []), caseItem]);
+  });
+  return [...groups.entries()].map(([client, clientCases], index) => {
+    const selectedCount = clientCases.filter((caseItem) => checkedIds.has(caseAccessKey(caseItem))).length;
+    const shouldOpen = forceOpen || (openClients.size ? openClients.has(client) : index === 0);
+    return `
+      <details class="settings-case-group" data-case-client="${cleanAttribute(client)}" ${shouldOpen ? "open" : ""}>
+        <summary class="settings-case-group-head">
+          <strong>${client}</strong>
+          <span>Доступ: ${selectedCount}/${clientCases.length}</span>
+          <button type="button" class="settings-case-group-clear" data-settings-clear-client-cases="${cleanAttribute(client)}">Зняти доступ</button>
+        </summary>
+        <div class="settings-case-group-list">
+          ${clientCases.map((caseItem) => {
+            const hasAccess = checkedIds.has(caseAccessKey(caseItem));
+            return `
+            <div class="settings-case-choice ${hasAccess ? "has-access" : "no-access"}">
+              <label class="settings-case-label">
+                <input type="checkbox" name="assignedCaseIds" value="${caseAccessKey(caseItem)}" ${hasAccess ? "checked" : ""} />
+                <span>
+                  <strong>№${caseAccessKey(caseItem)}</strong>
+                  <em>${caseItem.stage || "Стадія не вказана"}</em>
+                </span>
+                <small>${caseItem.title || ""}</small>
+              </label>
+              <span class="settings-case-access-badge">${hasAccess ? "Доступ є" : "Без доступу"}</span>
+              <button type="button" class="settings-case-hide" data-settings-hide-case="${cleanAttribute(caseAccessKey(caseItem))}" aria-label="Прибрати справу №${cleanAttribute(caseAccessKey(caseItem))} зі списку" title="Прибрати зі списку">${icon("x")}</button>
+            </div>`;
+          }).join("")}
+        </div>
+      </details>`;
+  }).join("");
+}
+
+function renderClientAccessSummary(state, checkedIds = new Set(), visibleIds = new Set()) {
+  const clients = selectedClientNames(state, checkedIds);
+  const preview = clients.slice(0, 4);
+  const rest = Math.max(0, clients.length - preview.length);
+  const caseLabel = `${checkedIds.size} ${checkedIds.size === 1 ? "справа" : checkedIds.size > 1 && checkedIds.size < 5 ? "справи" : "справ"}`;
+  return `
+    <div class="settings-client-summary">
+      <button type="button" class="secondary settings-client-open" data-settings-open-client-picker>
+        ${icon("users")} Вибрати клієнтів
+      </button>
+      <div class="settings-client-selected-list">
+        <span class="is-total">Доступ: ${caseLabel}</span>
+        <span>У списку: ${visibleIds.size}</span>
+        ${preview.length
+          ? preview.map((client) => `
+            <button type="button" class="settings-client-selected-chip" data-settings-remove-client="${cleanAttribute(client)}" aria-label="Прибрати ${cleanAttribute(client)}">
+              <span>${client}</span>
+              ${icon("x")}
+            </button>`).join("")
+          : `<em>Клієнти не вибрані</em>`}
+        ${rest ? `<span>+${rest}</span>` : ""}
+      </div>
+    </div>`;
+}
+
+function renderCaseAccessStats(matches = [], selectedIds = new Set(), state = {}, search = "") {
+  const clientCount = selectedClientNames(state, selectedIds).length;
+  const label = cleanSettingValue(search) ? "Знайдено" : "Показано";
+  return `
+    <span><em>${label}</em><strong>${matches.length}</strong></span>
+    <span><em>Доступ</em><strong>${selectedIds.size}</strong></span>
+    <span><em>Клієнти</em><strong>${clientCount}</strong></span>
+  `;
+}
+
+function refreshCaseGrid(form, state, options = {}) {
+  rememberOpenCaseGroups(form);
+  const shouldSyncFromVisibleCases = options.syncFromVisibleCases !== false;
+  const selectedIds = shouldSyncFromVisibleCases ? syncStoredCaseIdsFromForm(form) : readStoredCaseIds(form);
   const search = form.elements.caseSearch?.value || "";
-  const client = form.elements.caseClient?.value || "";
-  const matches = filteredCases(state, search, client);
-  form.querySelector("[data-settings-cases-grid]").innerHTML = renderCaseCheckboxes(matches, selectedIds);
+  const matches = accessGridCases(form, state, selectedIds, search);
+  const emptyText = cleanSettingValue(search)
+    ? "Нічого не знайдено за цим пошуком."
+    : "Права на справи ще не вибрані. Виберіть клієнтів або знайдіть справу за номером.";
+  form.querySelector("[data-settings-cases-grid]").innerHTML = renderCaseCheckboxes(matches, selectedIds, state, emptyText, readOpenCaseClients(form), Boolean(cleanSettingValue(search)));
+  form.querySelector("[data-settings-client-picker]").innerHTML = renderClientAccessSummary(state, selectedIds, readVisibleCaseIds(form));
   const meta = form.querySelector("[data-settings-case-filter-meta]");
   if (meta) {
-    const total = state.cases?.length || 0;
-    meta.textContent = `${matches.length} з ${total} справ · вибрано ${selectedIds.size}`;
+    meta.innerHTML = renderCaseAccessStats(matches, selectedIds, state, search);
   }
+}
+
+function applyClientScopeChange(form, state, client, shouldSelect, options = {}) {
+  const selectedIds = syncStoredCaseIdsFromForm(form);
+  const visibleIds = readVisibleCaseIds(form);
+  const visibleClients = readAccessClientNames(form);
+  const hiddenIds = readHiddenCaseIds(form);
+  applyClientScopeChangeToSet(state, selectedIds, client, shouldSelect);
+  if (shouldSelect || options.keepVisible) {
+    visibleClients.add(client);
+    casesForClient(state, client).forEach((caseItem) => {
+      const key = caseAccessKey(caseItem);
+      visibleIds.add(key);
+      hiddenIds.delete(key);
+    });
+  } else {
+    visibleClients.delete(client);
+    casesForClient(state, client).forEach((caseItem) => {
+      const key = caseAccessKey(caseItem);
+      visibleIds.delete(key);
+      hiddenIds.add(key);
+    });
+  }
+  writeStoredCaseIds(form, selectedIds);
+  writeVisibleCaseIds(form, visibleIds);
+  writeAccessClientNames(form, visibleClients);
+  writeHiddenCaseIds(form, hiddenIds);
+  refreshCaseGrid(form, state, { syncFromVisibleCases: false });
+}
+
+function visibleClientOptions(dialog, state) {
+  const query = dialog.querySelector("[data-settings-client-search]")?.value || "";
+  return caseClientOptions(state).filter((client) => clientMatchesQuery(state, client, query));
+}
+
+function renderedClientOptions(dialog, state) {
+  return visibleClientOptions(dialog, state).slice(0, clientPickerRenderLimit);
+}
+
+function readPickerCaseIds(dialog) {
+  try {
+    return new Set(JSON.parse(dialog.dataset.selectedCaseIds || "[]").filter(Boolean));
+  } catch (_error) {
+    return new Set();
+  }
+}
+
+function writePickerCaseIds(dialog, selectedIds) {
+  dialog.dataset.selectedCaseIds = JSON.stringify([...selectedIds]);
+}
+
+function readOpenPickerClients(dialog) {
+  try {
+    return new Set(JSON.parse(dialog.dataset.openPickerClients || "[]").filter(Boolean));
+  } catch (_error) {
+    return new Set();
+  }
+}
+
+function writeOpenPickerClients(dialog, clients = new Set()) {
+  dialog.dataset.openPickerClients = JSON.stringify([...clients]);
+}
+
+function rememberOpenPickerClients(dialog) {
+  const openClients = new Set();
+  dialog.querySelectorAll(".settings-client-dialog-choice[open]").forEach((group) => {
+    const client = group.dataset.pickerClient;
+    if (client) openClients.add(client);
+  });
+  writeOpenPickerClients(dialog, openClients);
+}
+
+function renderClientPickerSelectedSummary(dialog, state, selectedIds = new Set()) {
+  const wrap = dialog.querySelector("[data-settings-client-picker-selected]");
+  if (!wrap) return;
+  const clients = selectedClientNames(state, selectedIds);
+  if (!clients.length) {
+    wrap.innerHTML = `<em>Поточний вибір порожній. Знайдіть клієнта нижче або додайте знайдених.</em>`;
+    return;
+  }
+  const preview = clients.slice(0, 8);
+  const rest = Math.max(0, clients.length - preview.length);
+  wrap.innerHTML = `
+    <strong>Поточний вибір</strong>
+    <div>
+      ${preview.map((client) => `
+        <button type="button" class="settings-client-selected-chip" data-settings-picker-remove-client="${cleanAttribute(client)}" aria-label="Прибрати ${cleanAttribute(client)}">
+          <span>${client}</span>
+          ${icon("x")}
+        </button>`).join("")}
+      ${rest ? `<span class="settings-client-picker-more">+${rest}</span>` : ""}
+    </div>`;
+}
+
+function renderClientPickerList(dialog, state) {
+  rememberOpenPickerClients(dialog);
+  const selectedIds = readPickerCaseIds(dialog);
+  const allClients = visibleClientOptions(dialog, state);
+  const clients = allClients.slice(0, clientPickerRenderLimit);
+  const selectedClients = selectedClientNames(state, selectedIds);
+  const openClients = readOpenPickerClients(dialog);
+  const hasOpenClientInResults = clients.some((client) => openClients.has(client));
+  const status = dialog.querySelector("[data-settings-client-picker-status]");
+  renderClientPickerSelectedSummary(dialog, state, selectedIds);
+  if (status) {
+    status.innerHTML = `
+      <span>${allClients.length} з ${caseClientOptions(state).length} клієнтів</span>
+      <strong>${selectedClients.length} вибрано · ${selectedIds.size} справ</strong>
+    `;
+  }
+  const list = dialog.querySelector("[data-settings-client-dialog-list]");
+  if (!list) return;
+  if (!clients.length) {
+    list.innerHTML = `<div class="settings-case-empty">Клієнтів за цим пошуком не знайдено.</div>`;
+    return;
+  }
+  const limitNotice = allClients.length > clients.length
+    ? `<div class="settings-client-dialog-limit">Показано перші ${clients.length} з ${allClients.length}. Уточніть пошук за прізвищем, назвою або номером справи.</div>`
+    : "";
+  list.innerHTML = clients.map((client, index) => {
+    const clientCases = casesForClient(state, client);
+    const selectedCount = clientCases.filter((caseItem) => selectedIds.has(caseAccessKey(caseItem))).length;
+    const allSelected = clientCases.length > 0 && selectedCount === clientCases.length;
+    const partialSelected = selectedCount > 0 && !allSelected;
+    const shouldOpen = hasOpenClientInResults ? openClients.has(client) : index === 0;
+    return `
+      <details class="settings-client-dialog-choice ${allSelected ? "is-selected" : ""} ${partialSelected ? "is-partial" : ""}" data-picker-client="${cleanAttribute(client)}" ${shouldOpen ? "open" : ""}>
+        <summary class="settings-client-dialog-summary">
+          <input class="settings-client-dialog-master" type="checkbox" name="clientScope" value="${cleanAttribute(client)}" data-client-scope-client="${cleanAttribute(client)}" aria-label="Вибрати всі справи клієнта ${cleanAttribute(client)}" ${allSelected ? "checked" : ""}>
+          <span class="settings-client-dialog-copy">
+            <strong>${client}</strong>
+            <em>${partialSelected ? "Вибрані тільки окремі справи" : "Галочка зліва вибирає всі справи"}</em>
+          </span>
+          <span class="settings-client-dialog-count">${selectedCount}/${clientCases.length} справ</span>
+        </summary>
+        <div class="settings-client-case-list">
+          ${clientCases.map((caseItem) => `
+            <label class="settings-client-case-choice">
+              <input type="checkbox" name="clientCaseScope" value="${cleanAttribute(caseAccessKey(caseItem))}" data-client-case-client="${cleanAttribute(client)}" ${selectedIds.has(caseAccessKey(caseItem)) ? "checked" : ""}>
+              <span>
+                <strong>№${caseAccessKey(caseItem)}</strong>
+                <em>${caseItem.title || caseItem.stage || "Справу не названо"}</em>
+              </span>
+            </label>
+          `).join("")}
+        </div>
+      </details>`;
+  }).join("") + limitNotice;
+  list.querySelectorAll("input[name='clientScope']").forEach((input) => {
+    const client = input.dataset.clientScopeClient;
+    const clientCases = casesForClient(state, client);
+    const selectedCount = clientCases.filter((caseItem) => selectedIds.has(caseAccessKey(caseItem))).length;
+    input.indeterminate = selectedCount > 0 && selectedCount < clientCases.length;
+  });
+}
+
+function ensureClientPickerDialog(ctx) {
+  let dialog = document.querySelector("#settings-client-picker-dialog");
+  if (dialog) return dialog;
+  dialog = document.createElement("dialog");
+  dialog.id = "settings-client-picker-dialog";
+  dialog.innerHTML = `
+    <form method="dialog" class="modal-form crm-modal-form settings-client-picker-form" id="settings-client-picker-form">
+      <div class="modal-head crm-modal-head">
+        <div class="crm-modal-title">
+          <span class="crm-modal-title-icon">${icon("users")}</span>
+          <div>
+            <h2>Вибір клієнтів</h2>
+            <p class="muted">Знайдіть клієнта за прізвищем, назвою або номером справи та додайте доступ одним кліком.</p>
+          </div>
+        </div>
+        <button class="crm-modal-close settings-modal-close" type="button" data-settings-client-picker-close aria-label="Закрити" title="Закрити">${icon("x")}</button>
+      </div>
+      <div class="settings-client-picker-toolbar">
+        <label class="crm-modal-field">Пошук клієнта
+          <input name="clientSearch" type="search" placeholder="Наприклад, Петренко або №2026/12345" data-settings-client-search>
+        </label>
+        <div class="settings-client-picker-status" data-settings-client-picker-status></div>
+      </div>
+      <div class="settings-client-picker-quick-actions">
+        <button type="button" class="secondary compact" data-settings-client-picker-add-visible>Додати знайдених</button>
+        <button type="button" class="secondary compact" data-settings-client-picker-clear>Очистити вибір</button>
+      </div>
+      <div class="settings-client-picker-selected" data-settings-client-picker-selected></div>
+      <div class="settings-client-dialog-list" data-settings-client-dialog-list></div>
+      <div class="crm-modal-actions settings-client-picker-actions">
+        <button type="submit" class="primary">Застосувати вибір</button>
+      </div>
+    </form>
+  `;
+  document.body.append(dialog);
+  dialog.querySelector("[data-settings-client-picker-close]")?.addEventListener("click", () => dialog.close());
+  dialog.querySelector("[data-settings-client-search]")?.addEventListener("input", () => renderClientPickerList(dialog, ctx.state));
+  dialog.querySelector("[data-settings-client-picker-clear]")?.addEventListener("click", () => {
+    writePickerCaseIds(dialog, new Set());
+    renderClientPickerList(dialog, ctx.state);
+  });
+  dialog.querySelector("[data-settings-client-picker-add-visible]")?.addEventListener("click", () => {
+    const selectedIds = readPickerCaseIds(dialog);
+    renderedClientOptions(dialog, ctx.state).forEach((client) => applyClientScopeChangeToSet(ctx.state, selectedIds, client, true));
+    writePickerCaseIds(dialog, selectedIds);
+    renderClientPickerList(dialog, ctx.state);
+  });
+  dialog.querySelector("[data-settings-client-picker-selected]")?.addEventListener("click", (event) => {
+    const removeButton = event.target?.closest("[data-settings-picker-remove-client]");
+    if (!removeButton) return;
+    const selectedIds = readPickerCaseIds(dialog);
+    applyClientScopeChangeToSet(ctx.state, selectedIds, removeButton.dataset.settingsPickerRemoveClient, false);
+    writePickerCaseIds(dialog, selectedIds);
+    renderClientPickerList(dialog, ctx.state);
+  });
+  dialog.querySelector("[data-settings-client-dialog-list]")?.addEventListener("change", (event) => {
+    const selectedIds = readPickerCaseIds(dialog);
+    if (event.target?.name === "clientScope") {
+      applyClientScopeChangeToSet(ctx.state, selectedIds, event.target.value, event.target.checked);
+    } else if (event.target?.name === "clientCaseScope") {
+      if (event.target.checked) selectedIds.add(event.target.value);
+      else selectedIds.delete(event.target.value);
+    } else {
+      return;
+    }
+    writePickerCaseIds(dialog, selectedIds);
+    renderClientPickerList(dialog, ctx.state);
+  });
+  dialog.querySelector("[data-settings-client-dialog-list]")?.addEventListener("click", (event) => {
+    if (event.target?.closest("input[name='clientScope']")) {
+      event.stopPropagation();
+    }
+  });
+  dialog.querySelector("[data-settings-client-dialog-list]")?.addEventListener("toggle", (event) => {
+    if (event.target?.classList?.contains("settings-client-dialog-choice")) {
+      rememberOpenPickerClients(dialog);
+    }
+  }, true);
+  dialog.querySelector("#settings-client-picker-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const parentForm = dialog.settingsParentForm;
+    if (!parentForm) return;
+    const selectedIds = readPickerCaseIds(dialog);
+    writeStoredCaseIds(parentForm, selectedIds);
+    writeVisibleCaseIds(parentForm, selectedIds);
+    writeAccessClientNames(parentForm, selectedClientNames(ctx.state, selectedIds));
+    writeHiddenCaseIds(parentForm, new Set());
+    refreshCaseGrid(parentForm, ctx.state, { syncFromVisibleCases: false });
+    dialog.close();
+  });
+  return dialog;
+}
+
+function applyClientScopeChangeToSet(state, selectedIds, client, shouldSelect) {
+  casesForClient(state, client).forEach((caseItem) => {
+    const key = caseAccessKey(caseItem);
+    if (!key) return;
+    if (shouldSelect) selectedIds.add(key);
+    else selectedIds.delete(key);
+  });
+}
+
+function openClientPickerDialog(ctx, parentForm) {
+  syncStoredCaseIdsFromForm(parentForm);
+  const dialog = ensureClientPickerDialog(ctx);
+  dialog.settingsParentForm = parentForm;
+  writePickerCaseIds(dialog, readStoredCaseIds(parentForm));
+  const search = dialog.querySelector("[data-settings-client-search]");
+  if (search) search.value = "";
+  writeOpenPickerClients(dialog, new Set());
+  renderClientPickerList(dialog, ctx.state);
+  dialog.showModal();
+  search?.focus();
 }
 
 function syncCaseScope(form) {
@@ -306,12 +948,143 @@ function applyRoleDefaultsToForm(form, icon) {
   const role = form.elements.role.value;
   form.elements.access.value = roleAccessMap[role] || roleAccessMap["Помічник"];
   form.querySelector("[data-settings-permissions-grid]").innerHTML = renderPermissionCheckboxes(icon, rolePermissionMap[role] || rolePermissionMap["Помічник"]);
+  syncSettingsCustomSelects(form);
 }
 
 function applyAccessPresetToForm(form, icon) {
   const access = form.elements.access.value;
   if (access === "Індивідуальний доступ") return;
   form.querySelector("[data-settings-permissions-grid]").innerHTML = renderPermissionCheckboxes(icon, accessPermissionMap[access] || []);
+}
+
+function closeSettingsCustomSelects(form, except = null) {
+  form.querySelectorAll(".settings-custom-select").forEach((control) => {
+    if (control === except) return;
+    control.classList.remove("is-open");
+    control.querySelector("[data-settings-custom-select-trigger]")?.setAttribute("aria-expanded", "false");
+    control.querySelector("[data-settings-custom-select-menu]")?.setAttribute("hidden", "");
+  });
+}
+
+function openSettingsCustomSelect(form, control, focusSelected = false) {
+  const trigger = control.querySelector("[data-settings-custom-select-trigger]");
+  const menu = control.querySelector("[data-settings-custom-select-menu]");
+  closeSettingsCustomSelects(form, control);
+  control.classList.add("is-open");
+  trigger.setAttribute("aria-expanded", "true");
+  menu.removeAttribute("hidden");
+  if (focusSelected) {
+    (control.querySelector(".settings-custom-select-option.is-selected") || control.querySelector("[data-settings-custom-select-option]"))?.focus({ preventScroll: true });
+  }
+}
+
+function selectSettingsCustomOption(form, option) {
+  const control = option.closest(".settings-custom-select");
+  const select = form.elements[control.dataset.selectName];
+  select.value = option.dataset.value;
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+  closeSettingsCustomSelects(form);
+  control.querySelector("[data-settings-custom-select-trigger]")?.focus({ preventScroll: true });
+}
+
+function moveSettingsCustomSelectFocus(control, direction = 1) {
+  const options = [...control.querySelectorAll("[data-settings-custom-select-option]")];
+  if (!options.length) return;
+  const currentIndex = Math.max(0, options.indexOf(document.activeElement));
+  const fallbackIndex = Math.max(0, options.findIndex((option) => option.classList.contains("is-selected")));
+  const baseIndex = document.activeElement?.matches?.("[data-settings-custom-select-option]") ? currentIndex : fallbackIndex;
+  const nextIndex = (baseIndex + direction + options.length) % options.length;
+  options[nextIndex].focus({ preventScroll: true });
+}
+
+function syncSettingsCustomSelect(select) {
+  const control = select.closest(".settings-custom-select-field")?.querySelector(".settings-custom-select");
+  if (!control) return;
+  const value = select.value;
+  const label = select.selectedOptions?.[0]?.textContent || value;
+  control.querySelector("[data-settings-custom-select-value]").textContent = label;
+  control.querySelectorAll("[data-settings-custom-select-option]").forEach((option) => {
+    const selected = option.dataset.value === value;
+    option.classList.toggle("is-selected", selected);
+    option.setAttribute("aria-selected", selected ? "true" : "false");
+  });
+}
+
+function syncSettingsCustomSelects(form) {
+  form.querySelectorAll("select[data-settings-custom-select-source]").forEach(syncSettingsCustomSelect);
+}
+
+function setupSettingsCustomSelect(select, icon) {
+  if (!select || select.dataset.settingsCustomSelectSource) return;
+  const field = select.closest(".crm-modal-field");
+  if (!field) return;
+  field.classList.add("settings-custom-select-field");
+  select.dataset.settingsCustomSelectSource = "true";
+  const options = [...select.options];
+  const control = document.createElement("div");
+  control.className = "settings-custom-select";
+  control.dataset.selectName = select.name;
+  control.innerHTML = `
+    <button type="button" class="settings-custom-select-trigger" data-settings-custom-select-trigger aria-haspopup="listbox" aria-expanded="false">
+      <span data-settings-custom-select-value></span>
+      <span class="settings-custom-select-arrow" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"></path></svg></span>
+    </button>
+    <div class="settings-custom-select-menu" data-settings-custom-select-menu role="listbox" hidden>
+      ${options.map((option) => `
+        <button type="button" class="settings-custom-select-option" role="option" data-settings-custom-select-option data-value="${cleanAttribute(option.value)}">
+          ${icon("check")}
+          <span>${option.textContent}</span>
+        </button>
+      `).join("")}
+    </div>
+  `;
+  select.insertAdjacentElement("afterend", control);
+  syncSettingsCustomSelect(select);
+}
+
+function ensureTemporaryPasswordInfoDialog() {
+  let dialog = document.querySelector("#settings-password-info-dialog");
+  if (dialog) return dialog;
+  dialog = document.createElement("dialog");
+  dialog.id = "settings-password-info-dialog";
+  dialog.innerHTML = `
+    <div class="modal-form crm-modal-form settings-password-info-dialog">
+      <div class="modal-head crm-modal-head">
+        <div class="crm-modal-title">
+          <span class="crm-modal-title-icon">i</span>
+          <div>
+            <h2>Тимчасовий пароль</h2>
+            <p class="muted">Навіщо він потрібен і що відбувається після входу.</p>
+          </div>
+        </div>
+        <button class="crm-modal-close settings-modal-close" type="button" data-settings-password-info-close aria-label="Закрити" title="Закрити">${icon("x")}</button>
+      </div>
+      <div class="settings-password-info-body">
+        <p><strong>Тимчасовий пароль</strong> використовується, коли адміністратор створює нового користувача або відновлює доступ існуючому співробітнику.</p>
+        <div>
+          <span>1</span>
+          <p>CRM зберігає пароль як стартовий доступ для входу користувача.</p>
+        </div>
+        <div>
+          <span>2</span>
+          <p>Коли увімкнено перемикач, користувач має змінити пароль після входу.</p>
+        </div>
+        <div>
+          <span>3</span>
+          <p>Це зручно для безпечної передачі доступу: адміністратор задає пароль, а користувач одразу встановлює свій.</p>
+        </div>
+        <em>Якщо пароль не змінювати, залиште поле пароля порожнім під час редагування користувача.</em>
+      </div>
+      <div class="crm-modal-actions">
+        <button type="button" class="primary" data-settings-password-info-close>Зрозуміло</button>
+      </div>
+    </div>
+  `;
+  document.body.append(dialog);
+  dialog.querySelectorAll("[data-settings-password-info-close]").forEach((button) => {
+    button.addEventListener("click", () => dialog.close());
+  });
+  return dialog;
 }
 
 function fillUserDialog(dialog, ctx, userIndex = "") {
@@ -328,10 +1101,14 @@ function fillUserDialog(dialog, ctx, userIndex = "") {
   form.elements.passwordTemporary.checked = user ? Boolean(user.passwordTemporary || user.mustChangePassword) : true;
   form.elements.role.value = user?.role || "Адвокат";
   form.elements.access.value = user?.access || roleAccessMap[form.elements.role.value] || roleAccessMap["Помічник"];
+  syncSettingsCustomSelects(form);
   form.querySelector("[data-settings-permissions-grid]").innerHTML = renderPermissionCheckboxes(icon, userPermissionKeys(user || { role: form.elements.role.value }));
   form.elements.caseSearch.value = "";
-  form.elements.caseClient.value = "";
   writeStoredCaseIds(form, selectedCaseIds(user));
+  writeVisibleCaseIds(form, readStoredCaseIds(form));
+  writeAccessClientNames(form, selectedClientNames(state, readStoredCaseIds(form)));
+  writeHiddenCaseIds(form, new Set());
+  writeOpenCaseClients(form, new Set());
   form.querySelector("[data-settings-cases-grid]").innerHTML = "";
   refreshCaseGrid(form, state);
   syncCaseScope(form);
@@ -450,24 +1227,175 @@ function ensureAccessDeliveryDialog(ctx) {
   return dialog;
 }
 
-function ensureInviteDialog(ctx) {
+async function deleteSettingsUserAtIndex(ctx, index) {
+  const { state, saveNavigationState, showToast } = ctx;
+  const removed = state.settingsUsers[index];
+  if (!removed) return false;
+  if (shouldUseApi(state) && removed.id) {
+    try {
+      await deleteSettingsUserFromApi(removed.id);
+    } catch (_error) {
+      showToast("Не вдалося видалити користувача з бази.", "danger");
+      return false;
+    }
+  }
+  state.settingsUsers.splice(index, 1);
+  state.settingsOpenUserMenu = "";
+  addSettingsAudit(state, `Видалено користувача ${removed.name}.`, "red");
+  saveNavigationState();
+  renderSettingsScreen(ctx);
+  showToast(`Користувача ${removed.name} видалено.`, "danger");
+  return true;
+}
+
+function fillDeleteUserDialog(dialog, ctx, index) {
+  const user = ctx.state.settingsUsers[index];
+  dialog.querySelector("[data-settings-delete-user-name]").textContent = user?.name || "користувача";
+  dialog.querySelector("[data-settings-delete-user-email]").textContent = user?.email || "email не вказано";
+  dialog.querySelector("[data-settings-delete-user-role]").textContent = user?.role || "роль не вказана";
+  dialog.querySelector("[data-settings-delete-user-confirm]").disabled = !user;
+  dialog.dataset.userIndex = String(index);
+}
+
+function ensureDeleteUserDialog(ctx) {
   const { icon } = ctx;
+  let dialog = document.querySelector("#settings-user-delete-dialog");
+  if (dialog) return dialog;
+  dialog = document.createElement("dialog");
+  dialog.id = "settings-user-delete-dialog";
+  dialog.innerHTML = `
+    <div class="modal-form crm-modal-form settings-user-delete-dialog">
+      <div class="modal-head crm-modal-head">
+        <div class="crm-modal-title">
+          <span class="crm-modal-title-icon settings-delete-title-icon">${icon("trash")}</span>
+          <div>
+            <h2>Видалити користувача?</h2>
+            <p class="muted">Цю дію потрібно підтвердити, щоб випадково не прибрати доступ співробітника.</p>
+          </div>
+        </div>
+        <button class="crm-modal-close settings-modal-close" type="button" data-settings-delete-user-cancel aria-label="Закрити" title="Закрити">${icon("x")}</button>
+      </div>
+      <div class="settings-delete-warning">
+        <span>${icon("bell")}</span>
+        <div>
+          <strong data-settings-delete-user-name></strong>
+          <em><span data-settings-delete-user-role></span> · <span data-settings-delete-user-email></span></em>
+          <p>Після видалення користувач зникне зі списку команди та втратить налаштований доступ до CRM.</p>
+        </div>
+      </div>
+      <div class="crm-modal-actions settings-delete-actions">
+        <button type="button" class="secondary" data-settings-delete-user-cancel>Скасувати</button>
+        <button type="button" class="primary danger" data-settings-delete-user-confirm>${icon("trash")} Видалити користувача</button>
+      </div>
+    </div>
+  `;
+  document.body.append(dialog);
+  dialog.querySelectorAll("[data-settings-delete-user-cancel]").forEach((button) => {
+    button.addEventListener("click", () => dialog.close());
+  });
+  dialog.querySelector("[data-settings-delete-user-confirm]")?.addEventListener("click", async () => {
+    const button = dialog.querySelector("[data-settings-delete-user-confirm]");
+    const index = Number(dialog.dataset.userIndex);
+    button.disabled = true;
+    const deleted = await deleteSettingsUserAtIndex(ctx, index);
+    button.disabled = false;
+    if (deleted) dialog.close();
+  });
+  return dialog;
+}
+
+async function clearSettingsAuditLog(ctx) {
+  const { state, saveNavigationState, showToast } = ctx;
+  if (shouldUseApi(state)) {
+    try {
+      await clearAuditLogsFromApi();
+    } catch (_error) {
+      showToast("Не вдалося очистити журнал в базі.", "danger");
+      return false;
+    }
+  }
+  state.auditLogs = [];
+  state.settingsAudit = [];
+  saveNavigationState();
+  renderSettingsScreen(ctx);
+  showToast("Журнал змін очищено.");
+  return true;
+}
+
+function ensureClearAuditDialog(ctx) {
+  const { icon } = ctx;
+  let dialog = document.querySelector("#settings-audit-clear-dialog");
+  if (dialog) return dialog;
+  dialog = document.createElement("dialog");
+  dialog.id = "settings-audit-clear-dialog";
+  dialog.innerHTML = `
+    <div class="modal-form crm-modal-form settings-audit-clear-dialog">
+      <div class="modal-head crm-modal-head">
+        <div class="crm-modal-title">
+          <span class="crm-modal-title-icon settings-audit-clear-title-icon">${icon("trash")}</span>
+          <div>
+            <h2>Очистити журнал змін?</h2>
+            <p class="muted">Журнал дій буде прибрано з цього списку після підтвердження.</p>
+          </div>
+        </div>
+        <button class="crm-modal-close settings-modal-close" type="button" data-settings-clear-audit-cancel aria-label="Закрити" title="Закрити">${icon("x")}</button>
+      </div>
+      <div class="settings-audit-clear-warning">
+        <span>${icon("bell")}</span>
+        <div>
+          <strong>Перед очищенням перевірте, що історія більше не потрібна.</strong>
+          <p>Це прибере записи про зміни користувачів, інтеграцій і налаштувань з журналу CRM.</p>
+        </div>
+      </div>
+      <div class="crm-modal-actions settings-delete-actions">
+        <button type="button" class="secondary" data-settings-clear-audit-cancel>Скасувати</button>
+        <button type="button" class="primary danger" data-settings-clear-audit-confirm>${icon("trash")} Очистити журнал</button>
+      </div>
+    </div>
+  `;
+  document.body.append(dialog);
+  dialog.querySelectorAll("[data-settings-clear-audit-cancel]").forEach((button) => {
+    button.addEventListener("click", () => dialog.close());
+  });
+  dialog.querySelector("[data-settings-clear-audit-confirm]")?.addEventListener("click", async () => {
+    const button = dialog.querySelector("[data-settings-clear-audit-confirm]");
+    button.disabled = true;
+    const cleared = await clearSettingsAuditLog(ctx);
+    button.disabled = false;
+    if (cleared) dialog.close();
+  });
+  return dialog;
+}
+
+function ensureInviteDialog(ctx) {
   let dialog = document.querySelector("#settings-invite-dialog");
   if (dialog) return dialog;
   dialog = document.createElement("dialog");
   dialog.id = "settings-invite-dialog";
   dialog.innerHTML = `
-    <form method="dialog" class="modal-form settings-invite-form settings-user-form" id="settings-invite-form">
-      <div class="modal-head">
-        <h2 data-settings-user-dialog-title>Створити користувача</h2>
-        <button class="ghost" type="button" data-settings-invite-close>Закрити</button>
+    <form method="dialog" class="modal-form crm-modal-form settings-invite-form settings-user-form" id="settings-invite-form">
+      <div class="modal-head crm-modal-head settings-invite-head">
+        <div class="crm-modal-title settings-invite-title">
+          <span class="crm-modal-title-icon settings-invite-title-icon">${icon("userPlus")}</span>
+          <div>
+            <h2 data-settings-user-dialog-title>Створити користувача</h2>
+            <p class="muted">Налаштуйте роль, доступ до меню CRM і список справ користувача.</p>
+          </div>
+        </div>
+        <button class="crm-modal-close settings-modal-close" type="button" data-settings-invite-close aria-label="Закрити" title="Закрити">${icon("x")}</button>
       </div>
       <div class="settings-user-form-grid">
-        <label>Ім'я та прізвище<input name="name" required placeholder="Наприклад, Шевченко Марія Ігорівна"></label>
-        <label>Email<input name="email" type="email" required placeholder="user@example.com"></label>
-        <label>Аватар / фото<input name="photo" placeholder="Ініціали або URL фото"></label>
-        <label>Пароль<input name="password" type="text" placeholder="Залишити без змін"></label>
-        <label>Роль
+        <label class="crm-modal-field required">Ім'я та прізвище<input name="name" required placeholder="Наприклад, Шевченко Марія Ігорівна"></label>
+        <label class="crm-modal-field required">Email<input name="email" type="email" required placeholder="user@example.com"></label>
+        <label class="crm-modal-field">Аватар / фото<input name="photo" placeholder="Ініціали або URL фото"></label>
+        <div class="crm-modal-field settings-password-field">
+          <span class="settings-password-field-label">Пароль</span>
+          <div class="settings-password-input-row">
+            <input name="password" type="text" placeholder="Залишити без змін" aria-label="Пароль користувача">
+            <button type="button" class="settings-password-generate" data-settings-generate-password aria-label="Згенерувати тимчасовий пароль" title="Згенерувати тимчасовий пароль">${icon("refresh")}</button>
+          </div>
+        </div>
+        <label class="crm-modal-field settings-select-field">Роль
           <select name="role">
             <option>Адвокат</option>
             <option>Помічник</option>
@@ -476,11 +1404,15 @@ function ensureInviteDialog(ctx) {
           </select>
         </label>
       </div>
-      <label class="checkline settings-password-temporary">
+      <label class="settings-password-temporary">
         <input name="passwordTemporary" type="checkbox">
-        <span>Вимагати зміну пароля при вході</span>
+        <span class="settings-password-copy">
+          <strong>Тимчасовий пароль <button type="button" class="settings-password-info-trigger" data-settings-password-info aria-label="Пояснення тимчасового пароля" title="Пояснення тимчасового пароля">i</button></strong>
+          <em>Вимагати зміну пароля при вході</em>
+        </span>
+        <span class="settings-password-switch" aria-hidden="true"></span>
       </label>
-      <label>Доступ
+      <label class="crm-modal-field settings-select-field">Доступ
         <select name="access">
           ${Object.keys(accessPermissionMap).map((access) => `<option>${access}</option>`).join("")}
         </select>
@@ -498,45 +1430,166 @@ function ensureInviteDialog(ctx) {
           <span data-settings-case-scope>Доступ тільки до вибраних справ</span>
         </div>
         <div class="settings-cases-controls" data-settings-cases-controls>
-          <label>Пошук справи
-            <input name="caseSearch" type="search" placeholder="Клієнт, номер або назва справи" data-settings-case-search>
+          <label class="settings-case-search-field">Пошук або додавання справи
+            <input name="caseSearch" type="search" placeholder="Номер справи, клієнт, стадія або назва" data-settings-case-search>
           </label>
-          <label>Клієнт
-            <select name="caseClient" data-settings-case-client>
-              <option value="">Всі клієнти</option>
-              ${caseClientOptions(ctx.state).map((client) => `<option value="${client}">${client}</option>`).join("")}
-            </select>
+          <label class="settings-case-meta-field">Підсумок доступу
+            <small data-settings-case-filter-meta></small>
           </label>
-          <small data-settings-case-filter-meta></small>
+          <div class="settings-client-picker" data-settings-client-picker></div>
         </div>
         <div class="settings-cases-grid" data-settings-cases-grid></div>
       </section>
-      <button type="submit" class="primary" data-settings-user-submit>Створити користувача</button>
+      <div class="crm-modal-actions settings-user-form-actions">
+        <button type="submit" class="primary" data-settings-user-submit>Створити користувача</button>
+      </div>
     </form>
   `;
   document.body.append(dialog);
   const form = dialog.querySelector("#settings-invite-form");
+  setupSettingsCustomSelect(form?.elements.role, icon);
+  setupSettingsCustomSelect(form?.elements.access, icon);
   form?.elements.role?.addEventListener("change", () => {
     applyRoleDefaultsToForm(form, icon);
     syncCaseScope(form);
+    syncSettingsCustomSelects(form);
   });
-  form?.elements.access?.addEventListener("change", () => applyAccessPresetToForm(form, icon));
+  form?.elements.access?.addEventListener("change", () => {
+    applyAccessPresetToForm(form, icon);
+    syncSettingsCustomSelects(form);
+  });
+  form?.addEventListener("click", (event) => {
+    const trigger = event.target?.closest("[data-settings-custom-select-trigger]");
+    const option = event.target?.closest("[data-settings-custom-select-option]");
+    const generatePassword = event.target?.closest("[data-settings-generate-password]");
+    const passwordInfo = event.target?.closest("[data-settings-password-info]");
+    if (passwordInfo) {
+      event.preventDefault();
+      event.stopPropagation();
+      ensureTemporaryPasswordInfoDialog().showModal();
+      return;
+    }
+    if (generatePassword) {
+      event.preventDefault();
+      form.elements.password.value = generateTemporaryPassword();
+      form.elements.passwordTemporary.checked = true;
+      form.elements.password.focus();
+      return;
+    }
+    if (trigger) {
+      event.preventDefault();
+      const control = trigger.closest(".settings-custom-select");
+      const shouldOpen = !control.classList.contains("is-open");
+      if (shouldOpen) openSettingsCustomSelect(form, control);
+      else closeSettingsCustomSelects(form);
+      return;
+    }
+    if (option) {
+      event.preventDefault();
+      selectSettingsCustomOption(form, option);
+      return;
+    }
+    if (!event.target?.closest(".settings-custom-select")) {
+      closeSettingsCustomSelects(form);
+    }
+  });
+  form?.addEventListener("keydown", (event) => {
+    const trigger = event.target?.closest("[data-settings-custom-select-trigger]");
+    const option = event.target?.closest("[data-settings-custom-select-option]");
+    const control = event.target?.closest(".settings-custom-select");
+    if (!control || (!trigger && !option)) return;
+    if (trigger && ["Enter", " ", "ArrowDown", "ArrowUp"].includes(event.key)) {
+      event.preventDefault();
+      openSettingsCustomSelect(form, control, true);
+      if (event.key === "ArrowUp") moveSettingsCustomSelectFocus(control, -1);
+      return;
+    }
+    if (option && ["Enter", " "].includes(event.key)) {
+      event.preventDefault();
+      selectSettingsCustomOption(form, option);
+      return;
+    }
+    if (option && event.key === "ArrowDown") {
+      event.preventDefault();
+      moveSettingsCustomSelectFocus(control, 1);
+      return;
+    }
+    if (option && event.key === "ArrowUp") {
+      event.preventDefault();
+      moveSettingsCustomSelectFocus(control, -1);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeSettingsCustomSelects(form);
+      control.querySelector("[data-settings-custom-select-trigger]")?.focus({ preventScroll: true });
+    }
+  });
+  document.addEventListener("click", (event) => {
+    if (!dialog.open || dialog.contains(event.target)) return;
+    closeSettingsCustomSelects(form);
+  });
   form?.addEventListener("change", (event) => {
     if (event.target?.name === "permissionKeys") {
       form.elements.access.value = "Індивідуальний доступ";
+      syncSettingsCustomSelects(form);
     }
     if (event.target?.name === "assignedCaseIds") {
-      syncStoredCaseIdsFromForm(form);
-      const meta = form.querySelector("[data-settings-case-filter-meta]");
-      if (meta) {
-        const total = ctx.state.cases?.length || 0;
-        const visible = filteredCases(ctx.state, form.elements.caseSearch?.value || "", form.elements.caseClient?.value || "").length;
-        meta.textContent = `${visible} з ${total} справ · вибрано ${readStoredCaseIds(form).size}`;
-      }
+      const selectedIds = syncStoredCaseIdsFromForm(form);
+      const visibleIds = readVisibleCaseIds(form);
+      const visibleClients = readAccessClientNames(form);
+      const hiddenIds = readHiddenCaseIds(form);
+      const caseItem = (ctx.state.cases || []).find((item) => caseAccessKey(item) === event.target.value);
+      const client = caseClientName(ctx.state, caseItem);
+      if (client) visibleClients.add(client);
+      visibleIds.add(event.target.value);
+      hiddenIds.delete(event.target.value);
+      writeStoredCaseIds(form, selectedIds);
+      writeVisibleCaseIds(form, visibleIds);
+      writeAccessClientNames(form, visibleClients);
+      writeHiddenCaseIds(form, hiddenIds);
+      refreshCaseGrid(form, ctx.state, { syncFromVisibleCases: false });
+    }
+  });
+  form?.addEventListener("toggle", (event) => {
+    if (event.target?.classList?.contains("settings-case-group")) {
+      rememberOpenCaseGroups(form);
+    }
+  }, true);
+  form?.addEventListener("click", (event) => {
+    const hideCase = event.target?.closest("[data-settings-hide-case]");
+    if (hideCase) {
+      event.preventDefault();
+      event.stopPropagation();
+      const selectedIds = syncStoredCaseIdsFromForm(form);
+      const visibleIds = readVisibleCaseIds(form);
+      const hiddenIds = readHiddenCaseIds(form);
+      selectedIds.delete(hideCase.dataset.settingsHideCase);
+      visibleIds.delete(hideCase.dataset.settingsHideCase);
+      hiddenIds.add(hideCase.dataset.settingsHideCase);
+      writeStoredCaseIds(form, selectedIds);
+      writeVisibleCaseIds(form, visibleIds);
+      writeHiddenCaseIds(form, hiddenIds);
+      refreshCaseGrid(form, ctx.state, { syncFromVisibleCases: false });
+      return;
+    }
+    const clearClientCases = event.target?.closest("[data-settings-clear-client-cases]");
+    if (clearClientCases) {
+      event.preventDefault();
+      event.stopPropagation();
+      applyClientScopeChange(form, ctx.state, clearClientCases.dataset.settingsClearClientCases, false, { keepVisible: true });
+      return;
+    }
+    const removeClient = event.target?.closest("[data-settings-remove-client]");
+    if (removeClient) {
+      applyClientScopeChange(form, ctx.state, removeClient.dataset.settingsRemoveClient, false);
+      return;
+    }
+    if (event.target?.closest("[data-settings-open-client-picker]")) {
+      openClientPickerDialog(ctx, form);
     }
   });
   form?.elements.caseSearch?.addEventListener("input", () => refreshCaseGrid(form, ctx.state));
-  form?.elements.caseClient?.addEventListener("change", () => refreshCaseGrid(form, ctx.state));
   dialog.querySelector("[data-settings-role-defaults]")?.addEventListener("click", () => applyRoleDefaultsToForm(form, icon));
   dialog.querySelector("[data-settings-invite-close]")?.addEventListener("click", () => dialog.close());
   form?.addEventListener("submit", async (event) => {
@@ -600,7 +1653,17 @@ export function renderSettingsScreen(ctx) {
     { key: "Email", iconName: "mail", description: "Листи, шаблони та службові повідомлення", modules: "Документи, звіти" },
     { key: "AI", iconName: "search", description: "AI помічники, аналіз справ і чернетки документів", modules: "AI, OSINT, документи" }
   ];
+  if (shouldUseApi(state) && !state.mailingProviderStatus && !state.loadingMailingProviderStatus) {
+    state.loadingMailingProviderStatus = true;
+    refreshMailingProviderStatus(ctx)
+      .catch(() => {})
+      .finally(() => {
+        state.loadingMailingProviderStatus = false;
+        renderSettingsScreen(ctx);
+      });
+  }
   const activeIntegrations = integrations.filter((item) => state.settingsIntegrations[item.key]).length;
+  const providerStatusByChannel = Object.fromEntries((state.mailingProviderStatus?.channels || []).map((item) => [item.channel, item]));
   const enabledNotifications = Object.values(state.settingsNotifications || {}).filter(Boolean).length;
   const activeUsers = users.filter((user) => user.role !== "Видалений").length;
   state.settingsFocusedSection ||= "profile";
@@ -609,6 +1672,10 @@ export function renderSettingsScreen(ctx) {
     { date: settingsAuditDate(1, "18:10"), text: "Оновлено профіль бюро для документів.", tone: "blue" },
     { date: settingsAuditDate(1, "12:40"), text: "Перевірено правила сповіщень по дедлайнах.", tone: "amber" }
   ];
+  const auditItems = [
+    ...(state.auditLogs || []),
+    ...(state.settingsAudit || [])
+  ].slice(0, 20);
 
   $("#settings").innerHTML = `
     <div class="settings-screen">
@@ -627,7 +1694,7 @@ export function renderSettingsScreen(ctx) {
         </button>
         <button class="panel settings-summary-card ${state.settingsFocusedSection === "audit" ? "active" : ""}" type="button" data-settings-focus="audit" aria-pressed="${state.settingsFocusedSection === "audit"}">
           <span>${icon("check")}</span>
-          <div><strong>Готово</strong><em>стан системи</em></div>
+          <div><strong>${auditItems.length}</strong><em>дій у журналі</em></div>
         </button>
       </section>
 
@@ -637,13 +1704,37 @@ export function renderSettingsScreen(ctx) {
             <h2>Профіль бюро</h2>
             <p class="muted">Основні дані, які використовуються в документах, розсилках і профілі адміністратора.</p>
           </div>
-          <button type="button" class="primary" data-save-settings>${icon("check")} Зберегти</button>
+          <button type="button" class="secondary settings-profile-save" data-save-settings>${icon("check")} Зберегти профіль</button>
         </div>
-        <div class="settings-form-grid">
-          <label>Назва бюро<input data-bureau-field="name" value="${state.bureauSettings.name}" /></label>
-          <label>Email<input data-bureau-field="email" value="${state.bureauSettings.email}" /></label>
-          <label>Телефон<input data-bureau-field="phone" value="${state.bureauSettings.phone}" /></label>
-          <label>Адреса<input data-bureau-field="address" value="${state.bureauSettings.address}" /></label>
+        <div class="settings-profile-layout">
+          <div class="settings-bureau-logo-card">
+            <div class="settings-bureau-logo-preview">${renderBureauLogo(state.bureauSettings)}</div>
+            <div class="settings-logo-source">
+              <input type="hidden" data-bureau-field="logo" value="${cleanAttribute(state.bureauSettings.logo || "")}" />
+              <div class="settings-logo-actions">
+                <label class="secondary settings-logo-upload" aria-label="Завантажити логотип" title="Завантажити логотип">${icon("upload")}
+                  <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" data-bureau-logo-upload />
+                </label>
+                <input data-bureau-logo-manual value="${cleanAttribute(bureauLogoDisplayValue(state.bureauSettings))}" placeholder="URL або AB" />
+              </div>
+            </div>
+          </div>
+          <div class="settings-profile-fields">
+            <div class="settings-form-grid settings-bureau-main-grid">
+              <label>Назва бюро<input data-bureau-field="name" value="${cleanAttribute(state.bureauSettings.name || "")}" /></label>
+              <label>Email<input data-bureau-field="email" value="${cleanAttribute(state.bureauSettings.email || "")}" /></label>
+              <label><span class="settings-field-title">${brandIcon("phone")} Телефон</span><input data-bureau-field="phone" value="${cleanAttribute(state.bureauSettings.phone || "")}" /></label>
+              <label><span class="settings-field-title">${brandIcon("telegram")} Telegram</span><input data-bureau-field="telegram" value="${cleanAttribute(state.bureauSettings.telegram || "")}" placeholder="@username або URL" /></label>
+              <label class="settings-wide-field">Адреса<input data-bureau-field="address" value="${cleanAttribute(state.bureauSettings.address || "")}" /></label>
+              <label><span class="settings-field-title">${brandIcon("whatsapp")} WhatsApp</span><input data-bureau-field="whatsapp" value="${cleanAttribute(state.bureauSettings.whatsapp || "")}" placeholder="+380..." /></label>
+            </div>
+            <div class="settings-social-grid">
+              <label><span class="settings-field-title">${brandIcon("instagram")} Instagram</span><input data-bureau-field="instagram" value="${cleanAttribute(state.bureauSettings.instagram || "")}" placeholder="@bureau або URL" /></label>
+              <label><span class="settings-field-title">${brandIcon("facebook")} Facebook</span><input data-bureau-field="facebook" value="${cleanAttribute(state.bureauSettings.facebook || "")}" placeholder="Сторінка або URL" /></label>
+              <label><span class="settings-field-title">${brandIcon("tiktok")} TikTok</span><input data-bureau-field="tiktok" value="${cleanAttribute(state.bureauSettings.tiktok || "")}" placeholder="@bureau або URL" /></label>
+              <label><span class="settings-field-title">${brandIcon("website")} Сайт</span><input data-bureau-field="website" value="${cleanAttribute(state.bureauSettings.website || "")}" placeholder="https://example.com" /></label>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -653,7 +1744,7 @@ export function renderSettingsScreen(ctx) {
             <h2>Користувачі</h2>
             <p class="muted">Ролі команди та рівні доступу до CRM.</p>
           </div>
-          <button type="button" class="secondary" data-settings-action="invite">+ Запросити</button>
+          <button type="button" class="primary settings-invite-action" data-settings-action="invite">${icon("userPlus")} Додати користувача</button>
         </div>
         <div class="settings-users-list">
           ${users.map((user, index) => {
@@ -709,21 +1800,37 @@ export function renderSettingsScreen(ctx) {
           </div>
         </div>
         <div class="settings-toggle-list">
-          ${integrations.map((item) => `<article class="settings-integration-row">
-            <span class="settings-integration-icon">${icon(item.iconName)}</span>
-            <div class="settings-integration-copy">
-              <strong>${item.key}</strong>
-              <em>${item.description}</em>
-              <small>Використовується: ${item.modules}</small>
+          ${integrations.map((item) => {
+            const providerStatus = providerStatusByChannel[item.key];
+            const providerTone = providerStatus?.status === "ready" ? "green" : providerStatus?.status === "disabled" ? "red" : "amber";
+            const needsConfig = providerStatus?.status === "setup";
+            return `<article class="settings-integration-row">
+            <div class="settings-integration-main">
+              <div class="settings-integration-copy">
+                <div class="settings-integration-heading">
+                  <strong>${item.key}</strong>
+                  <button type="button" class="settings-integration-config-button ${needsConfig ? "needs-config" : ""}" data-settings-integration-config="${item.key}" aria-label="Налаштувати ${item.key}" title="${needsConfig ? "Потрібно заповнити параметри підключення" : `Налаштувати ${item.key}`}">${icon("gear")}</button>
+                </div>
+                <em>${item.description}</em>
+              </div>
+              <div class="settings-integration-corner">
+                <span class="settings-integration-icon">${icon(item.iconName)}</span>
+                ${providerStatus ? badge(providerStatus.label, providerTone) : badge(state.settingsIntegrations[item.key] ? "Підключено" : "Вимкнено", state.settingsIntegrations[item.key] ? "green" : "red")}
+              </div>
             </div>
-            <div class="settings-integration-control">
-              ${badge(state.settingsIntegrations[item.key] ? "Підключено" : "Вимкнено", state.settingsIntegrations[item.key] ? "green" : "red")}
+            <div class="settings-integration-meta">
+              <span>${item.modules}</span>
+              ${providerStatus ? `<span>${providerStatus.provider}</span>` : ""}
+            </div>
+            <div class="settings-integration-control ${providerStatus ? "has-test" : ""}">
+              ${providerStatus ? `<button type="button" class="secondary compact" data-settings-provider-test="${item.key}" ${state.settingsTestingProvider === item.key ? "disabled" : ""}>Тест</button>` : ""}
               <label class="settings-switch" aria-label="${item.key}">
                 <input type="checkbox" data-settings-integration="${item.key}" ${state.settingsIntegrations[item.key] ? "checked" : ""} />
                 <span></span>
               </label>
             </div>
-          </article>`).join("")}
+          </article>`;
+          }).join("")}
         </div>
       </section>
 
@@ -750,29 +1857,87 @@ export function renderSettingsScreen(ctx) {
         <div class="settings-section-head">
           <div>
             <h2>Журнал змін</h2>
-            <p class="muted">Останні системні дії по користувачах, інтеграціях і сповіщеннях.</p>
+            <p class="muted">Останні системні дії по клієнтах, справах, задачах, фінансах, користувачах та інтеграціях.</p>
           </div>
-          <button type="button" class="secondary" data-settings-clear-audit>${icon("trash")} Очистити</button>
+          <div class="settings-section-actions">
+            <button type="button" class="secondary" data-settings-refresh-audit>${icon("refresh")} Оновити</button>
+            <button type="button" class="secondary" data-settings-clear-audit>${icon("trash")} Очистити</button>
+          </div>
         </div>
         <div class="settings-audit-list">
-          ${state.settingsAudit.map((item) => `<article>
+          ${auditItems.length ? auditItems.map((item) => `<article>
             ${badge(item.tone === "green" ? "OK" : item.tone === "red" ? "Увага" : "Info", item.tone)}
-            <strong>${item.text}</strong>
-            <span>${item.date}</span>
-          </article>`).join("")}
+            <strong>${cleanSettingValue(item.text || item.summary)}</strong>
+            <span>${cleanSettingValue([item.date, item.actor, item.entityLabel].filter(Boolean).join(" · "))}</span>
+          </article>`).join("") : `<article class="settings-audit-empty"><strong>Журнал змін порожній</strong><span>Нові системні дії з'являться тут після наступної зміни.</span></article>`}
         </div>
       </section>
     </div>
   `;
+  syncBureauBrand(state.bureauSettings);
 
-  document.querySelector("[data-save-settings]")?.addEventListener("click", () => {
+  document.querySelector("[data-save-settings]")?.addEventListener("click", async () => {
     document.querySelectorAll("[data-bureau-field]").forEach((input) => {
       state.bureauSettings[input.dataset.bureauField] = input.value.trim();
     });
     addSettingsAudit(state, "Збережено основні дані профілю бюро.", "blue");
+    try {
+      await persistCrmSettings(ctx);
+    } catch (_error) {
+      showToast("Не вдалося зберегти налаштування в базі.", "danger");
+      return;
+    }
     saveNavigationState();
+    syncBureauBrand(state.bureauSettings);
     renderSettingsScreen(ctx);
     showToast("Налаштування бюро збережено.");
+  });
+  const refreshBureauLogoPreview = () => {
+    document.querySelector(".settings-bureau-logo-preview").innerHTML = renderBureauLogo(state.bureauSettings);
+    syncBureauBrand(state.bureauSettings);
+  };
+  const syncBureauLogoInputs = () => {
+    const logoInput = document.querySelector('[data-bureau-field="logo"]');
+    const logoManual = document.querySelector("[data-bureau-logo-manual]");
+    if (logoInput) logoInput.value = state.bureauSettings.logo || "";
+    if (logoManual) logoManual.value = bureauLogoDisplayValue(state.bureauSettings);
+  };
+  document.querySelector("[data-bureau-logo-manual]")?.addEventListener("input", (event) => {
+    state.bureauSettings.logo = event.target.value.trim();
+    document.querySelector('[data-bureau-field="logo"]').value = state.bureauSettings.logo;
+    refreshBureauLogoPreview();
+  });
+  document.querySelector("[data-bureau-logo-reset]")?.addEventListener("click", () => {
+    state.bureauSettings.logo = defaultBureauLogo;
+    syncBureauLogoInputs();
+    refreshBureauLogoPreview();
+    saveNavigationState();
+    showToast("Повернули стандартний логотип.");
+  });
+  document.querySelector("[data-bureau-logo-upload]")?.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      showToast("Оберіть файл зображення для логотипу.", "danger");
+      return;
+    }
+    if (file.size > 1500000) {
+      showToast("Логотип завеликий. Оберіть файл до 1.5 MB.", "danger");
+      event.target.value = "";
+      return;
+    }
+    try {
+      const dataUrl = await readImageAsDataUrl(file);
+      state.bureauSettings.logo = dataUrl;
+      syncBureauLogoInputs();
+      refreshBureauLogoPreview();
+      saveNavigationState();
+      showToast("Логотип завантажено. Натисніть «Зберегти профіль», щоб закріпити.");
+    } catch (_error) {
+      showToast("Не вдалося прочитати файл логотипу.", "danger");
+    } finally {
+      event.target.value = "";
+    }
   });
   document.querySelectorAll("[data-settings-focus]").forEach((button) => button.addEventListener("click", () => {
     state.settingsFocusedSection = button.dataset.settingsFocus;
@@ -809,49 +1974,90 @@ export function renderSettingsScreen(ctx) {
     renderSettingsScreen(ctx);
     dialog.showModal();
   }));
-  document.querySelectorAll("[data-settings-user-delete]").forEach((button) => button.addEventListener("click", async () => {
+  document.querySelectorAll("[data-settings-user-delete]").forEach((button) => button.addEventListener("click", () => {
     const index = Number(button.dataset.settingsUserDelete);
-    const removed = state.settingsUsers[index];
-    if (!removed) return;
-    if (shouldUseApi(state) && removed.id) {
-      try {
-        await deleteSettingsUserFromApi(removed.id);
-      } catch (_error) {
-        showToast("Не вдалося видалити користувача з бази.", "danger");
-        return;
-      }
-    }
-    state.settingsUsers.splice(index, 1);
+    const dialog = ensureDeleteUserDialog(ctx);
+    fillDeleteUserDialog(dialog, ctx, index);
     state.settingsOpenUserMenu = "";
-    addSettingsAudit(state, `Видалено користувача ${removed.name}.`, "red");
-    saveNavigationState();
     renderSettingsScreen(ctx);
-    showToast(`Користувача ${removed.name} видалено.`, "danger");
+    dialog.showModal();
   }));
-  document.querySelectorAll("[data-settings-integration]").forEach((input) => input.addEventListener("change", () => {
+  document.querySelectorAll("[data-settings-integration]").forEach((input) => input.addEventListener("change", async () => {
     const key = input.dataset.settingsIntegration;
     state.settingsIntegrations[key] = input.checked;
     addSettingsAudit(state, `${key}: ${input.checked ? "інтеграцію увімкнено" : "інтеграцію вимкнено"}.`, input.checked ? "green" : "amber");
+    try {
+      await persistCrmSettings(ctx);
+      await refreshMailingProviderStatus(ctx);
+    } catch (_error) {
+      state.settingsIntegrations[key] = !input.checked;
+      showToast("Не вдалося зберегти інтеграцію в базі.", "danger");
+      renderSettingsScreen(ctx);
+      return;
+    }
     saveNavigationState();
     renderSettingsScreen(ctx);
     showToast(`${key}: ${input.checked ? "увімкнено" : "вимкнено"}.`, input.checked ? "success" : "warning");
   }));
-  document.querySelectorAll("[data-settings-notification]").forEach((input) => input.addEventListener("change", () => {
+  document.querySelectorAll("[data-settings-provider-test]").forEach((button) => button.addEventListener("click", async () => {
+    const channel = button.dataset.settingsProviderTest;
+    state.settingsTestingProvider = channel;
+    renderSettingsScreen(ctx);
+    try {
+      const payload = await testMailingProviderInApi(channel);
+      state.mailingProviderStatus = payload.providerStatus || state.mailingProviderStatus;
+      state.auditLogs = (payload.auditLogs || []).map(normalizeAuditLog);
+      addSettingsAudit(state, `${channel}: тест mock-провайдера ${payload.result?.ok ? "успішний" : "не пройшов"}.`, payload.result?.ok ? "green" : "red");
+      showToast(payload.result?.ok ? `${channel}: тестова відправка успішна.` : (payload.result?.error || `${channel}: тест не пройшов.`), payload.result?.ok ? "success" : "danger");
+    } catch (_error) {
+      showToast("Не вдалося перевірити інтеграцію.", "danger");
+    }
+    state.settingsTestingProvider = "";
+    saveNavigationState();
+    renderSettingsScreen(ctx);
+  }));
+  document.querySelectorAll("[data-settings-integration-config]").forEach((button) => button.addEventListener("click", () => {
+    const channel = button.dataset.settingsIntegrationConfig;
+    const dialog = ensureIntegrationConfigDialog(ctx);
+    fillIntegrationConfigDialog(dialog, ctx, channel);
+    dialog.showModal();
+  }));
+  document.querySelectorAll("[data-settings-notification]").forEach((input) => input.addEventListener("change", async () => {
     const key = input.dataset.settingsNotification;
     state.settingsNotifications[key] = input.checked;
     if (input.checked) {
       state.notificationReadKeys = (state.notificationReadKeys || []).filter((item) => item !== key);
     }
     addSettingsAudit(state, `Сповіщення «${key}» ${input.checked ? "увімкнено" : "вимкнено"}.`, input.checked ? "green" : "amber");
+    try {
+      await persistCrmSettings(ctx);
+    } catch (_error) {
+      state.settingsNotifications[key] = !input.checked;
+      showToast("Не вдалося зберегти сповіщення в базі.", "danger");
+      renderSettingsScreen(ctx);
+      return;
+    }
     syncTopbarNotifications?.();
     saveNavigationState();
     renderSettingsScreen(ctx);
     showToast(input.checked ? "Сповіщення увімкнено." : "Сповіщення вимкнено.", input.checked ? "success" : "warning");
   }));
   document.querySelector("[data-settings-clear-audit]")?.addEventListener("click", () => {
-    state.settingsAudit = [{ date: formatAuditTime(), text: "Журнал змін очищено адміністратором.", tone: "blue" }];
-    saveNavigationState();
-    renderSettingsScreen(ctx);
-    showToast("Журнал змін очищено.");
+    ensureClearAuditDialog(ctx).showModal();
+  });
+  document.querySelector("[data-settings-refresh-audit]")?.addEventListener("click", async () => {
+    if (!shouldUseApi(state)) {
+      showToast("Журнал оновлено у демо-режимі.");
+      return;
+    }
+    try {
+      const payload = await getAuditLogsFromApi(50);
+      state.auditLogs = (payload.results || []).map(normalizeAuditLog);
+      saveNavigationState();
+      renderSettingsScreen(ctx);
+      showToast("Журнал дій оновлено.");
+    } catch (_error) {
+      showToast("Не вдалося оновити журнал дій.", "danger");
+    }
   });
 }

@@ -3,13 +3,42 @@
     "name": "Advocates Bureau",
     "email": "admin@advocates.ua",
     "phone": "+380 44 000 11 22",
-    "address": "м. Київ, вул. Дегтярівська, 31"
+    "address": "м. Київ, вул. Дегтярівська, 31",
+    "logo": "assets/advocates-crm-logo.png",
+    "instagram": "advocates.bureau",
+    "facebook": "AdvocatesBureau",
+    "tiktok": "advocates.bureau",
+    "whatsapp": "+380 44 000 11 22",
+    "telegram": "@advocates_bureau",
+    "website": "https://advocates.ua"
   },
   "integrations": {
     "Telegram": true,
     "SMS": true,
     "Email": false,
     "AI": true
+  },
+  "integrationSettings": {
+    "Telegram": {
+      "botToken": "",
+      "chatId": "",
+      "webhookUrl": ""
+    },
+    "SMS": {
+      "provider": "TurboSMS",
+      "sender": "Advocates",
+      "apiKey": ""
+    },
+    "Email": {
+      "senderEmail": "admin@advocates.ua",
+      "senderName": "Advocates Bureau",
+      "smtpHost": "",
+      "smtpPort": "587"
+    },
+    "AI": {
+      "model": "demo",
+      "workspace": "cases"
+    }
   },
   "notifications": {
     "deadlines": true,

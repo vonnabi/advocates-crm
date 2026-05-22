@@ -4,6 +4,106 @@ async function waitForAppReady(page) {
   await expect(page.locator("#dashboard")).toContainText("Активних справ");
 }
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+    window.localStorage.setItem("crmApiMode", "static");
+  });
+});
+
+function apiWorkspacePayload(permissions) {
+  const year = new Date().getFullYear();
+  const currentUser = {
+    id: 7,
+    name: "Кравчук А.В.",
+    email: "kravchuk@advocates.crm",
+    role: "Помічник",
+    access: "Індивідуальний доступ",
+    photo: "КА",
+    active: true
+  };
+  return {
+    session: {
+      authenticated: true,
+      user: currentUser,
+      permissions
+    },
+    currentUser,
+    settingsUsers: [currentUser],
+    clients: [
+      {
+        id: 1,
+        name: "Марченко Олег",
+        phone: "+380501112233",
+        email: "oleg@example.com",
+        request: "Оскарження рішення ТЦК",
+        notes: "Тестова картка клієнта",
+        status: "Активний",
+        added: `${year}-05-01`,
+        lastContact: `${year}-05-12`,
+        source: "Сайт",
+        manager: "Кравчук А.В.",
+        telegramUsername: "@marchenko",
+        communications: []
+      }
+    ],
+    cases: [
+      {
+        id: `${year}/12345`,
+        clientId: 1,
+        title: "Оскарження рішення ТЦК",
+        type: "Адміністративна",
+        status: "В роботі",
+        stage: "Підготовка позову",
+        priority: "Високий",
+        responsible: "Кравчук А.В.",
+        court: "Окружний адміністративний суд",
+        opened: `${year}-05-01`,
+        deadline: `${year}-05-25`,
+        debt: 0,
+        income: 0,
+        documents: [
+          {
+            name: "Адміністративний позов",
+            type: "Позов",
+            status: "Чернетка",
+            submitted: "-",
+            responseDue: "-"
+          }
+        ],
+        history: [],
+        tasks: [
+          {
+            title: "Підготувати позов",
+            status: "Нова",
+            priority: "Високий",
+            due: `${year}-05-24 10:00`,
+            responsible: "Кравчук А.В.",
+            plannerManual: true,
+            plannerDate: `${year}-05-24`,
+            subtasks: []
+          }
+        ]
+      }
+    ],
+    tasks: [],
+    events: [],
+    financeOperations: [],
+    finance: { income: 0, paid: 0, debt: 0, activeCases: 1, documents: 1, tasks: 1 },
+    meta: {
+      clients: 1,
+      cases: 1,
+      tasks: 1,
+      events: 0,
+      demoData: {
+        enabled: true,
+        total: 3,
+        counts: { clients: 1, cases: 1, tasks: 1, documents: 1, events: 0, financeOperations: 0, communications: 0, campaigns: 0 }
+      }
+    }
+  };
+}
+
 test("topbar back returns from case detail to the cases list", async ({ page }) => {
   await page.goto("/");
   await waitForAppReady(page);
@@ -127,6 +227,26 @@ test("settings integrations update summary and audit trail", async ({ page }) =>
   await waitForAppReady(page);
   await page.locator('.nav-item[data-view="settings"]').click();
 
+  await expect(page.locator('[data-settings-action="invite"]')).toContainText("Додати користувача");
+  await expect(page.locator("[data-save-settings]")).toContainText("Зберегти профіль");
+  await expect(page.locator("[data-bureau-logo-manual]")).toBeVisible();
+  await expect(page.locator('[data-bureau-field="instagram"]')).toBeVisible();
+  await expect(page.locator('[data-bureau-field="facebook"]')).toBeVisible();
+  await expect(page.locator('[data-bureau-field="tiktok"]')).toBeVisible();
+  await expect(page.locator('[data-bureau-field="whatsapp"]')).toBeVisible();
+  await expect(page.locator('[data-bureau-field="telegram"]')).toBeVisible();
+  await expect(page.locator('[data-bureau-field="website"]')).toBeVisible();
+  await expect(page.locator(".settings-contact-preview")).toHaveCount(0);
+  await page.locator("[data-bureau-logo-upload]").setInputFiles({
+    name: "test-logo.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=", "base64")
+  });
+  await expect(page.locator(".settings-bureau-logo-preview img")).toHaveAttribute("src", /^data:image\/png/);
+  await expect(page.locator("[data-bureau-logo-manual]")).toHaveValue("Завантажений логотип");
+  await expect(page.locator('[data-bureau-field="logo"]')).toHaveValue(/^data:image\/png/);
+  await expect(page.locator(".brand-mark img")).toHaveAttribute("src", /^data:image\/png/);
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute("href", /^data:image\/png/);
   await expect(page.locator(".settings-summary-grid")).toContainText("3/4");
   await page.locator('[data-settings-focus="integrations"]').click();
   await expect(page.locator('[data-settings-section="integrations"]')).toHaveClass(/is-focused/);
@@ -138,7 +258,14 @@ test("settings integrations update summary and audit trail", async ({ page }) =>
   await page.locator('[data-settings-focus="audit"]').click();
   await expect(page.locator('[data-settings-section="audit"]')).toHaveClass(/is-focused/);
   await page.locator("[data-settings-clear-audit]").click();
-  await expect(page.locator(".settings-audit-card")).toContainText("Журнал змін очищено");
+  await expect(page.locator("#settings-audit-clear-dialog")).toHaveJSProperty("open", true);
+  await expect(page.locator("#settings-audit-clear-dialog")).toContainText("Очистити журнал змін?");
+  await page.locator("#settings-audit-clear-dialog [data-settings-clear-audit-cancel]").first().click();
+  await expect(page.locator("#settings-audit-clear-dialog")).toHaveJSProperty("open", false);
+  await expect(page.locator(".settings-audit-card")).toContainText("Email: інтеграцію увімкнено");
+  await page.locator("[data-settings-clear-audit]").click();
+  await page.locator("#settings-audit-clear-dialog [data-settings-clear-audit-confirm]").click();
+  await expect(page.locator(".settings-audit-card")).toContainText("Журнал змін порожній");
 });
 
 test("settings user actions open from the three dot menu", async ({ page }) => {
@@ -154,6 +281,15 @@ test("settings user actions open from the three dot menu", async ({ page }) => {
   await expect(page.locator("[data-settings-delivery-message]")).toHaveValue(/Логін:/);
   await expect(page.locator("[data-settings-delivery-message]")).toHaveValue(/Тимчасовий пароль:/);
   await page.locator("[data-settings-delivery-close]").click();
+
+  await page.locator(".settings-user-row").filter({ hasText: "Кравчук А.В." }).locator("[data-settings-user-menu]").click();
+  await page.locator(".settings-user-row").filter({ hasText: "Кравчук А.В." }).locator("[data-settings-user-delete]").click();
+  await expect(page.locator("#settings-user-delete-dialog")).toHaveJSProperty("open", true);
+  await expect(page.locator("#settings-user-delete-dialog")).toContainText("Видалити користувача?");
+  await expect(page.locator("#settings-user-delete-dialog")).toContainText("Кравчук А.В.");
+  await page.locator("#settings-user-delete-dialog [data-settings-delete-user-cancel]").first().click();
+  await expect(page.locator("#settings-user-delete-dialog")).toHaveJSProperty("open", false);
+  await expect(page.locator(".settings-user-row").filter({ hasText: "Кравчук А.В." })).toBeVisible();
 
   await page.locator(".settings-user-row").filter({ hasText: "Кравчук А.В." }).locator("[data-settings-user-menu]").click();
   await expect(assistantRow.locator("[data-settings-user-role]")).toHaveCount(0);
@@ -256,6 +392,9 @@ test("API empty demo mode still renders the workspace and AI empty state", async
   await page.route("**/api/bootstrap/", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(emptyPayload) });
   });
+  await page.route("**/api/demo-data/", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(emptyPayload.meta.demoData) });
+  });
 
   await page.goto("/");
   await expect(page.locator("#dashboard")).toContainText("Активних справ");
@@ -355,6 +494,76 @@ test("assistant API role cannot open the finance section", async ({ page }) => {
   await expect(page.locator("#dashboard")).toHaveClass(/active/);
   await expect(page.locator('.nav-item[data-view="finance"]')).toBeHidden();
   await expect(page.locator("#finance")).not.toHaveClass(/active/);
+});
+
+test("API role hides denied action controls inside allowed sections", async ({ page }) => {
+  const limitedPayload = apiWorkspacePayload({
+    canManageUsers: false,
+    canSeeFinance: false,
+    canManageFinance: false,
+    canManageCases: false,
+    canManageClients: true,
+    canManageTasks: true,
+    canManageDocuments: true,
+    canManageCalendar: true,
+    canManageMailings: false,
+    canUseAi: false,
+    canViewPlanner: true,
+    canViewAnalytics: false,
+    canUseOsint: false
+  });
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+    window.localStorage.setItem("crmApiBase", window.location.origin);
+  });
+  await page.route("**/api/bootstrap/", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(limitedPayload) });
+  });
+
+  await page.goto("/");
+  await page.locator('.nav-item[data-view="clients"]').click();
+
+  await expect(page.locator("#add-client")).toBeVisible();
+  await expect(page.locator("[data-client-telegram-settings]")).toBeHidden();
+  await expect(page.locator("[data-client-mailing-panel]")).toBeHidden();
+
+  await page.locator('.nav-item[data-view="documents"]').click();
+  await expect(page.locator("[data-documents-add]")).toBeVisible();
+  await expect(page.locator("[data-documents-ai]")).toHaveCount(2);
+  await expect(page.locator("[data-documents-ai]").first()).toBeHidden();
+  await expect(page.locator("[data-documents-ai]").nth(1)).toBeHidden();
+});
+
+test("AI action controls are available without client management access", async ({ page }) => {
+  const aiPayload = apiWorkspacePayload({
+    canManageUsers: false,
+    canSeeFinance: false,
+    canManageFinance: false,
+    canManageCases: false,
+    canManageClients: false,
+    canManageTasks: true,
+    canManageDocuments: true,
+    canManageCalendar: true,
+    canManageMailings: false,
+    canUseAi: true,
+    canViewPlanner: true,
+    canViewAnalytics: false,
+    canUseOsint: false
+  });
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+    window.localStorage.setItem("crmApiBase", window.location.origin);
+  });
+  await page.route("**/api/bootstrap/", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(aiPayload) });
+  });
+
+  await page.goto("/");
+
+  await expect(page.locator('.nav-item[data-view="clients"]')).toBeHidden();
+  await page.locator('.nav-item[data-view="ai"]').click();
+  await expect(page.locator("[data-ai-create-case]")).toBeVisible();
+  await expect(page.locator("[data-ai-send]")).toBeVisible();
 });
 
 test("AI assistants search, open chat, and answer quick questions", async ({ page }) => {

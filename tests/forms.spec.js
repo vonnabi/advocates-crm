@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => window.localStorage.clear());
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+    window.localStorage.setItem("crmApiMode", "static");
+  });
 });
 
 async function openApp(page) {
@@ -181,14 +184,36 @@ test("settings invite form adds a bureau user", async ({ page }) => {
   await expect(page.locator("#settings-invite-dialog")).toHaveJSProperty("open", true);
   await page.locator('#settings-invite-form [name="name"]').fill(userName);
   await page.locator('#settings-invite-form [name="email"]').fill("team.autotest@example.com");
-  await page.locator('#settings-invite-form [name="role"]').selectOption("Бухгалтер");
+  await page.locator('.settings-custom-select[data-select-name="role"] [data-settings-custom-select-trigger]').click();
+  await page.locator('.settings-custom-select[data-select-name="role"] [data-settings-custom-select-option]', { hasText: "Бухгалтер" }).click();
+  await expect(page.locator('.settings-custom-select[data-select-name="role"] [data-settings-custom-select-value]')).toHaveText("Бухгалтер");
+  await expect(page.locator('.settings-custom-select[data-select-name="access"] [data-settings-custom-select-value]')).toHaveText("Фінанси та звіти");
   await expect(page.locator('#settings-invite-form [name="access"]')).toHaveValue("Фінанси та звіти");
+  await page.locator('.settings-custom-select[data-select-name="access"] [data-settings-custom-select-trigger]').press("Enter");
+  await expect(page.locator('.settings-custom-select[data-select-name="access"]')).toHaveClass(/is-open/);
+  await page.keyboard.press("Escape");
+  await expect(page.locator('.settings-custom-select[data-select-name="access"]')).not.toHaveClass(/is-open/);
+  await page.locator('[data-settings-generate-password]').click();
+  await expect(page.locator('#settings-invite-form [name="password"]')).toHaveValue(/^crm[a-z0-9]{6}\d{2}$/);
+  await expect(page.locator('#settings-invite-form [name="passwordTemporary"]')).toBeChecked();
+  await page.locator("[data-settings-password-info]").click();
+  await expect(page.locator("#settings-password-info-dialog")).toHaveJSProperty("open", true);
+  await expect(page.locator("#settings-password-info-dialog")).toContainText("після входу");
+  await page.locator("#settings-password-info-dialog [data-settings-password-info-close]").last().click();
+  await expect(page.locator("#settings-password-info-dialog")).toHaveJSProperty("open", false);
+  await expect(page.locator('#settings-invite-form [name="passwordTemporary"]')).toBeChecked();
   await expect(page.locator('.settings-permission-tile:has(input[name="permissionKeys"]:checked)')).toHaveCount(3);
   await expect(page.locator('.settings-permission-tile:has(input[name="permissionKeys"]:checked)')).toContainText([
     "Аналітика",
     "Фінанси",
     "Платежі та зарплата"
   ]);
+  await page.locator("[data-settings-open-client-picker]").first().click();
+  await expect(page.locator("#settings-client-picker-dialog")).toHaveJSProperty("open", true);
+  await page.locator('#settings-client-picker-dialog input[name="clientScope"]').first().check();
+  await page.locator('#settings-client-picker-dialog button[type="submit"]').click();
+  await expect(page.locator('[data-settings-case-filter-meta] span').nth(2)).toContainText("1");
+  await expect(page.locator('#settings-invite-form input[name="assignedCaseIds"]:checked').first()).toBeChecked();
   await page.locator('[data-settings-case-search]').fill("немає такої справи");
   await expect(page.locator(".settings-case-empty")).toBeVisible();
   await page.locator('[data-settings-case-search]').fill(String(new Date().getFullYear()));
@@ -199,6 +224,60 @@ test("settings invite form adds a bureau user", async ({ page }) => {
   await expect(page.locator("#settings")).toContainText(userName);
   await expect(page.locator("#settings")).toContainText("Бухгалтер");
   await expect(page.locator("#settings")).toContainText(`Запрошено користувача ${userName}`);
+});
+
+test("settings client picker applies one case without showing the whole client scope", async ({ page }) => {
+  const year = new Date().getFullYear();
+  const clients = [{ id: 77, name: "Тестовий клієнт з двома справами", phone: "+380 67 000 11 22", email: "client.scope@example.com", request: "Перевірка вибору окремих справ", status: "Активний", source: "Сайт", manager: "Іваненко А.Ю.", communications: [] }];
+  const cases = [
+    { id: `${year}/9001`, clientId: 77, title: "Перша тестова справа", type: "Цивільна", status: "В роботі", stage: "Підготовка", priority: "Середній", responsible: "Іваненко А.Ю.", opened: `${year}-05-01`, deadline: `${year}-06-01`, debt: 0, income: 0, documents: [], history: [], tasks: [] },
+    { id: `${year}/9002`, clientId: 77, title: "Друга тестова справа", type: "Цивільна", status: "В роботі", stage: "Консультація", priority: "Середній", responsible: "Іваненко А.Ю.", opened: `${year}-05-02`, deadline: `${year}-06-02`, debt: 0, income: 0, documents: [], history: [], tasks: [] }
+  ];
+  await page.route("**/data/clients.json", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(clients) });
+  });
+  await page.route("**/data/cases.json", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(cases) });
+  });
+
+  await openApp(page);
+  await page.locator('.nav-item[data-view="settings"]').click();
+  await page.locator('[data-settings-action="invite"]').click();
+  await expect(page.locator("#settings-invite-dialog")).toHaveJSProperty("open", true);
+
+  await page.locator("[data-settings-open-client-picker]").first().click();
+  const picker = page.locator("#settings-client-picker-dialog");
+  await expect(picker).toHaveJSProperty("open", true);
+  const multiCaseClientIndex = await picker.locator(".settings-client-dialog-choice").evaluateAll((choices) =>
+    choices.findIndex((choice) => choice.querySelectorAll('input[name="clientCaseScope"]').length >= 2)
+  );
+  expect(multiCaseClientIndex).toBeGreaterThanOrEqual(0);
+  const firstClient = picker.locator(".settings-client-dialog-choice").nth(multiCaseClientIndex);
+  const firstClientCaseCount = await firstClient.locator('input[name="clientCaseScope"]').count();
+  expect(firstClientCaseCount).toBeGreaterThanOrEqual(2);
+
+  await firstClient.locator('input[name="clientCaseScope"]').nth(1).check();
+  await expect(firstClient.locator(".settings-client-dialog-count")).toHaveText(`1/${firstClientCaseCount} справ`);
+  await expect(firstClient.locator('input[name="clientScope"]')).not.toBeChecked();
+  await expect(firstClient.locator('input[name="clientScope"]')).toHaveJSProperty("indeterminate", true);
+
+  await picker.locator('button[type="submit"]').click();
+  await expect(page.locator(".settings-case-choice")).toHaveCount(1);
+  await expect(page.locator('#settings-invite-form input[name="assignedCaseIds"]:checked')).toHaveCount(1);
+  await expect(page.locator('[data-settings-case-filter-meta] span').nth(0)).toContainText("1");
+  await expect(page.locator('[data-settings-case-filter-meta] span').nth(1)).toContainText("1");
+  await page.locator('#settings-invite-form input[name="assignedCaseIds"]').first().uncheck();
+  await expect(page.locator(".settings-case-choice")).toHaveCount(1);
+  await expect(page.locator('#settings-invite-form input[name="assignedCaseIds"]:checked')).toHaveCount(0);
+  await expect(page.locator('[data-settings-case-filter-meta] span').nth(0)).toContainText("1");
+  await expect(page.locator('[data-settings-case-filter-meta] span').nth(1)).toContainText("0");
+  await page.locator(".settings-case-hide").first().click();
+  await expect(page.locator(".settings-case-choice")).toHaveCount(0);
+
+  await page.locator("[data-settings-open-client-picker]").first().click();
+  await expect(picker).toHaveJSProperty("open", true);
+  await picker.locator(".settings-client-dialog-choice").nth(multiCaseClientIndex).locator('input[name="clientScope"]').check();
+  await expect(picker.locator(".settings-client-dialog-choice").nth(multiCaseClientIndex).locator(".settings-client-dialog-count")).toHaveText(`${firstClientCaseCount}/${firstClientCaseCount} справ`);
 });
 
 test("mailing flow saves a template and creates campaigns", async ({ page }) => {

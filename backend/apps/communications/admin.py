@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Campaign, MessageDelivery, MessageTemplate
+from .models import AutomationRule, Campaign, MessageDelivery, MessageTemplate
 
 
 @admin.register(MessageTemplate)
@@ -29,3 +29,10 @@ class MessageDeliveryAdmin(admin.ModelAdmin):
     list_display = ("campaign", "client", "channel", "status", "sent_at", "delivered_at")
     list_filter = ("channel", "status")
     search_fields = ("campaign__title", "client__full_name")
+
+
+@admin.register(AutomationRule)
+class AutomationRuleAdmin(admin.ModelAdmin):
+    list_display = ("title", "channel", "enabled", "position", "updated_at")
+    list_filter = ("channel", "enabled")
+    search_fields = ("title", "description")

@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "serve": "python3 scripts/dev_server.py",
+    "serve": "cd backend && ../.venv/bin/python manage.py runserver 127.0.0.1:8001",
+    "serve:frontend": "python3 scripts/dev_server.py",
     "test": "npm run test:smoke",
     "test:smoke": "playwright test",
     "test:smoke:headed": "playwright test --headed"
