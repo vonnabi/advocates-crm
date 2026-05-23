@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Advocates Bureau CRM</title>
     <link rel="icon" type="image/png" href="assets/advocates-crm-logo.png" data-brand-favicon />
-    <link rel="stylesheet" href="styles.css?v=settings-ui-48" />
+    <link rel="stylesheet" href="styles.css?v=document-target-archive-top-1" />
   </head>
   <body>
     <aside class="sidebar">
@@ -380,55 +380,164 @@
     </dialog>
 
     <dialog id="document-dialog">
-      <form method="dialog" class="modal-form" id="document-form">
-        <div class="modal-head">
-          <h2 id="document-dialog-title">Новий документ</h2>
-          <button id="document-dialog-close" class="ghost" type="button">Закрити</button>
+      <form method="dialog" class="modal-form crm-modal-form document-editor-modal" id="document-form">
+        <div class="modal-head crm-modal-head document-editor-head">
+          <span class="crm-modal-title-icon document-editor-title-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z"></path><path d="M14 3v6h6"></path><path d="M8 13h8"></path><path d="M8 17h5"></path></svg>
+          </span>
+          <div class="crm-modal-title document-editor-title">
+            <h2 id="document-dialog-title">Новий документ</h2>
+            <p>Додайте файл, посилання або опис документа та прив'яжіть його до папки справи.</p>
+          </div>
+          <button id="document-dialog-close" class="crm-modal-close" type="button" aria-label="Закрити">×</button>
         </div>
         <input name="caseId" type="hidden" />
         <input name="editSource" type="hidden" />
         <input name="docIndex" type="hidden" />
         <input name="folderIndex" type="hidden" />
         <input name="fileIndex" type="hidden" />
-        <label>Назва документа<input name="name" required placeholder="Наприклад: Адвокатський запит.docx" /></label>
-        <label>Файл з комп'ютера<input name="file" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" /></label>
-        <label>Посилання на Google Doc / Drive<input name="url" type="url" placeholder="https://docs.google.com/..." /></label>
-        <label>Тип документа
-          <select name="type">
-            <option>Позов</option>
-            <option>Адвокатський запит</option>
-            <option>Доказ</option>
-            <option>Договір</option>
-            <option>Рахунок</option>
-            <option>Акт</option>
-            <option>Інше</option>
-          </select>
-        </label>
-        <label>Дата подання
-          <input name="submitted" type="date" />
-        </label>
-        <label>Строк отримання відповіді
-          <input name="responseDue" type="date" />
-        </label>
-        <label>Статус
-          <select name="status">
-            <option>Чернетка</option>
-            <option>Відповідь очікується</option>
-            <option>Отримано</option>
-            <option>В роботі</option>
-            <option>Потрібно перевірити</option>
-            <option>Подано</option>
-            <option>Не подано</option>
-          </select>
-        </label>
-        <label>Папка документа
-          <select name="folder" id="document-folder"></select>
-        </label>
-        <label>Новая папка, если нужно создать
-          <input name="newFolderName" placeholder="Например: Докази" />
-        </label>
-        <label>Коментар<textarea name="comment" rows="3"></textarea></label>
-        <button class="primary" id="document-submit-button" value="default" type="submit">Додати документ</button>
+        <fieldset class="document-target-mode" data-document-target-mode aria-label="Куди додати документ" hidden>
+          <legend>Куди додати документ</legend>
+          <label>
+            <input type="radio" name="documentTargetMode" value="case" checked />
+            <span>
+              <strong>У справу</strong>
+              <small>Прив'язати документ до клієнта, справи і папки справи.</small>
+            </span>
+          </label>
+          <label>
+            <input type="radio" name="documentTargetMode" value="archive" />
+            <span>
+              <strong>В архів</strong>
+              <small>Зберегти документ в окремій архівній папці без прив'язки до справи.</small>
+            </span>
+          </label>
+        </fieldset>
+        <section class="document-target-archive-panel" data-document-archive-destination hidden>
+          <label class="document-editor-field document-editor-wide">Архів
+            <input name="archiveFolderId" id="document-archive-folder-select" type="hidden" />
+            <div class="document-archive-picker" data-document-archive-picker="document-form"></div>
+          </label>
+          <label class="document-editor-field">Нова папка архіву
+            <input name="newArchiveFolderName" placeholder="Наприклад: Завершені справи" />
+          </label>
+        </section>
+        <section class="document-destination-card" data-document-destination hidden>
+          <div class="document-destination-head">
+            <span>
+              <strong>Куди додати документ</strong>
+              <small>Оберіть клієнта і справу, якщо додаєте документ з загального меню.</small>
+            </span>
+            <em data-document-destination-summary>Справа буде обрана автоматично</em>
+          </div>
+          <div class="document-destination-grid">
+            <label class="document-editor-field">Клієнт
+              <select name="targetClientId" id="document-target-client"></select>
+            </label>
+            <label class="document-editor-field">Справа
+              <select name="targetCaseId" id="document-target-case"></select>
+            </label>
+          </div>
+        </section>
+        <fieldset class="document-source-mode" aria-label="Як додати документ">
+          <legend>Як додати документ</legend>
+          <label>
+            <input type="radio" name="documentSourceMode" value="upload" />
+            <span>
+              <strong>З комп'ютера</strong>
+              <small>Завантажити готовий PDF, Word, Excel або скан.</small>
+            </span>
+          </label>
+          <label>
+            <input type="radio" name="documentSourceMode" value="google" />
+            <span>
+              <strong>Google Docs</strong>
+              <small>Додати посилання на документ або файл у Drive.</small>
+            </span>
+          </label>
+          <label>
+            <input type="radio" name="documentSourceMode" value="onlyoffice" checked />
+            <span>
+              <strong>Створити в ONLYOFFICE</strong>
+              <small>CRM створить новий Word-файл і відкриє його для редагування.</small>
+            </span>
+          </label>
+          <div class="document-source-popover document-upload-tile" data-document-source-panel="upload">
+            <span>
+              <strong>Файл з комп'ютера</strong>
+              <small>PDF, Word, Excel або скан</small>
+            </span>
+            <label class="document-file-picker">
+              <input name="file" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" />
+              <span>Вибрати файл</span>
+              <em data-document-file-name>Файл не вибрано</em>
+            </label>
+          </div>
+          <div class="document-source-popover" data-document-source-panel="google">
+            <label class="document-editor-field">Посилання на Google Doc / Drive<input name="url" type="url" placeholder="https://docs.google.com/..." /></label>
+          </div>
+          <div class="document-source-popover document-onlyoffice-note" data-document-source-panel="onlyoffice">
+            <span aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"></path><path d="M14 2v6h6"></path><path d="M8 13h8"></path><path d="M8 17h5"></path></svg>
+            </span>
+            <div>
+              <strong>Новий файл буде створено в CRM</strong>
+              <small>Після збереження CRM відкриє документ в ONLYOFFICE, щоб його одразу редагувати.</small>
+            </div>
+            <fieldset class="document-create-format" aria-label="Формат нового файла">
+              <label title="Word DOCX"><input type="radio" name="onlyOfficeCreateFormat" value="docx" checked /><span>WORD</span></label>
+              <label title="Word DOC"><input type="radio" name="onlyOfficeCreateFormat" value="doc" /><span>DOC</span></label>
+              <label title="Текстовий файл"><input type="radio" name="onlyOfficeCreateFormat" value="txt" /><span>TXT</span></label>
+            </fieldset>
+          </div>
+        </fieldset>
+        <div class="document-editor-grid">
+          <label class="document-editor-field document-editor-wide">Назва документа<input name="name" required placeholder="Наприклад: Адвокатський запит.docx" /></label>
+          <label class="document-editor-field">Тип документа
+            <select name="type">
+              <option>Позов</option>
+              <option>Адвокатський запит</option>
+              <option>Доказ</option>
+              <option>Договір</option>
+              <option>Рахунок</option>
+              <option>Акт</option>
+              <option>Інше</option>
+            </select>
+          </label>
+          <label class="document-editor-field">Статус
+            <select name="status">
+              <option>Чернетка</option>
+              <option>Відповідь очікується</option>
+              <option>Отримано</option>
+              <option>В роботі</option>
+              <option>Потрібно перевірити</option>
+              <option>Подано</option>
+              <option>Не подано</option>
+            </select>
+          </label>
+          <label class="document-editor-field">Дата подання
+            <input name="submitted" type="date" />
+          </label>
+          <label class="document-editor-field">Строк отримання відповіді
+            <input name="responseDue" type="date" />
+          </label>
+          <label class="document-editor-field" data-document-case-destination>Папка документа
+            <select name="folder" id="document-folder"></select>
+          </label>
+          <label class="document-editor-field" data-document-case-destination>Нова папка
+            <input name="newFolderName" placeholder="Наприклад: Докази" />
+          </label>
+          <label class="document-editor-field document-editor-wide">Коментар<textarea name="comment" rows="3" placeholder="Коротко: що це за документ, що перевірити або який наступний крок"></textarea></label>
+          <label class="document-editor-field document-editor-wide document-content-field">
+            <span>Текст документа / чернетка</span>
+            <textarea name="content" rows="8" placeholder="Тут можна написати або згенерувати текст документа, а потім експортувати його у Word-сумісний файл."></textarea>
+          </label>
+          <button class="secondary document-draft-button" type="button" data-document-fill-draft>Заповнити чернетку</button>
+        </div>
+        <div class="document-editor-actions">
+          <button class="secondary" value="cancel" type="submit">Скасувати</button>
+          <button class="primary" id="document-submit-button" value="default" type="submit">Додати документ</button>
+        </div>
       </form>
     </dialog>
 
@@ -442,8 +551,154 @@
         <div class="document-preview-actions">
           <button id="document-preview-case" class="secondary" type="button">Відкрити справу</button>
           <button id="document-preview-edit" class="secondary" type="button">Редагувати</button>
+          <button id="document-preview-export" class="secondary" type="button">Експорт</button>
           <button id="document-preview-file" class="primary" type="button">Відкрити файл</button>
         </div>
+      </div>
+    </dialog>
+
+    <dialog id="document-archive-dialog">
+      <form method="dialog" class="modal-form crm-modal-form document-archive-modal" id="document-archive-form">
+        <div class="modal-head crm-modal-head">
+          <span class="crm-modal-title-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 7h16"></path><path d="M6 7v13h12V7"></path><path d="M9 11h6"></path><path d="m8 4 1.5 3"></path><path d="m16 4-1.5 3"></path></svg>
+          </span>
+          <div class="crm-modal-title">
+            <h2>Додати в архів</h2>
+            <p>Оберіть архівну папку або створіть нову. Документ залишиться у справі.</p>
+          </div>
+          <button id="document-archive-close" class="crm-modal-close" type="button" aria-label="Закрити">×</button>
+        </div>
+        <input name="documentKey" type="hidden" />
+        <div class="document-archive-target" data-document-archive-target>
+          <span aria-hidden="true">DOC</span>
+          <div>
+            <strong>Документ</strong>
+            <small>Оберіть документ зі списку.</small>
+          </div>
+        </div>
+        <div class="document-editor-grid">
+          <label class="document-editor-field document-editor-wide">Папка архіву
+            <input name="archiveFolderId" id="document-archive-dialog-folder" type="hidden" />
+            <div class="document-archive-picker" data-document-archive-picker="archive-dialog"></div>
+          </label>
+          <label class="document-editor-field">Нова папка
+            <input name="newArchiveFolderName" placeholder="Наприклад: Завершені документи" />
+          </label>
+          <label class="document-editor-field document-editor-wide">Коментар<textarea name="archiveComment" rows="3" placeholder="Чому документ додано в архів або що з ним робити далі"></textarea></label>
+        </div>
+        <div class="document-editor-actions">
+          <button class="secondary" value="cancel" type="submit">Скасувати</button>
+          <button class="primary" value="default" type="submit">Додати в архів</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="document-archive-folder-dialog">
+      <form method="dialog" class="modal-form crm-modal-form document-archive-modal" id="document-archive-folder-form">
+        <div class="modal-head crm-modal-head">
+          <span class="crm-modal-title-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M3 7h7l2 2h9v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"></path><path d="M12 13v4"></path><path d="M10 15h4"></path></svg>
+          </span>
+          <div class="crm-modal-title">
+            <h2 id="document-archive-folder-title">Нова папка</h2>
+            <p>Створіть папку або підпапку для архівних документів.</p>
+          </div>
+          <button id="document-archive-folder-close" class="crm-modal-close" type="button" aria-label="Закрити">×</button>
+        </div>
+        <input name="mode" type="hidden" />
+        <input name="folderId" type="hidden" />
+        <input name="parentId" type="hidden" />
+        <label class="document-editor-field document-editor-wide">Назва папки
+          <input name="name" required placeholder="Наприклад: Завершені документи" />
+        </label>
+        <div class="document-editor-actions">
+          <button class="secondary" value="cancel" type="submit">Скасувати</button>
+          <button class="primary" value="default" type="submit">Зберегти</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="archive-folder-delete-dialog">
+      <div class="modal-form confirm-dialog archive-folder-delete-modal">
+        <div class="confirm-icon" aria-hidden="true">!</div>
+        <div class="confirm-title-row">
+          <h2 id="archive-folder-delete-title">Видалити папку?</h2>
+        </div>
+        <p id="archive-folder-delete-text" class="muted">Папка буде видалена з архіву.</p>
+        <div class="confirm-actions">
+          <button id="archive-folder-delete-cancel" class="secondary" type="button">Скасувати</button>
+          <button id="archive-folder-delete-confirm" class="primary danger" type="button">Видалити</button>
+        </div>
+        <button id="archive-folder-delete-close" class="confirm-x" type="button" aria-label="Закрити">×</button>
+      </div>
+    </dialog>
+
+    <dialog id="document-export-dialog">
+      <div class="modal-form document-export-modal">
+        <div class="modal-head crm-modal-head">
+          <span class="crm-modal-title-icon" aria-hidden="true">↧</span>
+          <div class="crm-modal-title document-export-title">
+            <h2>Експорт документа</h2>
+            <p>Оберіть формат файлу, який потрібно зберегти на комп'ютер.</p>
+          </div>
+          <button id="document-export-close" class="crm-modal-close" type="button" aria-label="Закрити">×</button>
+        </div>
+        <div class="document-export-file">
+          <span aria-hidden="true">DOC</span>
+          <div>
+            <strong id="document-export-name">Документ</strong>
+            <small id="document-export-case">Файл буде підготовлено з даних CRM.</small>
+          </div>
+        </div>
+        <fieldset class="document-export-options" aria-label="Формат експорту">
+          <label>
+            <input type="radio" name="documentExportFormat" value="word" checked />
+            <span><strong>Word</strong><small>.docx, відкривається в Microsoft Word / LibreOffice</small></span>
+          </label>
+          <label>
+            <input type="radio" name="documentExportFormat" value="pdf" />
+            <span><strong>PDF</strong><small>Готовий PDF-файл буде збережено на комп'ютер</small></span>
+          </label>
+          <label>
+            <input type="radio" name="documentExportFormat" value="html" />
+            <span><strong>HTML</strong><small>Веб-файл з розміткою і даними документа</small></span>
+          </label>
+          <label>
+            <input type="radio" name="documentExportFormat" value="txt" />
+            <span><strong>TXT</strong><small>Чистий текст без оформлення</small></span>
+          </label>
+        </fieldset>
+        <div class="document-editor-actions">
+          <button class="secondary" id="document-export-cancel" type="button">Скасувати</button>
+          <button class="primary" id="document-export-confirm" type="button">Експортувати</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="office-editor-dialog">
+      <div class="modal-form crm-modal-form office-editor-modal">
+        <div class="modal-head crm-modal-head office-editor-head">
+          <span class="crm-modal-title-icon office-editor-title-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z"></path><path d="M14 3v6h6"></path><path d="M8 13h8"></path><path d="M8 17h6"></path></svg>
+          </span>
+          <div class="crm-modal-title office-editor-title">
+            <h2 id="office-editor-title">ONLYOFFICE</h2>
+            <p id="office-editor-subtitle">Редагування та перегляд документів через ONLYOFFICE.</p>
+          </div>
+          <div class="office-editor-window-actions">
+            <span class="office-editor-save-status" title="ONLYOFFICE зберігає документ через callback у CRM">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"></path></svg>
+              Автозбереження
+            </span>
+            <button id="office-editor-fullscreen" class="crm-modal-close office-editor-fullscreen-toggle" type="button" aria-label="На весь екран" aria-pressed="false" title="На весь екран">
+              <svg class="office-expand-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5"></path><path d="M16 3h5v5"></path><path d="M21 16v5h-5"></path><path d="M3 16v5h5"></path></svg>
+              <svg class="office-collapse-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v5H3"></path><path d="M16 3v5h5"></path><path d="M21 16h-5v5"></path><path d="M3 16h5v5"></path></svg>
+            </button>
+            <button id="office-editor-close" class="crm-modal-close" type="button" aria-label="Закрити">×</button>
+          </div>
+        </div>
+        <div id="office-editor-body" class="office-editor-body"></div>
       </div>
     </dialog>
 
@@ -741,6 +996,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="app.js?v=mailings-api-65"></script>
+    <script type="module" src="app.js?v=document-target-archive-top-1"></script>
   </body>
 </html>

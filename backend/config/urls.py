@@ -4,7 +4,7 @@ from django.http import JsonResponse
 from django.urls import path, re_path
 from django.views.static import serve
 
-from .api import audit_logs_api, bootstrap_api, case_detail_api, cases_api, change_password_api, client_communication_detail_api, client_communications_api, client_detail_api, clients_api, demo_data_api, document_detail_api, documents_api, event_detail_api, events_api, finance_operation_detail_api, finance_operations_api, finance_summary_api, login_api, logout_api, mailing_automation_rule_detail_api, mailing_automation_rules_api, mailing_campaign_detail_api, mailing_campaign_send_api, mailing_campaigns_api, mailing_delivery_detail_api, mailing_template_detail_api, mailing_templates_api, mailings_api, session_api, settings_api, settings_provider_status_api, task_detail_api, tasks_api, user_detail_api, users_api
+from .api import audit_logs_api, bootstrap_api, case_detail_api, cases_api, change_password_api, client_communication_detail_api, client_communications_api, client_detail_api, clients_api, demo_data_api, document_detail_api, document_file_api, document_onlyoffice_callback_api, documents_api, event_detail_api, events_api, finance_operation_detail_api, finance_operations_api, finance_summary_api, login_api, logout_api, mailing_automation_rule_detail_api, mailing_automation_rules_api, mailing_campaign_detail_api, mailing_campaign_send_api, mailing_campaigns_api, mailing_delivery_detail_api, mailing_template_detail_api, mailing_templates_api, mailings_api, session_api, settings_api, settings_provider_status_api, task_detail_api, tasks_api, user_detail_api, users_api
 
 
 FRONTEND_ROOT = settings.BASE_DIR.parent / "frontend"
@@ -15,7 +15,15 @@ def healthcheck(_request):
 
 
 def frontend_index(request):
-    return serve(request, "index.html", document_root=FRONTEND_ROOT)
+    return frontend_file(request, "index.html")
+
+
+def frontend_file(request, path):
+    response = serve(request, path, document_root=FRONTEND_ROOT)
+    response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response["Pragma"] = "no-cache"
+    response["Expires"] = "0"
+    return response
 
 
 urlpatterns = [
@@ -42,6 +50,8 @@ urlpatterns = [
     path("api/tasks/<int:task_id>/", task_detail_api),
     path("api/documents/", documents_api),
     path("api/documents/<int:document_id>/", document_detail_api),
+    path("api/documents/<int:document_id>/file/", document_file_api, name="document_file"),
+    path("api/documents/<int:document_id>/onlyoffice/callback/", document_onlyoffice_callback_api, name="document_onlyoffice_callback"),
     path("api/calendar/events/", events_api),
     path("api/calendar/events/<int:event_id>/", event_detail_api),
     path("api/finance/operations/", finance_operations_api),
@@ -57,5 +67,5 @@ urlpatterns = [
     path("api/mailings/automation-rules/", mailing_automation_rules_api),
     path("api/mailings/automation-rules/<int:rule_id>/", mailing_automation_rule_detail_api),
     path("", frontend_index),
-    re_path(r"^(?P<path>(?:app\.js|styles\.css|js/.*|assets/.*|data/.*))$", serve, {"document_root": FRONTEND_ROOT}),
+    re_path(r"^(?P<path>(?:app\.js|styles\.css|js/.*|assets/.*|data/.*))$", frontend_file),
 ]

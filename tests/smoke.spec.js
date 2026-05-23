@@ -65,12 +65,27 @@ test("global documents screen exposes document actions", async ({ page }) => {
   await page.locator('.nav-item[data-view="documents"]').click();
   await expect(page.locator("#documents")).toHaveClass(/active/);
   await expect(page.locator("#documents [data-document-row]").first()).toBeVisible();
+  await expect(page.locator(".documents-esign-overview")).toContainText("Електронний підпис");
+  await expect(page.locator(".documents-kpi-grid")).toContainText("Електронний підпис");
 
   await page.locator("#documents [data-document-row]").first().click();
   const documentMenu = page.locator("#documents .documents-row-actions .row-action-menu-wrap").first();
   await documentMenu.locator("[data-action-menu-trigger]").click();
+  await expect(page.locator(".row-action-menu:not([hidden])")).toContainText(/е-підпис|підпис/i);
+  await expect(page.locator(".row-action-menu:not([hidden])")).toContainText("Експорт");
+  await expect(page.locator(".row-action-menu:not([hidden])")).toContainText("ONLYOFFICE");
+  await page.locator(".row-action-menu:not([hidden]) [data-esign-global-document]").click();
+  await expect(page.locator(".documents-esign-card")).toContainText("Очікує е-підпис");
+  await page.locator("#documents .documents-side [data-office-global-document]").click();
+  await expect(page.locator("#office-editor-dialog")).toHaveJSProperty("open", true);
+  await expect(page.locator("#office-editor-dialog")).toContainText("ONLYOFFICE");
+  await page.locator("#office-editor-close").click();
+  await documentMenu.locator("[data-action-menu-trigger]").click();
   await page.locator(".row-action-menu:not([hidden]) [data-edit-global-document]").click();
   await expect(page.locator("#document-dialog")).toHaveJSProperty("open", true);
+  await expect(page.locator("#document-form textarea[name='content']")).toBeVisible();
+  await page.locator("[data-document-fill-draft]").click();
+  await expect(page.locator("#document-form textarea[name='content']")).toHaveValue(/Справа/);
   await page.locator("#document-dialog-close").click();
 
   await page.locator("#documents [data-documents-add]").click();

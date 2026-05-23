@@ -1257,6 +1257,10 @@ function caseDocumentRows(item) {
 
 export function caseFolders(item) {
   if (!item.folders) {
+    if (item.type === "Демо" || item.stage === "Тестування документів") {
+      item.folders = [];
+      return item.folders;
+    }
     if (!isDemoCaseNumber(item.id)) {
       item.folders = [];
       return item.folders;

@@ -247,12 +247,14 @@ test("settings integrations update summary and audit trail", async ({ page }) =>
   await expect(page.locator('[data-bureau-field="logo"]')).toHaveValue(/^data:image\/png/);
   await expect(page.locator(".brand-mark img")).toHaveAttribute("src", /^data:image\/png/);
   await expect(page.locator('link[rel="icon"]')).toHaveAttribute("href", /^data:image\/png/);
-  await expect(page.locator(".settings-summary-grid")).toContainText("3/4");
+  await expect(page.locator(".settings-summary-grid")).toContainText("3/6");
+  await expect(page.locator('[data-settings-integration="Е-підпис"]')).toBeVisible();
+  await expect(page.locator('[data-settings-integration="ONLYOFFICE"]')).toBeVisible();
   await page.locator('[data-settings-focus="integrations"]').click();
   await expect(page.locator('[data-settings-section="integrations"]')).toHaveClass(/is-focused/);
   await expect(page.locator('[data-settings-focus="integrations"]')).toHaveClass(/active/);
   await page.locator('[data-settings-integration="Email"]').check();
-  await expect(page.locator(".settings-summary-grid")).toContainText("4/4");
+  await expect(page.locator(".settings-summary-grid")).toContainText("4/6");
   await expect(page.locator(".settings-audit-card")).toContainText("Email: інтеграцію увімкнено");
 
   await page.locator('[data-settings-focus="audit"]').click();
@@ -407,6 +409,13 @@ test("API empty demo mode still renders the workspace and AI empty state", async
   await expect(page.locator('.nav-item[data-view="ai"] .nav-new')).toHaveCount(0);
   await expect(page.locator("[data-demo-data-toggle]")).toBeVisible();
   await expect(page.locator("[data-demo-data-summary]")).toHaveText("Вимкнено");
+  await page.locator("[data-demo-data-toggle]").click();
+  await expect(page.locator("#demo-data-overlay")).toBeVisible();
+  await expect(page.locator("[data-demo-data-export]")).toContainText("Скачати копію");
+  await expect(page.locator("[data-demo-data-import-local-wrap]")).toContainText("Завантажити копію");
+  await expect(page.locator("[data-demo-data-import-server-wrap]")).toContainText("Відновити на сервер");
+  await page.locator("[data-demo-data-close]").first().click();
+  await expect(page.locator("#demo-data-overlay")).toBeHidden();
   await expect(page.locator("#notifications-count")).toHaveText("0");
   await expect(page.locator("#notifications-count")).toHaveClass(/empty/);
   await page.locator("#notifications-toggle").click();

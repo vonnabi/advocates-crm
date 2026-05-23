@@ -1,6 +1,6 @@
-import { clearAuditLogsFromApi, deleteSettingsUserFromApi, getAuditLogsFromApi, getMailingProviderStatusFromApi, saveCrmSettingsToApi, saveSettingsUserToApi, shouldUseApi, testMailingProviderInApi } from "../api.js?v=mailings-api-65";
+import { clearAuditLogsFromApi, deleteSettingsUserFromApi, getAuditLogsFromApi, getMailingProviderStatusFromApi, saveCrmSettingsToApi, saveSettingsUserToApi, shouldUseApi, testMailingProviderInApi } from "../api.js?v=mailings-api-69";
 import { icon, navIconName } from "../ui.js?v=settings-icons-5";
-import { normalizeAuditLog, normalizeSettingsUser } from "../state.js?v=mailings-api-65";
+import { normalizeAuditLog, normalizeSettingsUser } from "../state.js?v=mailings-api-69";
 
 const roleAccessMap = {
   "Адміністратор": "Повний доступ",
@@ -46,6 +46,18 @@ const integrationConfigFields = {
     ["smtpHost", "SMTP host", "smtp.example.com", true],
     ["smtpPort", "SMTP port", "587", true]
   ],
+  "Е-підпис": [
+    ["provider", "Провайдер", "Вчасно або Дія.Підпис", true],
+    ["apiToken", "API token", "Токен провайдера підпису", true],
+    ["callbackUrl", "Webhook / callback URL", "https://example.com/esign/callback", false],
+    ["edrpou", "ЄДРПОУ бюро", "12345678", false]
+  ],
+  ONLYOFFICE: [
+    ["documentServerUrl", "Document Server URL", "https://office.example.com", true],
+    ["serverAccessUrl", "CRM URL для Document Server", "http://host.docker.internal:8001", true],
+    ["callbackUrl", "Callback URL CRM", "https://crm.example.com/api/documents/onlyoffice/callback", true],
+    ["jwtSecret", "JWT secret", "Секрет для підпису запитів", false]
+  ],
   AI: [
     ["model", "Модель", "demo", false],
     ["workspace", "Контекст", "cases", false]
@@ -56,6 +68,8 @@ const integrationConfigIcons = {
   Telegram: "telegram",
   SMS: "message",
   Email: "mail",
+  "Е-підпис": "signature",
+  ONLYOFFICE: "file",
   AI: "search"
 };
 const defaultBureauLogo = "assets/advocates-crm-logo.png";
@@ -107,6 +121,98 @@ function displaySettingsUser(user, state) {
     photo: "AD",
     email: "admin@advocates.ua"
   };
+}
+
+function readinessTone(score) {
+  if (score >= 80) return "green";
+  if (score >= 60) return "amber";
+  return "red";
+}
+
+function buildProjectReadiness(state, activeIntegrations, integrationsCount, activeUsers) {
+  const apiReady = shouldUseApi(state);
+  const hasCoreData = Boolean(state.clients?.length && state.cases?.length && state.tasks?.length && state.events?.length);
+  const integrationScore = Math.min(72, 34 + activeIntegrations * 9);
+  const items = [
+    {
+      title: "Основний сценарій",
+      score: hasCoreData ? 88 : 70,
+      status: "Сильна зона",
+      detail: "Клієнти, справи, задачі, календар і фінанси вже проходять основний демо-сценарій.",
+      next: "Далі варто полірувати документи та роботу зі справою."
+    },
+    {
+      title: "Backend і збереження",
+      score: apiReady ? 84 : 58,
+      status: apiReady ? "Працює через API" : "Статичний режим",
+      detail: apiReady ? "Django API, база, ролі, журнал дій і Render-запуск уже підключені." : "Без API зміни залишаються демонстраційними.",
+      next: "Перед пілотом потрібно чітко зафіксувати режим без автоскидання демо."
+    },
+    {
+      title: "Користувачі та доступ",
+      score: activeUsers > 1 ? 78 : 62,
+      status: `${activeUsers} користувачів`,
+      detail: "Є ролі, права, доступ до справ і попередження при видаленні користувача.",
+      next: "Залишився аудит крайніх ролей: помічник, бухгалтер, адвокат."
+    },
+    {
+      title: "Інтеграції",
+      score: integrationScore,
+      status: `${activeIntegrations}/${integrationsCount} активні`,
+      detail: "Telegram, SMS, Email і AI мають UI та mock-перевірки, але ще не є бойовими провайдерами.",
+      next: "Після UI-полірування підключати реальний Telegram як перший канал."
+    },
+    {
+      title: "Документи та AI",
+      score: 54,
+      status: "Демо-логіка",
+      detail: "Документи, Word/AI та OSINT добре показують задум, але ще не працюють як реальний файловий архив.",
+      next: "Найкращий наступний крок: довести документи у справі до робочого зберігання і красивої картки."
+    },
+    {
+      title: "Пілот і безпека",
+      score: apiReady ? 64 : 46,
+      status: "Потребує підготовки",
+      detail: "Є тести й журнал дій, але перед реальними даними потрібні правила резервних копій, режим без демо-скидання та інструкція для клієнта.",
+      next: "Перед передачею клієнту зробити чек-лист пілота і перемикач демо-режиму."
+    }
+  ];
+  const overall = Math.round(items.reduce((sum, item) => sum + item.score, 0) / items.length);
+  const weakItems = [...items].sort((a, b) => a.score - b.score).slice(0, 3);
+  return { overall, items, weakItems };
+}
+
+function renderReadinessSection(readiness, badge, focused) {
+  return `
+    <section class="panel settings-readiness-card ${focused ? "is-focused" : ""}" data-settings-section="readiness">
+      <div class="settings-section-head">
+        <div>
+          <h2>Аудит готовності</h2>
+          <p class="muted">Коротка карта проєкту: що вже можна показувати, а де ще слабкі місця перед пілотом.</p>
+        </div>
+        <div class="settings-readiness-total">
+          <strong>${readiness.overall}%</strong>
+          <span>загальна готовність</span>
+        </div>
+      </div>
+      <div class="settings-readiness-grid">
+        ${readiness.items.map((item) => `<article class="settings-readiness-item tone-${readinessTone(item.score)}">
+          <div class="settings-readiness-item-head">
+            <strong>${item.title}</strong>
+            ${badge(`${item.score}%`, readinessTone(item.score))}
+          </div>
+          <div class="settings-readiness-bar"><span style="width:${item.score}%"></span></div>
+          <em>${item.status}</em>
+          <p>${item.detail}</p>
+          <small>${item.next}</small>
+        </article>`).join("")}
+      </div>
+      <div class="settings-readiness-next">
+        <strong>Найслабші місця зараз</strong>
+        <span>${readiness.weakItems.map((item) => `${item.title} ${item.score}%`).join(" · ")}</span>
+      </div>
+    </section>
+  `;
 }
 
 function bureauLogoValue(settings = {}) {
@@ -1651,6 +1757,8 @@ export function renderSettingsScreen(ctx) {
     { key: "Telegram", iconName: "telegram", description: "Повідомлення клієнтам, тестові відправки, нагадування", modules: "Розсилка, календар" },
     { key: "SMS", iconName: "message", description: "Короткі сповіщення про події та дедлайни", modules: "Події, дедлайни" },
     { key: "Email", iconName: "mail", description: "Листи, шаблони та службові повідомлення", modules: "Документи, звіти" },
+    { key: "Е-підпис", iconName: "signature", description: "Відправка документів на КЕП, контроль статусу та архів підписаних файлів", modules: "Документи, справи" },
+    { key: "ONLYOFFICE", iconName: "file", description: "Повноцінний Word-редактор у CRM для DOCX, коментарів і версій", modules: "Документи, шаблони" },
     { key: "AI", iconName: "search", description: "AI помічники, аналіз справ і чернетки документів", modules: "AI, OSINT, документи" }
   ];
   if (shouldUseApi(state) && !state.mailingProviderStatus && !state.loadingMailingProviderStatus) {
@@ -1667,6 +1775,7 @@ export function renderSettingsScreen(ctx) {
   const enabledNotifications = Object.values(state.settingsNotifications || {}).filter(Boolean).length;
   const activeUsers = users.filter((user) => user.role !== "Видалений").length;
   state.settingsFocusedSection ||= "profile";
+  const readiness = buildProjectReadiness(state, activeIntegrations, integrations.length, activeUsers);
   state.settingsAudit ||= [
     { date: settingsAuditDate(0, "09:30"), text: "Синхронізовано канали Telegram та SMS.", tone: "green" },
     { date: settingsAuditDate(1, "18:10"), text: "Оновлено профіль бюро для документів.", tone: "blue" },
@@ -1696,7 +1805,13 @@ export function renderSettingsScreen(ctx) {
           <span>${icon("check")}</span>
           <div><strong>${auditItems.length}</strong><em>дій у журналі</em></div>
         </button>
+        <button class="panel settings-summary-card ${state.settingsFocusedSection === "readiness" ? "active" : ""}" type="button" data-settings-focus="readiness" aria-pressed="${state.settingsFocusedSection === "readiness"}">
+          <span>${icon("chart")}</span>
+          <div><strong>${readiness.overall}%</strong><em>готовність CRM</em></div>
+        </button>
       </section>
+
+      ${renderReadinessSection(readiness, badge, state.settingsFocusedSection === "readiness")}
 
       <section class="panel settings-profile-card ${state.settingsFocusedSection === "profile" ? "is-focused" : ""}" data-settings-section="profile">
         <div class="settings-section-head">

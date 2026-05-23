@@ -1,17 +1,17 @@
-import { createInitialState } from "./js/state.js?v=mailings-api-65";
+import { createInitialState } from "./js/state.js?v=document-storage-archive-1";
 import {
   closeTopbarPanels as closeTopbarPanelsInChrome,
   isTopbarPanelOpen,
   setupTopbarControls,
   syncTopbarNotifications
-} from "./js/chrome.js?v=live-demo-time-1";
-import { createDialogOpeners } from "./js/dialog-openers.js?v=live-demo-1";
-import { setupDialogControls } from "./js/dialogs.js";
+} from "./js/chrome.js?v=server-snapshot-1";
+import { createDialogOpeners } from "./js/dialog-openers.js?v=document-archive-books-1";
+import { setupDialogControls } from "./js/dialogs.js?v=document-export-modal-1";
 import { setupCaseDetailForms } from "./js/forms/case-details.js";
 import { setupCaseItemForms } from "./js/forms/case-items.js";
 import { setupCaseForm } from "./js/forms/cases.js";
 import { setupClientForm } from "./js/forms/clients.js";
-import { setupDocumentForm } from "./js/forms/documents.js";
+import { setupDocumentForm } from "./js/forms/documents.js?v=document-target-mode-1";
 import { setupEventForm } from "./js/forms/events.js";
 import {
   restoreNavigationState as restoreNavigationStateFromStorage,
@@ -26,7 +26,7 @@ import {
   renderCaseListScreen,
   renderCaseProfileScreen,
   renderCasesScreen
-} from "./js/screens/cases.js";
+} from "./js/screens/cases.js?v=test-doc-case-1";
 import {
   calendarEntries as calendarEntriesScreen,
   calendarEventMeta as calendarEventMetaScreen,
@@ -40,15 +40,15 @@ import {
   renderClientsScreen
 } from "./js/screens/clients.js?v=role-ui-1";
 import { renderDashboardScreen } from "./js/screens/dashboard.js?v=live-demo-1";
-import { renderDocumentsScreen } from "./js/screens/documents.js";
+import { renderDocumentsScreen } from "./js/screens/documents.js?v=document-archive-books-1";
 import {
   renderMailingsScreen,
   setMailingTab as setMailingTabScreen
-} from "./js/screens/mailings.js?v=mailings-api-65";
+} from "./js/screens/mailings.js?v=mailings-api-69";
 import { renderFinanceScreen } from "./js/screens/finance.js?v=live-demo-1";
 import { renderOSINTScreen } from "./js/screens/osint.js?v=live-demo-1";
 import { renderPlannerScreen } from "./js/screens/planner.js";
-import { renderSettingsScreen } from "./js/screens/settings.js?v=mailings-api-65";
+import { renderSettingsScreen } from "./js/screens/settings.js?v=mailings-api-69";
 import {
   allCaseTasks as allCaseTasksScreen,
   renderTasksScreen
@@ -81,7 +81,7 @@ import {
   taskTone,
   todayIso,
   weekDayNames
-} from "./js/ui.js?v=settings-icons-5";
+} from "./js/ui.js?v=document-archive-books-1";
 
 const state = await createInitialState();
 document.documentElement.dataset.dataSource = state.dataSource || "json";
@@ -404,6 +404,8 @@ const {
   findFolderFileByDocument,
   getDocumentPayload,
   openStoredDocument,
+  exportStoredDocument,
+  openOfficeEditor,
   openDocumentDialog,
   openTaskDialog,
   openSubtaskDialog,
@@ -475,6 +477,8 @@ function screenContext() {
     openDeleteDocumentConfirm,
     getDocumentPayload,
     openStoredDocument,
+    exportStoredDocument,
+    openOfficeEditor,
     parseDisplayDate,
     permissions,
     can,
@@ -807,6 +811,7 @@ setupDocumentForm({
   formatDate,
   renderAll,
   switchView,
+  openOfficeEditor,
   showToast
 });
 setupCaseItemForms({ state, $, caseById, caseFolders, formatDate, renderAll, switchView, showToast });

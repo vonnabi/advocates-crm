@@ -24,4 +24,4 @@ elif ! "$PYTHON_BIN" backend/manage.py shell -c "from django.contrib.auth import
 fi
 
 cd backend
-exec "$PYTHON_BIN" -m gunicorn config.wsgi:application --bind "0.0.0.0:${PORT:-8000}"
+exec "$PYTHON_BIN" -m gunicorn config.wsgi:application --bind "0.0.0.0:${PORT:-8001}"

@@ -74,6 +74,7 @@ class CaseDocument(models.Model):
     response_due_at = models.DateField(null=True, blank=True)
     responsible_name = models.CharField(max_length=128, blank=True)
     comment = models.TextField(blank=True)
+    content = models.TextField(blank=True)
     history = models.JSONField(default=list, blank=True)
     is_demo = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)

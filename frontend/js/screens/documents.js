@@ -75,9 +75,15 @@ const DOCUMENT_STATUS_OPTIONS = [
   "Подано",
   "Відповідь очікується",
   "Потрібно перевірити",
+  "Очікує е-підпис",
+  "Підписано КЕП",
+  "Відхилено підпис",
+  "Підпис прострочено",
   "Отримано",
   "Готово"
 ];
+
+const E_SIGN_STATUSES = new Set(["Очікує е-підпис", "Підписано КЕП", "Відхилено підпис", "Підпис прострочено"]);
 
 function documentStatusIconName(status) {
   const icons = {
@@ -87,6 +93,10 @@ function documentStatusIconName(status) {
     "Подано": "fileUp",
     "Відповідь очікується": "bell",
     "Потрібно перевірити": "search",
+    "Очікує е-підпис": "signature",
+    "Підписано КЕП": "signature",
+    "Відхилено підпис": "x",
+    "Підпис прострочено": "warning",
     "Отримано": "file",
     "Готово": "check"
   };
@@ -101,6 +111,10 @@ function documentStatusUiTone(status) {
     "Подано": "doc-submitted",
     "Відповідь очікується": "doc-waiting",
     "Потрібно перевірити": "doc-review",
+    "Очікує е-підпис": "doc-sign-waiting",
+    "Підписано КЕП": "doc-signed",
+    "Відхилено підпис": "doc-sign-rejected",
+    "Підпис прострочено": "doc-sign-expired",
     "Отримано": "doc-received",
     "Готово": "doc-ready"
   };
@@ -132,6 +146,7 @@ function filteredDocuments(ctx, rows) {
       (quickFilter === "submitted" && ["Подано", "Відповідь очікується", "Отримано"].includes(doc.status)) ||
       (quickFilter === "overdue" && documentDueState(ctx, doc).overdue) ||
       (quickFilter === "drafts" && ["Чернетка", "Не подано"].includes(doc.status)) ||
+      (quickFilter === "esign" && E_SIGN_STATUSES.has(doc.status)) ||
       (quickFilter === "ai" && ["Позов", "Адвокатський запит", "Доказ"].includes(doc.type || ""));
     return matchesQuery && matchesStatus && matchesCase && matchesType && matchesClient && matchesDue && matchesQuick;
   });
@@ -171,6 +186,79 @@ function activeArchiveSelection(ctx, rows) {
   return { selectedCase, selectedFolder, visibleRows, isAll: selectedCaseId === "all" };
 }
 
+function archiveFolderId(name = "Архів") {
+  return String(name)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-zа-яіїєґ0-9]+/giu, "-")
+    .replace(/^-+|-+$/g, "")
+    || `archive-${Date.now()}`;
+}
+
+function escapeHtml(value = "") {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function ensureDocumentStorageArchive(state) {
+  if (!Array.isArray(state.documentArchiveFolders)) {
+    state.documentArchiveFolders = [
+      { id: "finished", name: "Завершені документи", documents: [], children: [] },
+      { id: "saved", name: "На зберіганні", documents: [], children: [] }
+    ];
+  }
+  const normalize = (folders) => folders.forEach((folder) => {
+    if (!Array.isArray(folder.documents)) folder.documents = [];
+    if (!Array.isArray(folder.children)) folder.children = [];
+    normalize(folder.children);
+  });
+  normalize(state.documentArchiveFolders);
+  if (!state.documentStorageArchiveFolderId) state.documentStorageArchiveFolderId = "all";
+  return state.documentArchiveFolders;
+}
+
+function documentArchiveCount(folders = []) {
+  return folders.reduce((sum, folder) => sum + (folder.documents || []).length + documentArchiveCount(folder.children || []), 0);
+}
+
+function findArchiveFolder(folders = [], id, parent = null) {
+  for (const folder of folders) {
+    if (folder.id === id) return { folder, parent };
+    const nested = findArchiveFolder(folder.children || [], id, folder);
+    if (nested) return nested;
+  }
+  return null;
+}
+
+function removeArchiveFolder(folders = [], id) {
+  const index = folders.findIndex((folder) => folder.id === id);
+  if (index >= 0) {
+    folders.splice(index, 1);
+    return true;
+  }
+  return folders.some((folder) => removeArchiveFolder(folder.children || [], id));
+}
+
+function archiveFolderExists(folders = [], id) {
+  return Boolean(findArchiveFolder(folders, id));
+}
+
+function renderArchivePickerTree(folders = [], selectedId = "", escapeHtml, depth = 0) {
+  return folders.map((folder) => `
+    <button class="document-archive-picker-node ${selectedId === folder.id ? "active" : ""}" type="button" data-document-archive-pick="${escapeHtml(folder.id)}" style="--level:${depth}">
+      <span aria-hidden="true">›</span>
+      <i class="folder-icon" aria-hidden="true"></i>
+      <strong>${escapeHtml(folder.name)}</strong>
+      <em>${(folder.documents || []).length}</em>
+    </button>
+    ${renderArchivePickerTree(folder.children || [], selectedId, escapeHtml, depth + 1)}
+  `).join("");
+}
+
 export function renderDocumentsScreen(ctx) {
   const {
     state,
@@ -184,6 +272,8 @@ export function renderDocumentsScreen(ctx) {
     caseFolders,
     getDocumentPayload,
     openStoredDocument,
+    exportStoredDocument,
+    openOfficeEditor,
     openDocumentDialog,
     openFolderDialog,
     openDeleteDocumentConfirm,
@@ -192,6 +282,9 @@ export function renderDocumentsScreen(ctx) {
     showToast
   } = ctx;
   const rows = documentRows(ctx).map((doc) => ({ ...doc, dueState: documentDueState(ctx, doc) }));
+  const storageArchiveFolders = ensureDocumentStorageArchive(state);
+  const storageArchiveTotal = documentArchiveCount(storageArchiveFolders);
+  const storageArchiveActive = state.documentStorageArchiveFolderId || "all";
   const documentKeys = new Set(rows.map((doc) => doc.key));
   state.selectedDocumentKeys = (state.selectedDocumentKeys || []).filter((key) => documentKeys.has(key));
   const statuses = [...new Set(rows.map((doc) => doc.status).filter(Boolean))];
@@ -218,6 +311,7 @@ export function renderDocumentsScreen(ctx) {
   const selectedCaseCandidate = archive.selectedCase?.id || selected?.caseId || state.selectedCaseId || state.cases[0]?.id || "";
   const selectedCaseItem = selectedCaseCandidate ? ctx.caseById(selectedCaseCandidate) : null;
   const selectedCase = selectedCaseItem?.id || "";
+  const hasCases = Boolean(state.cases.length);
   const selectedFolders = selectedCaseItem ? caseFolders(selectedCaseItem) : [];
   const selectedFolderIndex = archive.selectedFolder
     ? selectedFolders.findIndex((folder) => folder.name === archive.selectedFolder.name)
@@ -225,7 +319,11 @@ export function renderDocumentsScreen(ctx) {
   const submittedCount = rows.filter((doc) => ["Подано", "Відповідь очікується", "Отримано"].includes(doc.status)).length;
   const draftCount = rows.filter((doc) => ["Чернетка", "Не подано"].includes(doc.status)).length;
   const overdueCount = rows.filter((doc) => doc.dueState.overdue).length;
+  const eSignCount = rows.filter((doc) => E_SIGN_STATUSES.has(doc.status)).length;
   const aiReadyCount = rows.filter((doc) => ["Позов", "Адвокатський запит", "Доказ"].includes(doc.type || "")).length;
+  const eSignEnabled = Boolean(state.settingsIntegrations?.["Е-підпис"]);
+  const eSignSettings = state.settingsIntegrationSettings?.["Е-підпис"] || {};
+  const eSignProvider = eSignSettings.provider || "Вчасно / Дія.Підпис";
   const quickFilter = state.documentQuickFilter || "all";
   const hasManualDocumentFilters =
     Boolean((state.documentQuery || "").trim()) ||
@@ -241,6 +339,38 @@ export function renderDocumentsScreen(ctx) {
     ? "Архів по всіх справах"
     : `№${archive.selectedCase?.id || selectedCase} · ${archive.selectedCase?.title || "Архів документів"}`;
   const documentsNode = $("#documents");
+  const renderStorageTree = (folders = [], depth = 0) => folders.map((folder) => {
+    const active = storageArchiveActive === folder.id;
+    const docs = folder.documents || [];
+    const nested = folder.children || [];
+    return `
+      <div class="documents-storage-folder ${active ? "open" : ""}">
+        <div class="documents-storage-folder-row ${active ? "active" : ""}" style="--level:${depth}">
+          <button class="documents-storage-folder-main" type="button" data-document-storage-folder="${folder.id}">
+            <span class="documents-storage-folder-arrow">›</span>
+            <i class="folder-icon" aria-hidden="true"></i>
+            <strong>${escapeHtml(folder.name)}</strong>
+            <em>${documentArchiveCount([folder])}</em>
+          </button>
+          ${actionMenu([
+            { label: "Перейменувати", icon: "edit", attrs: { "data-archive-folder-rename": folder.id } },
+            { label: "Додати підпапку", icon: "file", attrs: { "data-archive-folder-add-child": folder.id } },
+            { label: "Видалити", icon: "trash", danger: true, attrs: { "data-archive-folder-delete": folder.id } }
+          ], { label: "Дії папки архіву" })}
+        </div>
+        ${active ? `<div class="documents-folder-list documents-storage-doc-list">
+          ${docs.map((doc) => `
+            <button class="documents-folder-node" type="button" data-document-storage-doc="${doc.sourceKey || ""}">
+              ${icon("file")}
+              <span>${escapeHtml(doc.name)}</span>
+              <em>№${doc.caseId || "-"}</em>
+            </button>
+          `).join("") || `<p class="documents-tree-empty">Документів у цій папці ще немає</p>`}
+        </div>` : ""}
+        ${nested.length ? `<div class="documents-storage-children">${renderStorageTree(nested, depth + 1)}</div>` : ""}
+      </div>
+    `;
+  }).join("");
 
   documentsNode.innerHTML = `
     <div class="documents-screen">
@@ -250,10 +380,9 @@ export function renderDocumentsScreen(ctx) {
           <p>Файли, процесуальні документи та матеріали по всіх справах</p>
         </div>
         <div class="documents-toolbar-actions">
-          <button class="secondary" type="button" data-documents-template ${selectedCase ? "" : "disabled"}>${icon("file")} Створити Word</button>
           <button class="secondary" type="button" data-documents-ai ${selected ? "" : "disabled"}>${icon("search")} AI аналіз</button>
           <button class="secondary" type="button" data-documents-add-folder ${selectedCase ? "" : "disabled"}>${icon("file")} Створити папку</button>
-          <button class="primary" type="button" data-documents-add ${selectedCase ? "" : "disabled"}>${icon("file")} Додати документ</button>
+          <button class="primary" type="button" data-documents-add ${hasCases ? "" : "disabled"}>${icon("file")} Додати документ</button>
         </div>
       </div>
 
@@ -262,8 +391,30 @@ export function renderDocumentsScreen(ctx) {
         <button class="panel documents-kpi-card ${quickFilter === "submitted" ? "active" : ""}" type="button" data-document-kpi="submitted"><span class="green">${icon("check")}</span><div><strong>${submittedCount}</strong><em>Подано / отримано</em></div></button>
         <button class="panel documents-kpi-card ${quickFilter === "overdue" ? "active" : ""}" type="button" data-document-kpi="overdue"><span class="red">${icon("bell")}</span><div><strong>${overdueCount}</strong><em>Без відповіді в строк</em></div></button>
         <button class="panel documents-kpi-card ${quickFilter === "drafts" ? "active" : ""}" type="button" data-document-kpi="drafts"><span class="amber">${icon("edit")}</span><div><strong>${draftCount}</strong><em>Чернетки та не подано</em></div></button>
+        <button class="panel documents-kpi-card ${quickFilter === "esign" ? "active" : ""}" type="button" data-document-kpi="esign"><span class="violet">${icon("signature")}</span><div><strong>${eSignCount}</strong><em>Електронний підпис</em></div></button>
         <button class="panel documents-kpi-card ${quickFilter === "ai" ? "active" : ""}" type="button" data-document-kpi="ai"><span class="violet">${icon("search")}</span><div><strong>${aiReadyCount}</strong><em>Готово для AI/Word</em></div></button>
       </div>
+
+      <section class="panel documents-esign-overview">
+        <div class="documents-esign-title">
+          <span>${icon("signature")}</span>
+          <div>
+            <h3>Електронний підпис</h3>
+            <p>Чернетка майбутнього сценарію: CRM готує документ, провайдер підписує КЕП, статус повертається у справу.</p>
+          </div>
+        </div>
+        <div class="documents-esign-steps">
+          <span class="active">1. Обрати документ</span>
+          <span>2. Надіслати клієнту</span>
+          <span>3. Отримати КЕП</span>
+          <span>4. Зберегти в архів</span>
+        </div>
+        <div class="documents-esign-provider">
+          ${badge(eSignEnabled ? "Підключено" : "Не підключено", eSignEnabled ? "green" : "amber")}
+          <strong>${eSignProvider}</strong>
+          <em>${eSignEnabled ? "Дані провайдера збережені в інтеграціях." : "Після вибору провайдера тут буде бойова відправка і перевірка статусу."}</em>
+        </div>
+      </section>
 
       <div class="documents-filters panel">
         <input type="search" data-document-query placeholder="Пошук документа, справи, клієнта..." value="${state.documentQuery || ""}">
@@ -288,50 +439,68 @@ export function renderDocumentsScreen(ctx) {
       </div>
 
       <div class="documents-layout">
-        <aside class="documents-archive panel">
-          <div class="documents-archive-head">
-            <h3>Архів справ</h3>
-            <span>${state.cases.length} справ</span>
-          </div>
-          <div class="documents-tree">
-            <button class="documents-all-node ${archive.isAll ? "active" : ""}" type="button" data-document-all-node>
-              <span>${icon("file")}</span>
-              <strong>Усі документи</strong>
-              <em>${filtered.length}</em>
-            </button>
-            ${state.cases.map((item) => {
-              const client = ctx.clientById(item.clientId);
-              const folders = caseFolders(item);
-              const caseRows = filtered.filter((doc) => doc.caseId === item.id);
-              const isOpen = archive.selectedCase?.id === item.id;
-              return `
-                <div class="documents-tree-case ${isOpen ? "open" : ""}">
-                  <button class="documents-case-node ${isOpen && !archive.selectedFolder ? "active" : ""}" type="button" data-document-case-node="${item.id}">
-                    <span>${icon("briefcase")}</span>
-                    <strong>№${item.id}</strong>
-                    <em>${caseRows.length}</em>
-                    <b class="documents-case-arrow">›</b>
-                    <small>${item.title}</small>
-                    <small class="documents-case-client">${client?.name || "Клієнт не вказаний"}</small>
-                  </button>
-                  ${isOpen ? `<div class="documents-folder-list">
-                    ${folders.map((folder) => {
-                      const count = filtered.filter((doc) => doc.caseId === item.id && doc.folderName === folder.name).length;
-                      const active = archive.selectedCase?.id === item.id && archive.selectedFolder?.name === folder.name;
-                      return `
-                        <button class="documents-folder-node ${active ? "active" : ""}" type="button" data-document-folder-node="${folderKey(item.id, folder.name)}">
-                          ${icon("file")}
-                          <span>${folder.name}</span>
-                          <em>${count}</em>
-                        </button>
-                      `;
-                    }).join("") || `<p class="documents-tree-empty">Папок ще немає</p>`}
-                  </div>` : ""}
-                </div>
-              `;
-            }).join("")}
-          </div>
-        </aside>
+        <div class="documents-left-rail">
+          <aside class="documents-archive panel">
+            <div class="documents-archive-head">
+              <h3>Архів справ</h3>
+              <span>${state.cases.length} справ</span>
+            </div>
+            <div class="documents-tree">
+              <button class="documents-all-node ${archive.isAll ? "active" : ""}" type="button" data-document-all-node>
+                <span>${icon("file")}</span>
+                <strong>Усі документи</strong>
+                <em>${filtered.length}</em>
+              </button>
+              ${state.cases.map((item) => {
+                const client = ctx.clientById(item.clientId);
+                const folders = caseFolders(item);
+                const caseRows = filtered.filter((doc) => doc.caseId === item.id);
+                const isOpen = archive.selectedCase?.id === item.id;
+                return `
+                  <div class="documents-tree-case ${isOpen ? "open" : ""}">
+                    <button class="documents-case-node ${isOpen && !archive.selectedFolder ? "active" : ""}" type="button" data-document-case-node="${item.id}">
+                      <span>${icon("briefcase")}</span>
+                      <strong>№${item.id}</strong>
+                      <em>${caseRows.length}</em>
+                      <b class="documents-case-arrow">›</b>
+                      <small>${item.title}</small>
+                      <small class="documents-case-client">${client?.name || "Клієнт не вказаний"}</small>
+                    </button>
+                    ${isOpen ? `<div class="documents-folder-list">
+                      ${folders.map((folder) => {
+                        const count = filtered.filter((doc) => doc.caseId === item.id && doc.folderName === folder.name).length;
+                        const active = archive.selectedCase?.id === item.id && archive.selectedFolder?.name === folder.name;
+                        return `
+                          <button class="documents-folder-node ${active ? "active" : ""}" type="button" data-document-folder-node="${folderKey(item.id, folder.name)}">
+                            ${icon("file")}
+                            <span>${folder.name}</span>
+                            <em>${count}</em>
+                          </button>
+                        `;
+                      }).join("") || `<p class="documents-tree-empty">Папок ще немає</p>`}
+                    </div>` : ""}
+                  </div>
+                `;
+              }).join("")}
+            </div>
+          </aside>
+
+          <aside class="documents-archive documents-storage-archive panel">
+            <div class="documents-archive-head">
+              <h3>Архів</h3>
+              <span>${storageArchiveTotal} док.</span>
+            </div>
+            <button class="secondary documents-storage-add-folder" type="button" data-archive-folder-add-root><i class="folder-icon" aria-hidden="true"></i> Додати папку</button>
+            <div class="documents-tree">
+              <button class="documents-all-node ${storageArchiveActive === "all" ? "active" : ""}" type="button" data-document-storage-folder="all">
+                <span>${icon("archive")}</span>
+                <strong>Усі архівні</strong>
+                <em>${storageArchiveTotal}</em>
+              </button>
+              ${renderStorageTree(storageArchiveFolders) || `<p class="documents-tree-empty">Архівних папок ще немає</p>`}
+            </div>
+          </aside>
+        </div>
 
         <section class="panel table-wrap documents-table-card">
           <div class="documents-folder-head">
@@ -383,6 +552,10 @@ export function renderDocumentsScreen(ctx) {
                       ${actionMenu([
                         { label: "Відкрити", icon: "eye", attrs: { "data-view-global-document": doc.key, "aria-label": "Відкрити документ" } },
                         { label: "Редагувати", icon: "edit", attrs: { "data-edit-global-document": doc.key, "aria-label": "Редагувати документ" } },
+                        { label: E_SIGN_STATUSES.has(doc.status) ? "Перевірити підпис" : "На е-підпис", icon: "signature", attrs: { "data-esign-global-document": doc.key, "aria-label": "Електронний підпис" } },
+                        { label: "ONLYOFFICE", icon: "file", attrs: { "data-office-global-document": doc.key, "aria-label": "Відкрити в ONLYOFFICE" } },
+                        { label: "Експорт", icon: "fileUp", attrs: { "data-export-global-document": doc.key, "aria-label": "Експортувати документ" } },
+                        { label: "Додати в архів", icon: "archive", attrs: { "data-archive-global-document": doc.key, "aria-label": "Додати документ в архів" } },
                         { label: "Видалити", icon: "trash", danger: true, attrs: { "data-delete-global-document": doc.key, "aria-label": "Видалити документ" } }
                       ], { label: "Дії документа" })}
                     </div>
@@ -450,8 +623,22 @@ export function renderDocumentsScreen(ctx) {
             <div class="documents-side-actions">
               <button class="primary" type="button" data-view-global-document="${selected.key}">${icon("eye")} Відкрити</button>
               <button class="secondary" type="button" data-edit-global-document="${selected.key}">${icon("edit")} Редагувати</button>
+              <button class="secondary" type="button" data-esign-global-document="${selected.key}">${icon("signature")} ${E_SIGN_STATUSES.has(selected.status) ? "Статус КЕП" : "На підпис"}</button>
+              <button class="secondary" type="button" data-office-global-document="${selected.key}">${icon("file")} ONLYOFFICE</button>
+              <button class="secondary" type="button" data-export-global-document="${selected.key}">${icon("fileUp")} Експорт</button>
+              <button class="secondary" type="button" data-archive-global-document="${selected.key}">${icon("archive")} В архів</button>
               <button class="secondary" type="button" data-open-document-case="${selected.caseId}">${icon("briefcase")} Справа</button>
               <button class="secondary" type="button" data-documents-ai>${icon("search")} AI перевірка</button>
+            </div>
+            <div class="documents-esign-card ${E_SIGN_STATUSES.has(selected.status) ? "active" : ""}">
+              <div>
+                <span>${icon("signature")}</span>
+                <strong>${E_SIGN_STATUSES.has(selected.status) ? selected.status : "Документ ще не на підписі"}</strong>
+              </div>
+              <p>${E_SIGN_STATUSES.has(selected.status)
+                ? "CRM показує майбутній контроль е-підпису: очікування, перевірка, відмова або готовий підписаний файл."
+                : "Натисніть «На підпис», щоб показати замовнику демо-перехід документа в процес КЕП."}</p>
+              <small>Провайдер: ${eSignProvider}</small>
             </div>
             <div class="documents-ai-card">
               <strong>AI / Word</strong>
@@ -477,16 +664,188 @@ export function renderDocumentsScreen(ctx) {
     </div>
   `;
 
+  const archiveDialog = $("#document-archive-dialog");
+  const archiveForm = $("#document-archive-form");
+  const archiveTarget = archiveDialog?.querySelector("[data-document-archive-target]");
+  const archiveSelect = $("#document-archive-dialog-folder");
+  const fillArchiveDialogFolders = () => {
+    if (!archiveSelect) return;
+    if (!archiveSelect.value && storageArchiveFolders[0]) archiveSelect.value = storageArchiveFolders[0].id;
+    const picker = archiveDialog?.querySelector('[data-document-archive-picker="archive-dialog"]');
+    if (!picker) return;
+    picker.innerHTML = renderArchivePickerTree(storageArchiveFolders, archiveSelect.value, escapeHtml) || `<p>Архівних папок ще немає.</p>`;
+    picker.querySelectorAll("[data-document-archive-pick]").forEach((button) => {
+      button.addEventListener("click", () => {
+        archiveSelect.value = button.dataset.documentArchivePick || "";
+        fillArchiveDialogFolders();
+      });
+    });
+  };
+  const openArchiveDialog = (key) => {
+    const doc = rows.find((row) => row.key === key);
+    if (!doc || !archiveDialog || !archiveForm) return;
+    archiveForm.reset();
+    archiveForm.elements.documentKey.value = key;
+    fillArchiveDialogFolders();
+    if (archiveTarget) {
+      archiveTarget.innerHTML = `
+        <span aria-hidden="true">DOC</span>
+        <div>
+          <strong>${doc.name}</strong>
+          <small>№${doc.caseId} · ${doc.client}</small>
+        </div>
+      `;
+    }
+    archiveDialog.showModal();
+  };
+  const addDocumentToStorageArchive = (key, folderId, newFolderName = "", comment = "") => {
+    const doc = rows.find((row) => row.key === key);
+    if (!doc) return false;
+    let folder = findArchiveFolder(storageArchiveFolders, folderId)?.folder || null;
+    if (newFolderName) {
+      const name = String(newFolderName || "").trim() || "Нова папка архіву";
+      let id = archiveFolderId(name);
+      if (archiveFolderExists(storageArchiveFolders, id)) id = `${id}-${Date.now()}`;
+      const nextFolder = { id, name, createdAt: new Date().toLocaleDateString("uk-UA"), documents: [], children: [] };
+      if (folder) folder.children.unshift(nextFolder);
+      else storageArchiveFolders.unshift(nextFolder);
+      folder = nextFolder;
+    }
+    if (!folder) return false;
+    if (!Array.isArray(folder.documents)) folder.documents = [];
+    const archivedAt = new Date().toLocaleDateString("uk-UA");
+    const existing = folder.documents.find((archiveDoc) => archiveDoc.sourceKey === key || archiveDoc.documentId && archiveDoc.documentId === doc.documentId);
+    const payload = {
+      sourceKey: key,
+      documentId: doc.documentId,
+      name: doc.name,
+      type: doc.type,
+      caseId: doc.caseId,
+      caseTitle: doc.caseTitle,
+      client: doc.client,
+      folderName: doc.folderName,
+      archivedAt,
+      comment
+    };
+    if (existing) Object.assign(existing, payload);
+    else folder.documents.unshift(payload);
+    state.documentStorageArchiveFolderId = folder.id;
+    return true;
+  };
+  if (archiveForm) {
+    archiveForm.onsubmit = (event) => {
+      if (event.submitter?.value === "cancel") return;
+      event.preventDefault();
+      const data = new FormData(archiveForm);
+      const ok = addDocumentToStorageArchive(
+        data.get("documentKey"),
+        data.get("archiveFolderId"),
+        data.get("newArchiveFolderName"),
+        data.get("archiveComment")
+      );
+      if (!ok) {
+        showToast("Не вдалося додати документ в архів.", "danger");
+        return;
+      }
+      archiveDialog.close();
+      renderDocumentsScreen(ctx);
+      showToast("Документ додано в архів.");
+    };
+  }
+  const archiveClose = $("#document-archive-close");
+  if (archiveClose) archiveClose.onclick = () => archiveDialog?.close();
+  const folderDialog = $("#document-archive-folder-dialog");
+  const folderForm = $("#document-archive-folder-form");
+  const openArchiveFolderDialog = ({ mode = "create", folderId = "", parentId = "" } = {}) => {
+    if (!folderDialog || !folderForm) return;
+    const existing = folderId ? findArchiveFolder(storageArchiveFolders, folderId)?.folder : null;
+    folderForm.reset();
+    folderForm.elements.mode.value = mode;
+    folderForm.elements.folderId.value = folderId;
+    folderForm.elements.parentId.value = parentId;
+    folderForm.elements.name.value = existing?.name || "";
+    $("#document-archive-folder-title").textContent = mode === "rename" ? "Перейменувати папку" : parentId ? "Нова підпапка" : "Нова папка";
+    folderDialog.showModal();
+  };
+  if (folderForm) {
+    folderForm.onsubmit = (event) => {
+      if (event.submitter?.value === "cancel") return;
+      event.preventDefault();
+      const data = new FormData(folderForm);
+      const name = String(data.get("name") || "").trim();
+      if (!name) return;
+      const mode = data.get("mode");
+      const folderId = data.get("folderId");
+      const parentId = data.get("parentId");
+      if (mode === "rename") {
+        const target = findArchiveFolder(storageArchiveFolders, folderId)?.folder;
+        if (target) target.name = name;
+      } else {
+        let id = archiveFolderId(name);
+        if (archiveFolderExists(storageArchiveFolders, id)) id = `${id}-${Date.now()}`;
+        const folder = { id, name, createdAt: new Date().toLocaleDateString("uk-UA"), documents: [], children: [] };
+        const parent = parentId ? findArchiveFolder(storageArchiveFolders, parentId)?.folder : null;
+        if (parent) parent.children.unshift(folder);
+        else storageArchiveFolders.unshift(folder);
+        state.documentStorageArchiveFolderId = folder.id;
+      }
+      folderDialog.close();
+      renderDocumentsScreen(ctx);
+      showToast("Архівну папку збережено.");
+    };
+  }
+  const folderClose = $("#document-archive-folder-close");
+  if (folderClose) folderClose.onclick = () => folderDialog?.close();
+  const archiveDeleteDialog = $("#archive-folder-delete-dialog");
+  const archiveDeleteTitle = $("#archive-folder-delete-title");
+  const archiveDeleteText = $("#archive-folder-delete-text");
+  const archiveDeleteClose = () => {
+    if (archiveDeleteDialog?.open) archiveDeleteDialog.close();
+  };
+  const archiveDeleteCloseButton = $("#archive-folder-delete-close");
+  const archiveDeleteCancelButton = $("#archive-folder-delete-cancel");
+  if (archiveDeleteCloseButton) archiveDeleteCloseButton.onclick = archiveDeleteClose;
+  if (archiveDeleteCancelButton) archiveDeleteCancelButton.onclick = archiveDeleteClose;
+  const openArchiveFolderDeleteDialog = (folderId) => {
+    const target = findArchiveFolder(storageArchiveFolders, folderId)?.folder;
+    if (!target || !archiveDeleteDialog) return;
+    const documentsCount = documentArchiveCount([target]);
+    const hasChildren = Boolean((target.children || []).length);
+    if (archiveDeleteTitle) archiveDeleteTitle.textContent = `Видалити папку «${target.name}»?`;
+    if (archiveDeleteText) {
+      archiveDeleteText.textContent = documentsCount || hasChildren
+        ? `У папці є ${documentsCount} документів або підпапки. Вони також зникнуть з архівного дерева.`
+        : "Папка порожня, її можна безпечно прибрати з архіву.";
+    }
+    const confirmButton = $("#archive-folder-delete-confirm");
+    if (confirmButton) {
+      confirmButton.onclick = () => {
+        removeArchiveFolder(storageArchiveFolders, folderId);
+        if (state.documentStorageArchiveFolderId === folderId || findArchiveFolder([target], state.documentStorageArchiveFolderId)) {
+          state.documentStorageArchiveFolderId = "all";
+        }
+        archiveDeleteDialog.close();
+        renderDocumentsScreen(ctx);
+        showToast("Архівну папку видалено.");
+      };
+    }
+    archiveDeleteDialog.showModal();
+  };
+
   bindActionMenus?.(documentsNode);
   const selectDocumentPageCheckbox = documentsNode.querySelector("[data-select-document-page]");
   if (selectDocumentPageCheckbox) selectDocumentPageCheckbox.indeterminate = someDocumentsSelected;
 
   const openDocumentForArchive = () => {
-    if (!selectedCase) return;
-    openDocumentDialog(selectedCase, null, "documents");
-    if (selectedFolderIndex >= 0) {
+    const targetCase = selectedCase || state.selectedCaseId || state.cases[0]?.id || "";
+    if (!targetCase) return;
+    openDocumentDialog(targetCase, null, "documents");
+    if (selectedCase && selectedFolderIndex >= 0) {
       const folderSelect = $("#document-folder");
-      if (folderSelect) folderSelect.value = String(selectedFolderIndex);
+      if (folderSelect) {
+        folderSelect.value = String(selectedFolderIndex);
+        folderSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      }
     }
   };
 
@@ -500,12 +859,6 @@ export function renderDocumentsScreen(ctx) {
   documentsNode.querySelector("[data-documents-edit-folder]")?.addEventListener("click", () => {
     if (!selectedCase || selectedFolderIndex < 0) return;
     openFolderDialog(selectedCase, selectedFolderIndex, "documents");
-  });
-  documentsNode.querySelectorAll("[data-documents-template]").forEach((button) => {
-    button.addEventListener("click", () => {
-      if (!selectedCase) return;
-      showToast?.("Шаблон Word підготовлено як демо-дію. Наступний етап — генерація .docx через backend.", "info");
-    });
   });
   documentsNode.querySelectorAll("[data-documents-ai]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -530,6 +883,7 @@ export function renderDocumentsScreen(ctx) {
       target.submitted = saved.submitted || target.submitted;
       target.responseDue = saved.responseDue || target.responseDue;
       target.comment = saved.comment || target.comment;
+      target.content = saved.content || target.content;
       target.url = saved.url || target.url;
       target.history = saved.history || target.history || [];
     };
@@ -595,10 +949,37 @@ export function renderDocumentsScreen(ctx) {
     renderDocumentsScreen(ctx);
     showToast?.("Статус документа оновлено.");
   };
+  const runESignDemoAction = async (key) => {
+    const { caseId, encoded } = payloadFromKey(key);
+    const payload = getDocumentPayload(caseId, encoded);
+    const currentStatus = payload.doc?.status || payload.file?.status || payload.linked?.file?.status || "";
+    let nextStatus = "Очікує е-підпис";
+    let message = eSignEnabled
+      ? "Документ відправлено на е-підпис."
+      : "Демо: документ переведено в очікування е-підпису. Провайдера підключимо в налаштуваннях.";
+    if (currentStatus === "Очікує е-підпис") {
+      nextStatus = "Підписано КЕП";
+      message = "Демо: провайдер повернув підписаний документ.";
+    } else if (currentStatus === "Підписано КЕП") {
+      showToast?.("Підпис уже отримано. Після API тут буде завантаження підписаного файлу.", "info");
+      return;
+    } else if (["Відхилено підпис", "Підпис прострочено"].includes(currentStatus)) {
+      nextStatus = "Очікує е-підпис";
+      message = "Документ повторно поставлено в чергу е-підпису.";
+    }
+    await updateDocumentStatus(key, nextStatus);
+    showToast?.(message, eSignEnabled ? "success" : "info");
+  };
   documentsNode.querySelectorAll("[data-document-status-pick]").forEach((button) => {
     button.addEventListener("click", async (event) => {
       event.stopPropagation();
       await updateDocumentStatus(button.dataset.documentStatusPick, button.dataset.documentStatusValue);
+    });
+  });
+  documentsNode.querySelectorAll("[data-esign-global-document]").forEach((button) => {
+    button.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      await runESignDemoAction(button.dataset.esignGlobalDocument);
     });
   });
   documentsNode.querySelector("[data-document-status-change]")?.addEventListener("change", async (event) => {
@@ -883,6 +1264,40 @@ export function renderDocumentsScreen(ctx) {
       renderDocumentsScreen(ctx);
     });
   });
+  documentsNode.querySelectorAll("[data-document-storage-folder]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.documentStorageArchiveFolderId = button.dataset.documentStorageFolder || "all";
+      renderDocumentsScreen(ctx);
+    });
+  });
+  documentsNode.querySelector("[data-archive-folder-add-root]")?.addEventListener("click", () => {
+    openArchiveFolderDialog({ mode: "create" });
+  });
+  documentsNode.querySelectorAll("[data-archive-folder-add-child]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openArchiveFolderDialog({ mode: "create", parentId: button.dataset.archiveFolderAddChild });
+    });
+  });
+  documentsNode.querySelectorAll("[data-archive-folder-rename]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openArchiveFolderDialog({ mode: "rename", folderId: button.dataset.archiveFolderRename });
+    });
+  });
+  documentsNode.querySelectorAll("[data-archive-folder-delete]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openArchiveFolderDeleteDialog(button.dataset.archiveFolderDelete);
+    });
+  });
+  documentsNode.querySelectorAll("[data-document-storage-doc]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.dataset.documentStorageDoc;
+      if (!key) return;
+      state.selectedDocumentKey = key;
+      state.documentArchiveCaseId = "all";
+      state.documentArchiveFolder = "";
+      renderDocumentsScreen(ctx);
+    });
+  });
   documentsNode.querySelectorAll("[data-open-document-case]").forEach((button) => {
     button.addEventListener("click", () => openCaseFromDocuments(ctx, button.dataset.openDocumentCase));
   });
@@ -896,6 +1311,38 @@ export function renderDocumentsScreen(ctx) {
         folderName: payload.folder?.name || payload.linked?.folder?.name,
         returnView: "documents"
       });
+    });
+  });
+  documentsNode.querySelectorAll("[data-export-global-document]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const { caseId, encoded } = payloadFromKey(button.dataset.exportGlobalDocument);
+      const payload = getDocumentPayload(caseId, encoded);
+      exportStoredDocument?.(payload.file || payload.doc, {
+        caseId,
+        editContext: payload,
+        folderName: payload.folder?.name || payload.linked?.folder?.name,
+        returnView: "documents"
+      });
+    });
+  });
+  documentsNode.querySelectorAll("[data-office-global-document]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const { caseId, encoded } = payloadFromKey(button.dataset.officeGlobalDocument);
+      const payload = getDocumentPayload(caseId, encoded);
+      openOfficeEditor?.(payload.file || payload.doc, {
+        caseId,
+        editContext: payload,
+        folderName: payload.folder?.name || payload.linked?.folder?.name,
+        returnView: "documents"
+      });
+    });
+  });
+  documentsNode.querySelectorAll("[data-archive-global-document]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openArchiveDialog(button.dataset.archiveGlobalDocument);
     });
   });
   documentsNode.querySelectorAll("[data-edit-global-document]").forEach((button) => {

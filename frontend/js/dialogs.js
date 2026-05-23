@@ -10,6 +10,8 @@ const DIALOG_CLOSE_BUTTONS = [
   ["#salary-dialog-close", "#salary-dialog"],
   ["#document-dialog-close", "#document-dialog"],
   ["#document-preview-close", "#document-preview-dialog"],
+  ["#document-export-close", "#document-export-dialog"],
+  ["#office-editor-close", "#office-editor-dialog"],
   ["#task-dialog-close", "#task-dialog"],
   ["#subtask-dialog-close", "#subtask-dialog"],
   ["#event-dialog-close", "#event-dialog"],
@@ -191,6 +193,26 @@ export function setupDialogControls(ctx) {
     $(buttonSelector)?.addEventListener("click", () => {
       $(dialogSelector)?.close();
     });
+  });
+  const officeDialog = $("#office-editor-dialog");
+  const officeFullscreen = $("#office-editor-fullscreen");
+  const syncOfficeFullscreen = () => {
+    const expanded = officeDialog?.classList.contains("is-fullscreen");
+    officeFullscreen?.setAttribute("aria-pressed", expanded ? "true" : "false");
+    officeFullscreen?.setAttribute("aria-label", expanded ? "Згорнути редактор" : "На весь екран");
+    officeFullscreen?.setAttribute("title", expanded ? "Згорнути редактор" : "На весь екран");
+  };
+  officeFullscreen?.addEventListener("click", () => {
+    officeDialog?.classList.toggle("is-fullscreen");
+    syncOfficeFullscreen();
+    window.requestAnimationFrame(() => {
+      window.dispatchEvent(new Event("resize"));
+      window.__crmOnlyOfficeEditor?.resizeEditor?.("100%", "100%");
+    });
+  });
+  officeDialog?.addEventListener("close", () => {
+    officeDialog.classList.remove("is-fullscreen");
+    syncOfficeFullscreen();
   });
   $("#delete-document-close")?.addEventListener("click", () => closeDeleteDocumentConfirm(ctx));
   $("#delete-document-cancel")?.addEventListener("click", () => closeDeleteDocumentConfirm(ctx));

@@ -31,6 +31,22 @@ export async function apiRequest(path, options = {}) {
   return response.json();
 }
 
+export async function apiFormRequest(path, formData, options = {}) {
+  const baseUrl = apiBaseUrl();
+  if (!baseUrl) throw new Error("CRM API base URL is not configured");
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: options.method || "POST",
+    credentials: "include",
+    body: formData
+  });
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `CRM API request failed: ${response.status}`);
+  }
+  if (response.status === 204) return null;
+  return response.json();
+}
+
 export function saveClientToApi(client) {
   const hasId = client.id !== undefined && client.id !== null && client.id !== "";
   return apiRequest(hasId ? `/api/clients/${client.id}/` : "/api/clients/", {
@@ -177,6 +193,13 @@ export function restoreDemoDataInApi() {
   });
 }
 
+export function importCrmSnapshotToApi(snapshot) {
+  return apiRequest("/api/demo-data/", {
+    method: "POST",
+    body: { action: "import_snapshot", snapshot }
+  });
+}
+
 export function saveCaseToApi(caseItem) {
   const hasId = caseItem.id !== undefined && caseItem.id !== null && caseItem.id !== "";
   return apiRequest(hasId ? `/api/cases/${encodeURIComponent(caseItem.id)}/` : "/api/cases/", {
@@ -207,6 +230,12 @@ export function saveDocumentToApi(document) {
     method: hasId ? "PUT" : "POST",
     body: document
   });
+}
+
+export function uploadDocumentFileToApi(documentId, file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return apiFormRequest(`/api/documents/${documentId}/file/`, formData);
 }
 
 export function deleteDocumentFromApi(documentId) {

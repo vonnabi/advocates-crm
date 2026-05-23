@@ -1,13 +1,20 @@
 import json
+import hmac
 import re
+import os
+import urllib.request
 from datetime import datetime, time
 from decimal import Decimal
 from hashlib import sha1
 
 from django.contrib.auth import authenticate, get_user_model, login as auth_login, logout as auth_logout, update_session_auth_hash
+from django.conf import settings
+from django.core.files.base import ContentFile
 from django.core.management import call_command
+from django.db import transaction
 from django.db.models import Q, Sum
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
@@ -37,6 +44,14 @@ def empty_response(status=204):
     response = HttpResponse(status=status)
     response["Access-Control-Allow-Origin"] = "*"
     response["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    response["Access-Control-Allow-Headers"] = "Content-Type"
+    response["Access-Control-Allow-Credentials"] = "true"
+    return response
+
+
+def file_response(response):
+    response["Access-Control-Allow-Origin"] = "*"
+    response["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     response["Access-Control-Allow-Headers"] = "Content-Type"
     response["Access-Control-Allow-Credentials"] = "true"
     return response
@@ -462,10 +477,44 @@ def upsert_document(data, document=None):
     document.response_due_at = parse_date(data.get("responseDue")) or document.response_due_at
     document.responsible_name = data.get("responsible", document.responsible_name or user_name(case.responsible))
     document.comment = data.get("comment", document.comment or "")
+    document.content = data.get("content", document.content or "")
     document.history = data.get("history", document.history or [])
     document.save()
     ensure_case_member(case, user_for_name(document.responsible_name))
     return document
+
+
+def document_file_token(document):
+    raw = f"{document.id}:{document.file.name}:{settings.SECRET_KEY}"
+    return sha1(raw.encode("utf-8")).hexdigest()
+
+
+def document_file_url(request, document):
+    if not document.file:
+        return ""
+    path = reverse("document_file", kwargs={"document_id": document.id})
+    signed_path = f"{path}?token={document_file_token(document)}"
+    return request.build_absolute_uri(signed_path) if request else signed_path
+
+
+def document_callback_url(request, document):
+    path = reverse("document_onlyoffice_callback", kwargs={"document_id": document.id})
+    return request.build_absolute_uri(path) if request else path
+
+
+def has_valid_document_file_token(request, document):
+    token = request.GET.get("token") or ""
+    expected = document_file_token(document)
+    return bool(token and hmac.compare_digest(token, expected))
+
+
+def safe_document_upload_name(document, uploaded_name="document.docx"):
+    _, ext = os.path.splitext(uploaded_name or "")
+    ext = ext.lower() if ext else ".docx"
+    if ext not in {".doc", ".docx", ".odt", ".rtf", ".txt", ".pdf", ".xls", ".xlsx", ".png", ".jpg", ".jpeg"}:
+        ext = ".docx"
+    slug = re.sub(r"[^0-9A-Za-zА-Яа-яІіЇїЄєҐґ_-]+", "-", document.title or "document").strip("-")[:80] or "document"
+    return f"{document.id}-{slug}{ext}"
 
 
 def datetime_from_parts(date_value, time_value, fallback=None):
@@ -832,7 +881,7 @@ def serialize_client_communication(row):
     }
 
 
-def serialize_document(item):
+def serialize_document(item, request=None):
     return {
         "id": item.id,
         "documentId": item.id,
@@ -844,10 +893,34 @@ def serialize_document(item):
         "submitted": date_value(item.submitted_at),
         "responseDue": date_value(item.response_due_at),
         "url": item.external_url,
+        "fileUrl": document_file_url(request, item),
+        "fileName": os.path.basename(item.file.name) if item.file else "",
+        "onlyOfficeCallbackUrl": document_callback_url(request, item),
+        "source": document_source_label(item),
         "responsible": item.responsible_name,
         "comment": item.comment,
+        "content": item.content,
         "history": item.history,
     }
+
+
+def document_source_label(item):
+    external_url = item.external_url or ""
+    haystack = " ".join([
+        item.title or "",
+        item.comment or "",
+        external_url,
+        " ".join(str(row.get("text", "")) for row in (item.history or []) if isinstance(row, dict)),
+    ]).lower()
+    if "docs.google" in external_url or "drive.google" in external_url or "google" in haystack:
+        return "Google Docs"
+    if "комп" in haystack or "computer" in haystack or "ноутбук" in haystack:
+        return "Комп'ютер"
+    if item.file:
+        return "CRM файл"
+    if external_url:
+        return "Зовнішнє посилання"
+    return "CRM"
 
 
 def serialize_task(item):
@@ -1386,6 +1459,198 @@ def mailing_payload():
 
 def clear_crm_business_data():
     clear_demo_business_data()
+
+
+SNAPSHOT_LIST_KEYS = ("clients", "cases", "events")
+
+
+def snapshot_list(snapshot, key):
+    value = snapshot.get(key)
+    return value if isinstance(value, list) else []
+
+
+def validate_snapshot_payload(snapshot):
+    if not isinstance(snapshot, dict):
+        return "JSON-копія має бути об'єктом."
+    missing = [key for key in SNAPSHOT_LIST_KEYS if not isinstance(snapshot.get(key), list)]
+    if missing:
+        return f"У копії немає базових розділів: {', '.join(missing)}."
+    return ""
+
+
+def existing_or_none(model, raw_id):
+    if raw_id in (None, ""):
+        return None
+    try:
+        return model.objects.filter(pk=int(raw_id)).first()
+    except (TypeError, ValueError):
+        return None
+
+
+def mark_as_real(item):
+    if item and hasattr(item, "is_demo") and item.is_demo:
+        item.is_demo = False
+        item.save(update_fields=["is_demo"])
+
+
+def snapshot_nested_rows(snapshot, top_level_key, nested_key):
+    rows = []
+    seen = set()
+    for item in [*snapshot_list(snapshot, top_level_key), *[
+        row
+        for case in snapshot_list(snapshot, "cases")
+        for row in (case.get(nested_key) if isinstance(case, dict) and isinstance(case.get(nested_key), list) else [])
+    ]]:
+        if not isinstance(item, dict):
+            continue
+        marker = item.get("id") or item.get("documentId") or f"{item.get('caseId')}::{item.get('title') or item.get('name')}"
+        if marker in seen:
+            continue
+        seen.add(marker)
+        rows.append(item)
+    return rows
+
+
+def import_snapshot_payload(snapshot):
+    error = validate_snapshot_payload(snapshot)
+    if error:
+        return {"error": error}
+
+    summary = {
+        "clients": 0,
+        "cases": 0,
+        "tasks": 0,
+        "documents": 0,
+        "events": 0,
+        "settingsUsers": 0,
+        "mailingTemplates": 0,
+        "mailingCampaigns": 0,
+        "automationRules": 0,
+        "settings": 0,
+        "skipped": [],
+    }
+    client_id_map = {}
+
+    with transaction.atomic():
+        settings_payload = snapshot.get("settings") if isinstance(snapshot.get("settings"), dict) else {}
+        if any(key in snapshot for key in ("bureauSettings", "settingsIntegrations", "settingsIntegrationSettings", "settingsNotifications")) or settings_payload:
+            apply_crm_settings_payload(crm_settings_instance(), {
+                "bureau": snapshot.get("bureauSettings") or settings_payload.get("bureau") or {},
+                "integrations": snapshot.get("settingsIntegrations") or settings_payload.get("integrations") or {},
+                "integrationSettings": snapshot.get("settingsIntegrationSettings") or settings_payload.get("integrationSettings") or {},
+                "notifications": snapshot.get("settingsNotifications") or settings_payload.get("notifications") or {},
+            })
+            summary["settings"] = 1
+
+        for data in snapshot_list(snapshot, "clients"):
+            if not isinstance(data, dict) or not data.get("name"):
+                continue
+            client = existing_or_none(Client, data.get("id"))
+            if not client and data.get("email"):
+                client = Client.objects.filter(email=str(data.get("email")).strip().lower()).first()
+            if not client and data.get("phone"):
+                client = Client.objects.filter(phone=str(data.get("phone")).strip()).first()
+            client = upsert_client(data, client)
+            mark_as_real(client)
+            client_id_map[str(data.get("id"))] = client.id
+            summary["clients"] += 1
+
+        for data in snapshot_list(snapshot, "cases"):
+            if not isinstance(data, dict) or not (data.get("id") or data.get("number")):
+                continue
+            payload = dict(data)
+            old_client_id = str(payload.get("clientId") or "")
+            if old_client_id in client_id_map:
+                payload["clientId"] = client_id_map[old_client_id]
+            case = Case.objects.filter(number=payload.get("id") or payload.get("number")).first()
+            try:
+                case = upsert_case(payload, case)
+            except Http404 as exc:
+                summary["skipped"].append({"section": "cases", "id": payload.get("id"), "reason": str(exc)})
+                continue
+            mark_as_real(case)
+            summary["cases"] += 1
+
+        for data in snapshot_list(snapshot, "settingsUsers"):
+            if not isinstance(data, dict) or not data.get("email"):
+                continue
+            user = existing_or_none(get_user_model(), data.get("id")) or get_user_model().objects.filter(email=str(data.get("email")).strip().lower()).first()
+            upsert_system_user({**data, "password": ""}, user=user)
+            summary["settingsUsers"] += 1
+
+        for data in snapshot_nested_rows(snapshot, "tasks", "tasks"):
+            if not isinstance(data, dict) or not data.get("caseId") or not data.get("title"):
+                continue
+            payload = dict(data)
+            old_client_id = str(payload.get("clientId") or "")
+            if old_client_id in client_id_map:
+                payload["clientId"] = client_id_map[old_client_id]
+            task = existing_or_none(Task, payload.get("id")) or Task.objects.filter(case__number=payload.get("caseId"), title=payload.get("title")).first()
+            try:
+                task = upsert_task(payload, task)
+            except Http404 as exc:
+                summary["skipped"].append({"section": "tasks", "id": payload.get("id"), "reason": str(exc)})
+                continue
+            mark_as_real(task)
+            summary["tasks"] += 1
+
+        for data in snapshot_nested_rows(snapshot, "documents", "documents"):
+            if not isinstance(data, dict) or not data.get("caseId") or not data.get("name"):
+                continue
+            document = existing_or_none(CaseDocument, data.get("documentId") or data.get("id")) or CaseDocument.objects.filter(
+                case__number=data.get("caseId"),
+                title=data.get("name"),
+                folder=data.get("folder") or "Процесуальні документи",
+            ).first()
+            try:
+                document = upsert_document(data, document)
+            except Http404 as exc:
+                summary["skipped"].append({"section": "documents", "id": data.get("id"), "reason": str(exc)})
+                continue
+            mark_as_real(document)
+            summary["documents"] += 1
+
+        for data in snapshot_list(snapshot, "events"):
+            if not isinstance(data, dict) or not data.get("title"):
+                continue
+            payload = dict(data)
+            old_client_id = str(payload.get("clientId") or "")
+            if old_client_id in client_id_map:
+                payload["clientId"] = client_id_map[old_client_id]
+            event = existing_or_none(CalendarEvent, payload.get("id")) or CalendarEvent.objects.filter(
+                case__number=payload.get("caseId") or "",
+                title=payload.get("title"),
+                starts_at=parse_datetime(payload.get("startsAt") or f"{payload.get('date') or ''} {payload.get('time') or '09:00'}"),
+            ).first()
+            try:
+                event = upsert_event(payload, event)
+            except Http404 as exc:
+                summary["skipped"].append({"section": "events", "id": payload.get("id"), "reason": str(exc)})
+                continue
+            mark_as_real(event)
+            summary["events"] += 1
+
+        mailing = snapshot.get("mailing") if isinstance(snapshot.get("mailing"), dict) else {}
+        for data in mailing.get("templates") or []:
+            if not isinstance(data, dict):
+                continue
+            item = existing_or_none(MessageTemplate, data.get("id")) or MessageTemplate.objects.filter(title=data.get("title"), category=data.get("type")).first()
+            upsert_mailing_template(data, item)
+            summary["mailingTemplates"] += 1
+        for data in mailing.get("campaigns") or []:
+            if not isinstance(data, dict):
+                continue
+            item = existing_or_none(Campaign, data.get("id")) or Campaign.objects.filter(title=data.get("title"), body=data.get("text") or data.get("body")).first()
+            upsert_mailing_campaign(data, item)
+            summary["mailingCampaigns"] += 1
+        for data in mailing.get("automationRules") or []:
+            if not isinstance(data, dict):
+                continue
+            item = existing_or_none(AutomationRule, data.get("id")) or AutomationRule.objects.filter(title=data.get("title")).first()
+            upsert_automation_rule(data, item)
+            summary["automationRules"] += 1
+
+    return {"summary": summary}
 
 
 def require_demo_admin(request):
@@ -1993,9 +2258,9 @@ def documents_api(request):
             return forbidden
         item = upsert_document(data)
         log_crm_action(request, AuditLog.Action.CREATE, "document", item.id, item.title, f"Створено документ {item.title}.")
-        return json_response(serialize_document(item))
+        return json_response(serialize_document(item, request))
     items = accessible_document_queryset(request).select_related("case").order_by("case__number", "folder", "title")
-    return json_response({"results": [serialize_document(item) for item in items]})
+    return json_response({"results": [serialize_document(item, request) for item in items]})
 
 
 @csrf_exempt
@@ -2011,7 +2276,7 @@ def document_detail_api(request, document_id):
     if forbidden:
         return forbidden
     if request.method == "GET":
-        return json_response(serialize_document(item))
+        return json_response(serialize_document(item, request))
     if request.method == "DELETE":
         forbidden = require_permission(request, "manage_documents", "Документами можуть керувати адміністратор, адвокат або помічник.")
         if forbidden:
@@ -2028,7 +2293,72 @@ def document_detail_api(request, document_id):
         return forbidden
     updated = upsert_document(data, item)
     log_crm_action(request, AuditLog.Action.UPDATE, "document", updated.id, updated.title, f"Оновлено документ {updated.title}.")
-    return json_response(serialize_document(updated))
+    return json_response(serialize_document(updated, request))
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST", "OPTIONS"])
+def document_file_api(request, document_id):
+    if request.method == "OPTIONS":
+        return empty_response()
+    try:
+        item = CaseDocument.objects.select_related("case").get(pk=document_id)
+    except CaseDocument.DoesNotExist as exc:
+        raise Http404("Document not found") from exc
+    if request.method == "GET":
+        if not has_valid_document_file_token(request, item):
+            forbidden = require_case_access(request, item.case)
+            if forbidden:
+                return forbidden
+        if not item.file:
+            raise Http404("Document file not found")
+        return file_response(FileResponse(item.file.open("rb"), as_attachment=False, filename=os.path.basename(item.file.name)))
+    forbidden = require_permission(request, "manage_documents", "Документами можуть керувати адміністратор, адвокат або помічник.")
+    if forbidden:
+        return forbidden
+    forbidden = require_case_access(request, item.case)
+    if forbidden:
+        return forbidden
+    uploaded = request.FILES.get("file")
+    if not uploaded:
+        return json_response({"error": "No file uploaded"}, status=400)
+    item.file.save(safe_document_upload_name(item, uploaded.name), uploaded, save=True)
+    history = item.history or []
+    history.insert(0, {"date": date_value(timezone.localdate()), "text": f"Завантажено файл документа: {uploaded.name}."})
+    item.history = history
+    item.save(update_fields=["file", "history"])
+    log_crm_action(request, AuditLog.Action.UPDATE, "document", item.id, item.title, f"Завантажено файл документа {item.title}.")
+    return json_response(serialize_document(item, request))
+
+
+@csrf_exempt
+@require_http_methods(["POST", "OPTIONS"])
+def document_onlyoffice_callback_api(request, document_id):
+    if request.method == "OPTIONS":
+        return empty_response()
+    try:
+        item = CaseDocument.objects.select_related("case").get(pk=document_id)
+    except CaseDocument.DoesNotExist:
+        return json_response({"error": 1}, status=404)
+    try:
+        payload = parse_body(request)
+        status = int(payload.get("status", 0))
+        if status in {2, 6} and payload.get("url"):
+            with urllib.request.urlopen(payload["url"], timeout=30) as response:
+                content = response.read()
+            file_name = safe_document_upload_name(item, f"{item.title}.docx")
+            item.file.save(file_name, ContentFile(content), save=False)
+            item.status = item.status or "В роботі"
+            history = item.history or []
+            history.insert(0, {
+                "date": date_value(timezone.localdate()),
+                "text": "ONLYOFFICE зберіг нову версію документа."
+            })
+            item.history = history
+            item.save()
+        return json_response({"error": 0})
+    except Exception:
+        return json_response({"error": 1}, status=500)
 
 
 @csrf_exempt
@@ -2381,6 +2711,26 @@ def demo_data_api(request):
         call_command("seed_demo", verbosity=0)
         log_crm_action(request, AuditLog.Action.SYSTEM, "demo_data", "restore", "Демо-дані", "Демо-дані відновлено.")
         return json_response({"demoData": demo_data_status_payload(), "message": "Демо-дані відновлено."})
+    if action == "import_snapshot":
+        result = import_snapshot_payload(parse_body(request).get("snapshot") or {})
+        if result.get("error"):
+            return json_response({"error": "Invalid snapshot", "message": result["error"]}, status=400)
+        summary = result["summary"]
+        imported_total = sum(value for key, value in summary.items() if key != "skipped" and isinstance(value, int))
+        log_crm_action(
+            request,
+            AuditLog.Action.SYSTEM,
+            "snapshot",
+            "import",
+            "JSON-копія CRM",
+            f"Імпортовано JSON-копію CRM: {imported_total} записів.",
+            metadata=summary,
+        )
+        return json_response({
+            "summary": summary,
+            "demoData": demo_data_status_payload(),
+            "message": "JSON-копію імпортовано в серверну базу.",
+        })
     return json_response({"error": "Unsupported action"}, status=400)
 
 

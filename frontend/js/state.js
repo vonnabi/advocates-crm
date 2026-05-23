@@ -1,9 +1,10 @@
-import { apiBaseUrl } from "./api.js?v=mailings-api-65";
+import { apiBaseUrl } from "./api.js?v=mailings-api-69";
 
 const DEMO_DATE_ANCHOR = new Date(2024, 4, 15);
 const ISO_DATE_RE = /(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)/g;
 const DISPLAY_DATE_RE = /(?<!\d)(\d{2})\.(\d{2})\.(\d{4})(?!\d)/g;
 const DEMO_CASE_YEAR_RE = /(?<!\d)2024\/(?=\d)/g;
+const SNAPSHOT_STORAGE_KEY = "advocates-crm-snapshot";
 
 function localDateOnly(value = new Date()) {
   return new Date(value.getFullYear(), value.getMonth(), value.getDate());
@@ -253,6 +254,48 @@ function mergeMailing(fallback, incoming = {}) {
   };
 }
 
+function readSnapshotOverride(fallbackMailing, fallbackSettings) {
+  let snapshot = null;
+  try {
+    snapshot = JSON.parse(localStorage.getItem(SNAPSHOT_STORAGE_KEY) || "null");
+  } catch (_error) {
+    localStorage.removeItem(SNAPSHOT_STORAGE_KEY);
+    return null;
+  }
+  if (!snapshot || !Array.isArray(snapshot.clients) || !Array.isArray(snapshot.cases) || !Array.isArray(snapshot.events)) return null;
+  const counts = snapshot.demoData?.counts || {};
+  const total = snapshot.demoData?.total ?? Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0);
+  return {
+    session: snapshot.session || {},
+    currentUser: snapshot.currentUser || null,
+    settingsUsers: snapshot.settingsUsers || [],
+    clients: snapshot.clients,
+    cases: snapshot.cases,
+    events: snapshot.events,
+    financeOperations: snapshot.financeOperations || [],
+    finance: snapshot.finance || {},
+    mailing: mergeMailing(fallbackMailing, snapshot.mailing || {}),
+    settings: mergeSettings(fallbackSettings, {
+      bureau: snapshot.bureauSettings || snapshot.settings?.bureau || {},
+      integrations: snapshot.settingsIntegrations || snapshot.settings?.integrations || {},
+      integrationSettings: snapshot.settingsIntegrationSettings || snapshot.settings?.integrationSettings || {},
+      notifications: snapshot.settingsNotifications || snapshot.settings?.notifications || {}
+    }),
+    auditLogs: snapshot.auditLogs || [],
+    meta: {
+      ...(snapshot.meta || {}),
+      demoData: {
+        ...(snapshot.demoData || snapshot.meta?.demoData || {}),
+        enabled: true,
+        snapshot: true,
+        total,
+        counts
+      }
+    },
+    source: "snapshot"
+  };
+}
+
 async function loadDemoData() {
   const [rawMailing, rawSettings] = await Promise.all([
     readDataFile("../data/mailing.json"),
@@ -260,6 +303,8 @@ async function loadDemoData() {
   ]);
   const mailing = shiftDemoPayloadDates(rawMailing);
   const settings = shiftDemoPayloadDates(rawSettings);
+  const snapshot = readSnapshotOverride(mailing, settings);
+  if (snapshot) return snapshot;
   try {
     const apiData = normalizeBackendPayload(await readApiBootstrap());
     if (apiData) return { ...apiData, mailing: mergeMailing(mailing, apiData.mailing), settings: mergeSettings(settings, apiData.settings) };
@@ -373,6 +418,11 @@ export async function createInitialState() {
     documentCaseFilter: "all",
     documentArchiveCaseId: "all",
     documentArchiveFolder: "",
+    documentStorageArchiveFolderId: "all",
+    documentArchiveFolders: [
+      { id: "finished", name: "Завершені документи", documents: [], children: [] },
+      { id: "saved", name: "На зберіганні", documents: [], children: [] }
+    ],
     selectedDocumentKeys: [],
     selectedDocumentKey: "",
     documentDialogReturnView: "cases",

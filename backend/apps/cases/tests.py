@@ -1,8 +1,11 @@
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.db.models import Q
 from django.test import TestCase
 from django.utils import timezone
+from unittest.mock import patch
+from urllib.parse import urlsplit
 
 from apps.accounts.models import CRMSettings, UserProfile
 from apps.audit.models import AuditLog
@@ -28,10 +31,10 @@ class DemoApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual({key: payload["meta"][key] for key in ("clients", "cases", "tasks", "events")}, {"clients": 4, "cases": 4, "tasks": 9, "events": 6})
+        self.assertEqual({key: payload["meta"][key] for key in ("clients", "cases", "tasks", "events")}, {"clients": 5, "cases": 5, "tasks": 9, "events": 6})
         self.assertTrue(payload["meta"]["demoData"]["enabled"])
-        self.assertEqual(Client.objects.filter(is_demo=True).count(), 4)
-        self.assertEqual(Case.objects.filter(is_demo=True).count(), 4)
+        self.assertEqual(Client.objects.filter(is_demo=True).count(), 5)
+        self.assertEqual(Case.objects.filter(is_demo=True).count(), 5)
         self.assertEqual(Task.objects.filter(is_demo=True).count(), 9)
         self.assertEqual(CalendarEvent.objects.filter(is_demo=True).count(), 6)
         self.assertGreater(CaseMember.objects.filter(is_demo=True).count(), 0)
@@ -139,15 +142,103 @@ class DemoApiTests(TestCase):
         )
         self.assertEqual(restore_response.status_code, 200)
         self.assertTrue(restore_response.json()["demoData"]["enabled"])
-        self.assertEqual(Client.objects.filter(is_demo=True).count(), 4)
-        self.assertEqual(Case.objects.filter(is_demo=True).count(), 4)
+        self.assertEqual(Client.objects.filter(is_demo=True).count(), 5)
+        self.assertEqual(Case.objects.filter(is_demo=True).count(), 5)
         self.assertEqual(Task.objects.filter(is_demo=True).count(), 9)
         self.assertEqual(CalendarEvent.objects.filter(is_demo=True).count(), 6)
-        self.assertEqual(Client.objects.count(), 5)
-        self.assertEqual(Case.objects.count(), 5)
+        self.assertEqual(Client.objects.count(), 6)
+        self.assertEqual(Case.objects.count(), 6)
         self.assertEqual(Task.objects.count(), 10)
         self.assertEqual(CalendarEvent.objects.count(), 6)
         self.assertGreater(ClientCommunication.objects.count(), 0)
+
+    def test_demo_data_api_imports_snapshot_as_real_records(self):
+        snapshot = {
+            "settings": {
+                "bureau": {"name": "Backup Bureau", "email": "backup@example.com"},
+                "integrations": {},
+                "integrationSettings": {},
+                "notifications": {},
+            },
+            "clients": [
+                {
+                    "id": 9901,
+                    "name": "Клієнт з копії",
+                    "clientType": "Фізична особа",
+                    "phone": "+380 50 111 22 33",
+                    "email": "backup.client@example.com",
+                    "status": "active",
+                    "added": "2026-05-20",
+                    "lastContact": "2026-05-21",
+                }
+            ],
+            "cases": [
+                {
+                    "id": "2026/9901",
+                    "clientId": 9901,
+                    "title": "Справа з копії",
+                    "type": "Цивільна",
+                    "stage": "Підготовка",
+                    "status": "В роботі",
+                    "priority": "Середній",
+                    "opened": "2026-05-20",
+                    "documents": [
+                        {
+                            "id": 8801,
+                            "caseId": "2026/9901",
+                            "name": "Позов з копії.docx",
+                            "type": "Позов",
+                            "folder": "Процесуальні документи",
+                            "status": "Чернетка",
+                        }
+                    ],
+                    "tasks": [
+                        {
+                            "id": 7701,
+                            "caseId": "2026/9901",
+                            "clientId": 9901,
+                            "title": "Задача з копії",
+                            "status": "Нова",
+                            "priority": "Середній",
+                        }
+                    ],
+                }
+            ],
+            "events": [
+                {
+                    "id": 6601,
+                    "title": "Подія з копії",
+                    "type": "Зустріч з клієнтом",
+                    "date": "2026-05-22",
+                    "time": "10:00",
+                    "clientId": 9901,
+                    "caseId": "2026/9901",
+                    "status": "Заплановано",
+                }
+            ],
+        }
+
+        response = self.client.post(
+            "/api/demo-data/",
+            {"action": "import_snapshot", "snapshot": snapshot},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        summary = response.json()["summary"]
+        self.assertEqual({key: summary[key] for key in ("clients", "cases", "tasks", "documents", "events")}, {
+            "clients": 1,
+            "cases": 1,
+            "tasks": 1,
+            "documents": 1,
+            "events": 1,
+        })
+        self.assertTrue(Client.objects.filter(email="backup.client@example.com", is_demo=False).exists())
+        self.assertTrue(Case.objects.filter(number="2026/9901", is_demo=False).exists())
+        self.assertTrue(Task.objects.filter(title="Задача з копії", is_demo=False).exists())
+        self.assertTrue(CaseDocument.objects.filter(title="Позов з копії.docx", is_demo=False).exists())
+        self.assertTrue(CalendarEvent.objects.filter(title="Подія з копії", is_demo=False).exists())
+        self.assertEqual(CRMSettings.objects.get(key="global").bureau["name"], "Backup Bureau")
         self.assertTrue(get_user_model().objects.filter(email="melnyk@advocates.crm").exists())
         self.assertTrue(get_user_model().objects.filter(email="kravchuk@advocates.crm").exists())
         self.assertTrue(get_user_model().objects.filter(email="petrenko@advocates.crm").exists())
@@ -195,6 +286,57 @@ class DemoApiTests(TestCase):
                 response = self.client.get(endpoint)
                 self.assertEqual(response.status_code, 200)
                 self.assertIn("results", response.json())
+
+    def test_document_file_upload_download_and_onlyoffice_callback(self):
+        self.client.post(
+            "/api/auth/login/",
+            {"email": "ivanenko@advocates.crm", "password": "demo12345"},
+            content_type="application/json",
+        )
+        case = Case.objects.first()
+        document = CaseDocument.objects.create(
+            case=case,
+            title="Договір для редактора.docx",
+            document_type="Договір",
+            status="Чернетка",
+            folder="Папка справи",
+        )
+
+        upload_response = self.client.post(
+            f"/api/documents/{document.id}/file/",
+            {"file": SimpleUploadedFile("contract.docx", b"original-docx", content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+        )
+
+        self.assertEqual(upload_response.status_code, 200)
+        payload = upload_response.json()
+        self.assertIn("/api/documents/", payload["fileUrl"])
+        self.assertIn("token=", payload["fileUrl"])
+        file_path = urlsplit(payload["fileUrl"]).path + "?" + urlsplit(payload["fileUrl"]).query
+        download_response = self.client.get(file_path)
+        self.assertEqual(download_response.status_code, 200)
+        self.assertEqual(b"".join(download_response.streaming_content), b"original-docx")
+
+        class EditedResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return b"edited-docx"
+
+        with patch("config.api.urllib.request.urlopen", return_value=EditedResponse()):
+            callback_response = self.client.post(
+                f"/api/documents/{document.id}/onlyoffice/callback/",
+                {"status": 2, "url": "https://onlyoffice.example/edited.docx"},
+                content_type="application/json",
+            )
+
+        self.assertEqual(callback_response.status_code, 200)
+        self.assertEqual(callback_response.json(), {"error": 0})
+        document.refresh_from_db()
+        self.assertEqual(document.file.read(), b"edited-docx")
 
     def test_audit_log_api_records_crm_actions(self):
         create_response = self.client.post(

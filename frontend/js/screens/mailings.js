@@ -1,4 +1,4 @@
-import { deleteMailingCampaignFromApi, deleteMailingTemplateFromApi, saveMailingAutomationRuleToApi, saveMailingCampaignToApi, saveMailingTemplateToApi, sendMailingCampaignInApi, shouldUseApi, updateMailingDeliveryInApi } from "../api.js?v=mailings-api-65";
+import { deleteMailingCampaignFromApi, deleteMailingTemplateFromApi, saveMailingAutomationRuleToApi, saveMailingCampaignToApi, saveMailingTemplateToApi, sendMailingCampaignInApi, shouldUseApi, updateMailingDeliveryInApi } from "../api.js?v=mailings-api-69";
 
 export function setMailingTab(ctx, tab, remember = true) {
   const { state } = ctx;

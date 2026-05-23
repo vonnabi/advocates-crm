@@ -43,6 +43,8 @@ class CRMSettings(models.Model):
         "Telegram": True,
         "SMS": True,
         "Email": False,
+        "Е-підпис": False,
+        "ONLYOFFICE": False,
         "AI": True,
     }
     DEFAULT_NOTIFICATIONS = {
@@ -66,6 +68,18 @@ class CRMSettings(models.Model):
             "senderName": "Advocates Bureau",
             "smtpHost": "",
             "smtpPort": "587",
+        },
+        "Е-підпис": {
+            "provider": "Вчасно або Дія.Підпис",
+            "apiToken": "",
+            "callbackUrl": "",
+            "edrpou": "",
+        },
+        "ONLYOFFICE": {
+            "documentServerUrl": "http://127.0.0.1:8082",
+            "serverAccessUrl": "http://host.docker.internal:8001",
+            "callbackUrl": "http://127.0.0.1:8001/api/documents/{id}/onlyoffice/callback/",
+            "jwtSecret": "",
         },
         "AI": {
             "model": "demo",

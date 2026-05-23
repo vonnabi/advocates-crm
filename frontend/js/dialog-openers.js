@@ -66,6 +66,88 @@ export function createDialogOpeners({
     return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
   }
 
+  function closeDocumentSelectMenus(form, except = null) {
+    form.querySelectorAll(".document-custom-select.is-open").forEach((selectShell) => {
+      if (selectShell === except) return;
+      selectShell.classList.remove("is-open");
+      selectShell.querySelector(".document-custom-select-button")?.setAttribute("aria-expanded", "false");
+      const menu = selectShell.querySelector(".document-custom-select-menu");
+      if (menu) menu.hidden = true;
+    });
+  }
+
+  function syncDocumentCustomSelect(select) {
+    const shell = select.nextElementSibling?.classList?.contains("document-custom-select")
+      ? select.nextElementSibling
+      : null;
+    if (!shell) return;
+    const selected = select.selectedOptions?.[0] || select.options[0];
+    const buttonText = shell.querySelector("[data-document-select-value]");
+    const menu = shell.querySelector(".document-custom-select-menu");
+    if (buttonText) buttonText.textContent = selected?.textContent || "";
+    if (!menu) return;
+    menu.innerHTML = [...select.options].map((option) => `
+      <button class="document-custom-select-option ${option.value === select.value ? "is-selected" : ""}" type="button" role="option" data-value="${escapeHtml(option.value)}" aria-selected="${option.value === select.value ? "true" : "false"}">
+        <span aria-hidden="true">✓</span>
+        <strong>${escapeHtml(option.textContent || "")}</strong>
+      </button>
+    `).join("");
+  }
+
+  function setupDocumentCustomSelects(form) {
+    form.querySelectorAll(".document-editor-field > select").forEach((select) => {
+      select.classList.add("document-native-select");
+      select.tabIndex = -1;
+      select.setAttribute("aria-hidden", "true");
+      let shell = select.nextElementSibling?.classList?.contains("document-custom-select")
+        ? select.nextElementSibling
+        : null;
+      if (!shell) {
+        shell = document.createElement("div");
+        shell.className = "document-custom-select";
+        shell.innerHTML = `
+          <button class="document-custom-select-button" type="button" aria-haspopup="listbox" aria-expanded="false">
+            <span data-document-select-value></span>
+            <span class="document-custom-select-chevron" aria-hidden="true"></span>
+          </button>
+          <div class="document-custom-select-menu" role="listbox" hidden></div>
+        `;
+        select.insertAdjacentElement("afterend", shell);
+        shell.querySelector(".document-custom-select-button")?.addEventListener("click", () => {
+          const isOpen = shell.classList.contains("is-open");
+          closeDocumentSelectMenus(form, isOpen ? null : shell);
+          shell.classList.toggle("is-open", !isOpen);
+          shell.querySelector(".document-custom-select-button")?.setAttribute("aria-expanded", String(!isOpen));
+          const menu = shell.querySelector(".document-custom-select-menu");
+          if (menu) menu.hidden = isOpen;
+        });
+        shell.querySelector(".document-custom-select-menu")?.addEventListener("click", (event) => {
+          const optionButton = event.target.closest(".document-custom-select-option");
+          if (!optionButton) return;
+          select.value = optionButton.dataset.value || "";
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+          syncDocumentCustomSelect(select);
+          closeDocumentSelectMenus(form);
+        });
+      }
+      if (!select.dataset.documentSelectSyncBound) {
+        select.dataset.documentSelectSyncBound = "true";
+        select.addEventListener("change", () => syncDocumentCustomSelect(select));
+      }
+      syncDocumentCustomSelect(select);
+    });
+    if (!form.dataset.documentCustomSelectsBound) {
+      form.dataset.documentCustomSelectsBound = "true";
+      form.addEventListener("click", (event) => {
+        if (event.target.closest(".document-custom-select")) return;
+        closeDocumentSelectMenus(form);
+      });
+      form.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") closeDocumentSelectMenus(form);
+      });
+    }
+  }
+
   function openCaseDialog(caseId = null) {
     const form = $("#case-form");
     form.reset();
@@ -169,6 +251,10 @@ export function createDialogOpeners({
 
   function openDocumentFile(documentData) {
     if (!documentData) return;
+    if (documentData.fileUrl) {
+      window.open(absoluteCrmUrl(documentData.fileUrl), "_blank", "noopener");
+      return;
+    }
     if (documentData.url) {
       window.open(documentData.url, "_blank", "noopener");
       return;
@@ -180,6 +266,578 @@ export function createDialogOpeners({
     showToast(`Для документа «${documentData.name}» пока нет файла или ссылки.`, "warning");
   }
 
+  function safeFileName(value = "document") {
+    return String(value || "document")
+      .trim()
+      .replace(/[\\/:*?"<>|]+/g, "-")
+      .replace(/\s+/g, " ")
+      .slice(0, 90) || "document";
+  }
+
+  function defaultDocumentContent(item, client, form = null) {
+    const title = form?.elements.name?.value || "Новий документ";
+    const type = form?.elements.type?.value || "Документ";
+    return [
+      `${type}`,
+      "",
+      `Назва: ${title}`,
+      `Справа: №${item?.id || ""}`,
+      `Клієнт: ${client?.name || "Не вказано"}`,
+      "",
+      "Текст документа:",
+      "",
+      "Опишіть зміст звернення, правову позицію, прохальну частину або перелік документів.",
+      "",
+      "Додатки:",
+      "1. Документи на підтвердження обставин.",
+      "2. Інші матеріали справи.",
+      "",
+      "З повагою,",
+      item?.responsible || "Адвокат"
+    ].join("\n");
+  }
+
+  function buildDocumentExport(documentData, previewContext = {}) {
+    if (!documentData) return;
+    const item = previewContext.caseId ? caseById(previewContext.caseId) : previewContext.item || null;
+    const client = item ? clientById(item.clientId) : null;
+    const folderName = previewContext.folderName || previewContext.editContext?.folder?.name || previewContext.editContext?.linked?.folder?.name || documentData.folder || "Не вказано";
+    const body = documentData.content || documentData.comment || defaultDocumentContent(item, client);
+    const title = documentData.name || "Документ";
+    const baseName = safeFileName(title).replace(/\.(docx?|pdf|html?|txt)$/i, "");
+    const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(title)}</title>
+  <style>
+    body { font-family: Arial, sans-serif; color: #111827; line-height: 1.45; }
+    h1 { font-size: 20px; margin: 0 0 12px; }
+    .meta { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+    .meta td { border: 1px solid #d9e2ef; padding: 7px 9px; font-size: 12px; }
+    .meta td:first-child { width: 160px; color: #5b6b82; font-weight: 700; }
+    .content { white-space: pre-wrap; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>${escapeHtml(title)}</h1>
+  <table class="meta">
+    <tr><td>Справа</td><td>${escapeHtml(item ? `№${item.id}` : documentData.caseId || "Не вказано")}</td></tr>
+    <tr><td>Клієнт</td><td>${escapeHtml(client?.name || documentData.client || "Не вказано")}</td></tr>
+    <tr><td>Папка</td><td>${escapeHtml(folderName)}</td></tr>
+    <tr><td>Тип</td><td>${escapeHtml(documentData.type || "Не вказано")}</td></tr>
+    <tr><td>Статус</td><td>${escapeHtml(documentData.status || "Без статусу")}</td></tr>
+  </table>
+  <div class="content">${escapeHtml(body)}</div>
+</body>
+</html>`;
+    const text = [
+      title,
+      "",
+      `Справа: ${item ? `№${item.id}` : documentData.caseId || "Не вказано"}`,
+      `Клієнт: ${client?.name || documentData.client || "Не вказано"}`,
+      `Папка: ${folderName}`,
+      `Тип: ${documentData.type || "Не вказано"}`,
+      `Статус: ${documentData.status || "Без статусу"}`,
+      "",
+      body
+    ].join("\n");
+    return { baseName, body, client, folderName, html, item, text, title };
+  }
+
+  function downloadExportBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  function bytesFromString(value) {
+    return new TextEncoder().encode(value);
+  }
+
+  function crc32(bytes) {
+    let crc = -1;
+    for (const byte of bytes) {
+      crc ^= byte;
+      for (let bit = 0; bit < 8; bit += 1) {
+        crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+      }
+    }
+    return (crc ^ -1) >>> 0;
+  }
+
+  function numberBytes(value, length) {
+    return Array.from({ length }, (_, index) => (value >>> (index * 8)) & 0xff);
+  }
+
+  function zipStore(entries) {
+    const chunks = [];
+    const central = [];
+    let offset = 0;
+    entries.forEach(({ name, content }) => {
+      const nameBytes = bytesFromString(name);
+      const dataBytes = typeof content === "string" ? bytesFromString(content) : content;
+      const checksum = crc32(dataBytes);
+      const localHeader = new Uint8Array([
+        ...numberBytes(0x04034b50, 4), ...numberBytes(20, 2), ...numberBytes(0, 2),
+        ...numberBytes(0, 2), ...numberBytes(0, 2), ...numberBytes(0, 2),
+        ...numberBytes(checksum, 4), ...numberBytes(dataBytes.length, 4),
+        ...numberBytes(dataBytes.length, 4), ...numberBytes(nameBytes.length, 2),
+        ...numberBytes(0, 2)
+      ]);
+      chunks.push(localHeader, nameBytes, dataBytes);
+      central.push({ checksum, dataBytes, nameBytes, offset });
+      offset += localHeader.length + nameBytes.length + dataBytes.length;
+    });
+    const centralStart = offset;
+    central.forEach(({ checksum, dataBytes, nameBytes, offset: localOffset }) => {
+      const header = new Uint8Array([
+        ...numberBytes(0x02014b50, 4), ...numberBytes(20, 2), ...numberBytes(20, 2),
+        ...numberBytes(0, 2), ...numberBytes(0, 2), ...numberBytes(0, 2),
+        ...numberBytes(0, 2), ...numberBytes(checksum, 4),
+        ...numberBytes(dataBytes.length, 4), ...numberBytes(dataBytes.length, 4),
+        ...numberBytes(nameBytes.length, 2), ...numberBytes(0, 2),
+        ...numberBytes(0, 2), ...numberBytes(0, 2), ...numberBytes(0, 2),
+        ...numberBytes(0, 4), ...numberBytes(localOffset, 4)
+      ]);
+      chunks.push(header, nameBytes);
+      offset += header.length + nameBytes.length;
+    });
+    const centralSize = offset - centralStart;
+    chunks.push(new Uint8Array([
+      ...numberBytes(0x06054b50, 4), ...numberBytes(0, 2), ...numberBytes(0, 2),
+      ...numberBytes(entries.length, 2), ...numberBytes(entries.length, 2),
+      ...numberBytes(centralSize, 4), ...numberBytes(centralStart, 4),
+      ...numberBytes(0, 2)
+    ]));
+    return new Blob(chunks, { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+  }
+
+  function makeDocxBlob(exportData) {
+    const paragraphs = exportData.text.split("\n").map((line) => (
+      `<w:p><w:r><w:t xml:space="preserve">${escapeHtml(line)}</w:t></w:r></w:p>`
+    )).join("");
+    return zipStore([
+      {
+        name: "[Content_Types].xml",
+        content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+          + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+          + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+          + '<Default Extension="xml" ContentType="application/xml"/>'
+          + '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+          + "</Types>"
+      },
+      {
+        name: "_rels/.rels",
+        content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+          + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+          + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
+          + "</Relationships>"
+      },
+      {
+        name: "word/document.xml",
+        content: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+          + '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+          + `<w:body>${paragraphs}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/>`
+          + '<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body>'
+          + "</w:document>"
+      }
+    ]);
+  }
+
+  function bytesFromBinary(value) {
+    return Uint8Array.from(value, (char) => char.charCodeAt(0));
+  }
+
+  function wrapPdfText(text = "", maxLength = 88) {
+    const rows = [];
+    String(text || "").split("\n").forEach((paragraph) => {
+      const words = paragraph.split(/\s+/).filter(Boolean);
+      if (!words.length) {
+        rows.push("");
+        return;
+      }
+      let line = "";
+      words.forEach((word) => {
+        if (word.length > maxLength) {
+          if (line) rows.push(line);
+          for (let index = 0; index < word.length; index += maxLength) {
+            rows.push(word.slice(index, index + maxLength));
+          }
+          line = "";
+          return;
+        }
+        const next = line ? `${line} ${word}` : word;
+        if (next.length > maxLength) {
+          rows.push(line);
+          line = word;
+        } else {
+          line = next;
+        }
+      });
+      if (line) rows.push(line);
+    });
+    return rows;
+  }
+
+  function canvasToJpegBytes(canvas) {
+    return new Promise((resolve) => {
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          resolve(new Uint8Array());
+          return;
+        }
+        resolve(new Uint8Array(await blob.arrayBuffer()));
+      }, "image/jpeg", .92);
+    });
+  }
+
+  async function renderPdfPageImage(lines, pageIndex, pageCount) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1240;
+    canvas.height = 1754;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#111827";
+    ctx.textBaseline = "top";
+    ctx.font = "700 28px Arial, sans-serif";
+    let y = 92;
+    lines.forEach((line, index) => {
+      ctx.font = index === 0 ? "700 30px Arial, sans-serif" : "22px Arial, sans-serif";
+      ctx.fillText(line, 96, y);
+      y += index === 0 ? 52 : 34;
+    });
+    ctx.fillStyle = "#64748b";
+    ctx.font = "18px Arial, sans-serif";
+    ctx.fillText(`${pageIndex + 1} / ${pageCount}`, 1080, 1668);
+    return canvasToJpegBytes(canvas);
+  }
+
+  async function makePdfBlob(exportData) {
+    const rows = wrapPdfText(exportData.text);
+    const pageSize = 44;
+    const pages = [];
+    for (let index = 0; index < rows.length || index === 0; index += pageSize) {
+      pages.push(rows.slice(index, index + pageSize));
+    }
+    const images = [];
+    for (let index = 0; index < pages.length; index += 1) {
+      images.push(await renderPdfPageImage(pages[index], index, pages.length));
+    }
+    const chunks = [];
+    const offsets = [];
+    let position = 0;
+    const pushBytes = (bytes) => {
+      chunks.push(bytes);
+      position += bytes.length;
+    };
+    const pushString = (value) => pushBytes(bytesFromString(value));
+    const addObject = (number, parts) => {
+      offsets[number] = position;
+      pushString(`${number} 0 obj\n`);
+      parts.forEach((part) => typeof part === "string" ? pushString(part) : pushBytes(part));
+      pushString("\nendobj\n");
+    };
+    pushString("%PDF-1.4\n");
+    addObject(1, ["<< /Type /Catalog /Pages 2 0 R >>"]);
+    const pageObjects = images.map((_, index) => 3 + (index * 3));
+    addObject(2, [`<< /Type /Pages /Kids [${pageObjects.map((number) => `${number} 0 R`).join(" ")}] /Count ${pageObjects.length} >>`]);
+    images.forEach((imageBytes, index) => {
+      const pageObject = 3 + (index * 3);
+      const contentObject = pageObject + 1;
+      const imageObject = pageObject + 2;
+      const imageName = `Im${index}`;
+      const stream = `q\n595 0 0 842 0 0 cm\n/${imageName} Do\nQ`;
+      addObject(pageObject, [`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /XObject << /${imageName} ${imageObject} 0 R >> >> /Contents ${contentObject} 0 R >>`]);
+      addObject(contentObject, [`<< /Length ${bytesFromString(stream).length} >>\nstream\n${stream}\nendstream`]);
+      addObject(imageObject, [
+        `<< /Type /XObject /Subtype /Image /Width 1240 /Height 1754 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${imageBytes.length} >>\nstream\n`,
+        imageBytes,
+        "\nendstream"
+      ]);
+    });
+    const xrefPosition = position;
+    pushString(`xref\n0 ${offsets.length}\n0000000000 65535 f \n`);
+    for (let index = 1; index < offsets.length; index += 1) {
+      pushString(`${String(offsets[index]).padStart(10, "0")} 00000 n \n`);
+    }
+    pushString(`trailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${xrefPosition}\n%%EOF`);
+    return new Blob(chunks, { type: "application/pdf" });
+  }
+
+  async function performDocumentExport(documentData, previewContext = {}, format = "word") {
+    const exportData = buildDocumentExport(documentData, previewContext);
+    if (!exportData) return;
+    if (format === "pdf") {
+      downloadExportBlob(await makePdfBlob(exportData), `${exportData.baseName}.pdf`);
+      showToast(`Експортовано PDF «${exportData.title}».`);
+      return;
+    }
+    if (format === "html") {
+      downloadExportBlob(
+        new Blob(["\ufeff", exportData.html], { type: "text/html;charset=utf-8" }),
+        `${exportData.baseName}.html`
+      );
+    } else if (format === "txt") {
+      downloadExportBlob(
+        new Blob(["\ufeff", exportData.text], { type: "text/plain;charset=utf-8" }),
+        `${exportData.baseName}.txt`
+      );
+    } else {
+      downloadExportBlob(
+        makeDocxBlob(exportData),
+        `${exportData.baseName}.docx`
+      );
+    }
+    showToast(`Експортовано документ «${exportData.title}».`);
+  }
+
+  function openDocumentExportDialog(documentData, previewContext = {}) {
+    if (!documentData) return;
+    const dialog = $("#document-export-dialog");
+    if (!dialog) {
+      performDocumentExport(documentData, previewContext, "word");
+      return;
+    }
+    const item = previewContext.caseId ? caseById(previewContext.caseId) : previewContext.item || null;
+    state.pendingDocumentExport = { documentData, previewContext, format: "word" };
+    $("#document-export-name").textContent = documentData.name || "Документ";
+    $("#document-export-case").textContent = item
+      ? `№${item.id} · файл буде збережено на комп'ютер`
+      : "Файл буде збережено на комп'ютер";
+    const formatBadge = dialog.querySelector(".document-export-file > span");
+    const formatLabels = {
+      html: "HTML",
+      pdf: "PDF",
+      txt: "TXT",
+      word: "DOC"
+    };
+    const setExportFormat = (format = "word") => {
+      const normalized = formatLabels[format] ? format : "word";
+      if (state.pendingDocumentExport) state.pendingDocumentExport.format = normalized;
+      dialog.querySelectorAll('input[name="documentExportFormat"]').forEach((input) => {
+        input.checked = input.value === normalized;
+        input.closest("label")?.classList.toggle("is-selected", input.value === normalized);
+      });
+      if (formatBadge) formatBadge.textContent = formatLabels[normalized];
+    };
+    dialog.querySelectorAll('input[name="documentExportFormat"]').forEach((input) => {
+      input.onchange = () => setExportFormat(input.value);
+      const label = input.closest("label");
+      if (label) label.onclick = () => setExportFormat(input.value);
+    });
+    setExportFormat("word");
+    $("#document-export-cancel").onclick = () => {
+      state.pendingDocumentExport = null;
+      dialog.close();
+    };
+    $("#document-export-confirm").onclick = () => {
+      const pending = state.pendingDocumentExport;
+      if (!pending) return;
+      const format = pending.format || dialog.querySelector('input[name="documentExportFormat"]:checked')?.value || "word";
+      dialog.close();
+      state.pendingDocumentExport = null;
+      performDocumentExport(pending.documentData, pending.previewContext, format);
+    };
+    dialog.showModal();
+  }
+
+  function exportStoredDocument(documentData, previewContext = {}) {
+    openDocumentExportDialog(documentData, previewContext);
+  }
+
+  function normalizedServerUrl(value = "") {
+    return String(value || "").trim().replace(/\/+$/, "");
+  }
+
+  function loadOnlyOfficeApi(documentServerUrl) {
+    return new Promise((resolve, reject) => {
+      if (window.DocsAPI?.DocEditor) {
+        resolve();
+        return;
+      }
+      const src = `${documentServerUrl}/web-apps/apps/api/documents/api.js`;
+      const existing = document.querySelector(`script[data-onlyoffice-api="${src}"]`);
+      if (existing) {
+        existing.addEventListener("load", () => resolve(), { once: true });
+        existing.addEventListener("error", () => reject(new Error("ONLYOFFICE API load failed")), { once: true });
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = src;
+      script.async = true;
+      script.dataset.onlyofficeApi = src;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("ONLYOFFICE API load failed"));
+      document.head.append(script);
+    });
+  }
+
+  function officeEditorSetupView(documentData, settings, reason = "") {
+    const serverUrl = normalizedServerUrl(settings.documentServerUrl);
+    const serverAccessUrl = normalizedServerUrl(settings.serverAccessUrl);
+    const formatLabel = onlyOfficeFileType(documentData).toUpperCase();
+    return `
+      <div class="office-editor-empty">
+        <span aria-hidden="true">${escapeHtml(reason ? "!" : formatLabel || "DOC")}</span>
+        <h3>${escapeHtml(reason || "ONLYOFFICE ще не підключено")}</h3>
+        <p>Щоб відкривати та редагувати документи як у Word або Google Docs, CRM має передати файл через окремий Document Server.</p>
+        <div class="office-editor-checklist">
+          <strong>Що потрібно для бойового режиму</strong>
+          <ul>
+            <li>Document Server URL у налаштуваннях: ${escapeHtml(serverUrl || "не вказано")}</li>
+            <li>CRM URL для Document Server: ${escapeHtml(serverAccessUrl || "не вказано")}</li>
+            <li>Callback URL, щоб CRM отримувала збережену версію</li>
+            <li>JWT secret для захищеного обміну</li>
+          </ul>
+        </div>
+        <small>Документ: ${escapeHtml(documentData?.name || "Не вибрано")}</small>
+      </div>
+    `;
+  }
+
+  function onlyOfficeFileType(documentData = {}, documentUrl = "") {
+    const candidates = [
+      documentData.fileName,
+      documentData.name,
+      documentData.type,
+      cleanUrl(documentUrl).split("?")[0].split("#")[0]
+    ];
+    for (const candidate of candidates) {
+      const match = String(candidate || "").trim().toLowerCase().match(/\.?([a-z0-9]+)$/);
+      const ext = match?.[1] || "";
+      if (["doc", "docx", "odt", "rtf", "txt", "pdf", "xls", "xlsx", "ods", "csv", "ppt", "pptx", "odp"].includes(ext)) {
+        return ext;
+      }
+    }
+    return "docx";
+  }
+
+  function onlyOfficeDocumentType(fileType = "docx") {
+    if (["xls", "xlsx", "ods", "csv"].includes(fileType)) return "cell";
+    if (["ppt", "pptx", "odp"].includes(fileType)) return "slide";
+    if (fileType === "pdf") return "pdf";
+    return "word";
+  }
+
+  function officeSubtitle(fileType = "docx") {
+    if (fileType === "pdf") return "Перегляд PDF через ONLYOFFICE Document Server.";
+    if (["xls", "xlsx", "ods", "csv"].includes(fileType)) return "Робота з таблицею через ONLYOFFICE Document Server.";
+    if (["ppt", "pptx", "odp"].includes(fileType)) return "Робота з презентацією через ONLYOFFICE Document Server.";
+    return "Повноцінне редагування документа через ONLYOFFICE Document Server.";
+  }
+
+  function onlyOfficeDocumentKey(documentData = {}, fileType = "docx", documentUrl = "") {
+    const raw = [
+      documentData.documentId || documentData.id || Date.now(),
+      fileType,
+      documentData.fileName || documentData.name || "",
+      documentUrl
+    ].join("-");
+    let hash = 0;
+    for (let index = 0; index < raw.length; index += 1) {
+      hash = ((hash << 5) - hash + raw.charCodeAt(index)) | 0;
+    }
+    return `crm-${String(documentData.documentId || documentData.id || "document")}-${fileType}-${Math.abs(hash)}`.slice(0, 120);
+  }
+
+  async function openOfficeEditor(documentData, previewContext = {}) {
+    const dialog = $("#office-editor-dialog");
+    const body = $("#office-editor-body");
+    const title = $("#office-editor-title");
+    const subtitle = $("#office-editor-subtitle");
+    if (!dialog || !body || !title || !subtitle || !documentData) return;
+    const settings = state.settingsIntegrationSettings?.ONLYOFFICE || {};
+    const documentServerUrl = normalizedServerUrl(settings.documentServerUrl);
+    const callbackUrl = onlyOfficeResourceUrl(documentData.onlyOfficeCallbackUrl || settings.callbackUrl || "", settings);
+    const documentUrl = onlyOfficeResourceUrl(documentData.fileUrl || documentData.url || "", settings);
+    const fileType = onlyOfficeFileType(documentData, documentUrl);
+    const documentType = onlyOfficeDocumentType(fileType);
+    const saveStatus = dialog.querySelector(".office-editor-save-status");
+    title.textContent = documentData.name || "ONLYOFFICE";
+    subtitle.textContent = officeSubtitle(fileType);
+    if (saveStatus) {
+      saveStatus.title = fileType === "pdf" ? "PDF відкрито у режимі перегляду" : "ONLYOFFICE зберігає документ через callback у CRM";
+      saveStatus.innerHTML = `
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"></path></svg>
+        ${fileType === "pdf" ? "Перегляд" : "Автозбереження"}
+      `;
+    }
+    dialog.showModal();
+    if (!documentServerUrl) {
+      body.innerHTML = officeEditorSetupView(documentData, settings);
+      return;
+    }
+    if (!documentUrl) {
+      body.innerHTML = officeEditorSetupView(documentData, settings, "Потрібен URL файлу");
+      return;
+    }
+    body.innerHTML = `<div class="office-editor-loading"><strong>Завантажуємо ONLYOFFICE...</strong><span>${escapeHtml(documentServerUrl)}</span></div><div id="onlyoffice-editor-container" class="onlyoffice-editor-container"></div>`;
+    try {
+      await loadOnlyOfficeApi(documentServerUrl);
+      const container = document.querySelector("#onlyoffice-editor-container");
+      if (!container || !window.DocsAPI?.DocEditor) throw new Error("ONLYOFFICE API unavailable");
+      body.querySelector(".office-editor-loading")?.remove();
+      window.__crmOnlyOfficeEditor?.destroyEditor?.();
+      window.__crmOnlyOfficeEditor = new window.DocsAPI.DocEditor("onlyoffice-editor-container", {
+        document: {
+          fileType,
+          key: onlyOfficeDocumentKey(documentData, fileType, documentUrl),
+          title: documentData.fileName || documentData.name || `document.${fileType}`,
+          url: documentUrl
+        },
+        documentType,
+        editorConfig: {
+          callbackUrl,
+          lang: "uk",
+          mode: fileType === "pdf" ? "view" : "edit",
+          user: {
+            id: "crm-user",
+            name: state.currentUser?.name || "CRM user"
+          }
+        },
+        height: "100%",
+        width: "100%"
+      });
+    } catch (_error) {
+      body.innerHTML = officeEditorSetupView(documentData, settings, "Не вдалося завантажити ONLYOFFICE");
+      showToast("ONLYOFFICE не відкрився. Перевірте Document Server URL.", "warning");
+    }
+  }
+
+  function cleanUrl(value = "") {
+    return String(value || "").trim();
+  }
+
+  function absoluteCrmUrl(value = "") {
+    const url = cleanUrl(value);
+    if (!url) return "";
+    if (/^https?:\/\//i.test(url)) return url;
+    return new URL(url, window.location.origin).href;
+  }
+
+  function onlyOfficeResourceUrl(value = "", settings = {}) {
+    const url = absoluteCrmUrl(value);
+    const serverAccessUrl = normalizedServerUrl(settings.serverAccessUrl);
+    if (!url || !serverAccessUrl) return url;
+    try {
+      const target = new URL(url);
+      if (target.origin !== window.location.origin) return url;
+      const base = new URL(serverAccessUrl);
+      target.protocol = base.protocol;
+      target.host = base.host;
+      return target.href;
+    } catch (_error) {
+      return url.replace(window.location.origin, serverAccessUrl);
+    }
+  }
+
   function openStoredDocument(documentData, previewContext = {}) {
     if (!documentData) return;
     const dialog = $("#document-preview-dialog");
@@ -187,15 +845,16 @@ export function createDialogOpeners({
     const title = $("#document-preview-title");
     const fileButton = $("#document-preview-file");
     const editButton = $("#document-preview-edit");
+    const exportButton = $("#document-preview-export");
     const caseButton = $("#document-preview-case");
-    if (!dialog || !content || !title || !fileButton || !editButton || !caseButton) {
+    if (!dialog || !content || !title || !fileButton || !editButton || !exportButton || !caseButton) {
       openDocumentFile(documentData);
       return;
     }
     const item = previewContext.caseId ? caseById(previewContext.caseId) : previewContext.item || null;
     const client = item ? clientById(item.clientId) : null;
     const folderName = previewContext.folderName || previewContext.editContext?.folder?.name || previewContext.editContext?.linked?.folder?.name || "Не вказано";
-    const hasFile = Boolean(documentData.url || documentData.fileObject);
+    const hasFile = Boolean(documentData.fileUrl || documentData.url || documentData.fileObject);
     const fileName = documentData.fileName || (documentData.fileObject && documentData.fileObject.name) || "";
     const source = documentData.source || (documentData.url ? "Посилання" : fileName ? "Файл" : "Опис без файлу");
     title.textContent = documentData.name || "Документ";
@@ -219,11 +878,15 @@ export function createDialogOpeners({
       </dl>
       <div class="document-preview-file-state ${hasFile ? "ready" : "empty"}">
         <strong>${hasFile ? "Файл готовий до відкриття" : "Файл ще не додано"}</strong>
-        <span>${escapeHtml(hasFile ? (fileName || documentData.url || "Документ має посилання або файл") : "Додайте файл або посилання, щоб кнопка відкривала реальний PDF, Word чи скан.")}</span>
+        <span>${escapeHtml(hasFile ? (fileName || documentData.fileUrl || documentData.url || "Документ має посилання або файл") : "Додайте файл або посилання, щоб кнопка відкривала реальний PDF, Word чи скан.")}</span>
       </div>
       <div class="document-preview-comment">
         <strong>Коментар</strong>
         <p>${escapeHtml(documentData.comment || "Коментар по документу ще не додано.")}</p>
+      </div>
+      <div class="document-preview-body">
+        <strong>Текст документа</strong>
+        <p>${escapeHtml(documentData.content || "Текст документа ще не додано. Відкрийте редагування, заповніть чернетку і експортуйте файл.")}</p>
       </div>
     `;
     fileButton.disabled = !hasFile;
@@ -236,6 +899,7 @@ export function createDialogOpeners({
       dialog.close();
       openDocumentDialog(previewContext.caseId, previewContext.editContext, previewContext.returnView || "documents");
     };
+    exportButton.onclick = () => exportStoredDocument(documentData, previewContext);
     caseButton.disabled = !item;
     caseButton.onclick = () => {
       if (!item) return;
@@ -252,19 +916,169 @@ export function createDialogOpeners({
   function openDocumentDialog(caseId, editContext = null, returnView = null) {
     const form = $("#document-form");
     form.reset();
-    form.elements.caseId.value = caseId;
-    const item = caseById(caseId);
     state.documentDialogReturnView = returnView || ($("#documents")?.classList.contains("active") ? "documents" : "cases");
-    $("#document-folder").innerHTML = [
-      ...caseFolders(item).map((folder, index) => `<option value="${index}">${folder.name}</option>`),
-      `<option value="__new__">+ Создать новую папку</option>`
-    ].join("");
+    const requestedCaseId = caseId || state.selectedCaseId || state.cases[0]?.id || "";
+    let item = caseById(requestedCaseId) || state.cases[0] || null;
+    form.elements.caseId.value = item?.id || "";
+    if (form.elements.documentTargetMode) {
+      form.elements.documentTargetMode.value = "case";
+    }
+    const targetModeCard = form.querySelector("[data-document-target-mode]");
+    const destinationCard = form.querySelector("[data-document-destination]");
+    const clientSelect = form.elements.targetClientId;
+    const caseSelect = form.elements.targetCaseId;
+    const destinationSummary = form.querySelector("[data-document-destination-summary]");
+    const shouldShowDestination = !editContext && state.documentDialogReturnView === "documents";
+
+    const caseLabel = (caseItem) => {
+      const client = clientById(caseItem.clientId);
+      return `№${caseItem.id} · ${client?.name || "Клієнт"} · ${caseItem.title || "Без назви"}`;
+    };
+    const fillFolderOptions = () => {
+      const folders = item ? caseFolders(item) : [];
+      $("#document-folder").innerHTML = [
+        ...folders.map((folder, index) => `<option value="${index}">${escapeHtml(folder.name)}</option>`),
+        `<option value="__new__">+ Створити нову папку</option>`
+      ].join("");
+    };
+    const fillArchiveOptions = () => {
+      const archiveSelect = form.elements.archiveFolderId;
+      if (!archiveSelect) return;
+      const archiveFolders = Array.isArray(state.documentArchiveFolders) ? state.documentArchiveFolders : [];
+      const normalize = (folders) => folders.forEach((folder) => {
+        if (!Array.isArray(folder.documents)) folder.documents = [];
+        if (!Array.isArray(folder.children)) folder.children = [];
+        normalize(folder.children);
+      });
+      normalize(archiveFolders);
+      if (!archiveSelect.value && archiveFolders[0]) archiveSelect.value = archiveFolders[0].id;
+      const picker = form.querySelector('[data-document-archive-picker="document-form"]');
+      const renderPickerFolder = (folder, depth = 0) => `
+        <button class="document-archive-picker-node ${archiveSelect.value === folder.id ? "active" : ""}" type="button" data-document-archive-pick="${escapeHtml(folder.id)}" style="--level:${depth}">
+          <span aria-hidden="true">›</span>
+          <i class="folder-icon" aria-hidden="true"></i>
+          <strong>${escapeHtml(folder.name)}</strong>
+          <em>${folder.documents.length}</em>
+        </button>
+        ${(folder.children || []).map((child) => renderPickerFolder(child, depth + 1)).join("")}
+      `;
+      if (picker) {
+        picker.innerHTML = archiveFolders.map((folder) => renderPickerFolder(folder)).join("") || `<p>Архівних папок ще немає.</p>`;
+        picker.querySelectorAll("[data-document-archive-pick]").forEach((button) => {
+          button.addEventListener("click", () => {
+            archiveSelect.value = button.dataset.documentArchivePick || "";
+            fillArchiveOptions();
+          });
+        });
+      }
+    };
+    const syncDestinationSummary = () => {
+      if (!destinationSummary) return;
+      destinationSummary.textContent = item ? `Обрано: №${item.id}` : "Оберіть справу";
+    };
+    const applyDestinationCase = (nextCaseId) => {
+      const nextItem = caseById(nextCaseId);
+      if (!nextItem) return;
+      item = nextItem;
+      form.elements.caseId.value = item.id;
+      fillFolderOptions();
+      syncDestinationSummary();
+      setupDocumentCustomSelects(form);
+    };
+    const fillCaseSelect = (clientId, preferredCaseId = "") => {
+      if (!caseSelect) return;
+      const clientCases = state.cases.filter((caseItem) => String(caseItem.clientId) === String(clientId));
+      caseSelect.innerHTML = clientCases.length
+        ? clientCases.map((caseItem) => `<option value="${escapeHtml(caseItem.id)}">${escapeHtml(caseLabel(caseItem))}</option>`).join("")
+        : `<option value="">У клієнта поки немає справ</option>`;
+      const selectedCase = clientCases.find((caseItem) => caseItem.id === preferredCaseId) || clientCases[0] || null;
+      caseSelect.value = selectedCase?.id || "";
+      if (selectedCase) applyDestinationCase(selectedCase.id);
+    };
+    const fillClientSelect = () => {
+      if (!clientSelect || !caseSelect) return;
+      const caseClientIds = new Set(state.cases.map((caseItem) => String(caseItem.clientId)));
+      const clients = state.clients.filter((client) => caseClientIds.has(String(client.id)));
+      const selectedClient = item ? clientById(item.clientId) : clients[0] || null;
+      clientSelect.innerHTML = clients.length
+        ? clients.map((client) => `<option value="${client.id}">${escapeHtml(client.name)}</option>`).join("")
+        : `<option value="">Клієнтів зі справами немає</option>`;
+      clientSelect.value = selectedClient?.id || "";
+      fillCaseSelect(clientSelect.value, item?.id || "");
+    };
+
+    const syncDocumentTargetMode = () => {
+      const targetMode = form.elements.documentTargetMode?.value || "case";
+      if (targetModeCard) targetModeCard.hidden = Boolean(editContext) || state.documentDialogReturnView !== "documents";
+      if (destinationCard) destinationCard.hidden = !shouldShowDestination || targetMode !== "case";
+      form.querySelectorAll("[data-document-case-destination]").forEach((field) => {
+        field.hidden = !editContext && targetMode === "archive";
+      });
+      form.querySelectorAll("[data-document-archive-destination]").forEach((field) => {
+        field.hidden = Boolean(editContext) || targetMode !== "archive";
+      });
+    };
+    form.querySelectorAll('input[name="documentTargetMode"]').forEach((input) => {
+      input.onchange = syncDocumentTargetMode;
+    });
+    syncDocumentTargetMode();
+    fillClientSelect();
+    fillFolderOptions();
+    fillArchiveOptions();
+    syncDestinationSummary();
+    if (clientSelect) {
+      clientSelect.onchange = () => {
+        fillCaseSelect(clientSelect.value);
+        setupDocumentCustomSelects(form);
+      };
+    }
+    if (caseSelect) {
+      caseSelect.onchange = () => applyDestinationCase(caseSelect.value);
+    }
+    setupDocumentCustomSelects(form);
+    syncDocumentTargetMode();
     form.elements.editSource.value = "";
     form.elements.docIndex.value = "";
     form.elements.folderIndex.value = "";
     form.elements.fileIndex.value = "";
+    form.classList.toggle("is-editing-document", Boolean(editContext));
     $("#document-dialog-title").textContent = "Новий документ";
     $("#document-submit-button").textContent = "Додати документ";
+    if (form.elements.documentSourceMode) {
+      form.elements.documentSourceMode.value = "onlyoffice";
+    }
+    const syncDocumentSourceMode = () => {
+      const target = form.elements.documentSourceMode?.value || "onlyoffice";
+      const button = $("#document-submit-button");
+      form.querySelectorAll("[data-document-source-panel]").forEach((panel) => {
+        panel.hidden = Boolean(editContext) || panel.dataset.documentSourcePanel !== target;
+      });
+      if (!button) return;
+      button.textContent = editContext
+        ? "Зберегти документ"
+        : target === "onlyoffice"
+          ? "Створити документ"
+          : "Додати документ";
+    };
+    form.querySelectorAll('input[name="documentSourceMode"]').forEach((input) => {
+      input.onchange = syncDocumentSourceMode;
+    });
+    const fileInput = form.elements.file;
+    const fileNameLabel = form.querySelector("[data-document-file-name]");
+    if (fileInput && fileNameLabel) {
+      fileNameLabel.textContent = fileInput.files?.[0]?.name || "Файл не вибрано";
+      fileInput.onchange = () => {
+        fileNameLabel.textContent = fileInput.files?.[0]?.name || "Файл не вибрано";
+      };
+    }
+    const draftButton = form.querySelector("[data-document-fill-draft]");
+    if (draftButton) {
+      draftButton.onclick = () => {
+        const client = item ? clientById(item.clientId) : null;
+        form.elements.content.value = defaultDocumentContent(item, client, form);
+        form.elements.content.focus();
+      };
+    }
 
     if (editContext) {
       const data = editContext.file || editContext.doc;
@@ -280,10 +1094,17 @@ export function createDialogOpeners({
       form.elements.responseDue.value = parseDisplayDate(data?.responseDue);
       form.elements.status.value = data?.status || "Чернетка";
       form.elements.comment.value = data?.comment || "";
+      form.elements.content.value = data?.content || "";
       form.elements.folder.value = String(editContext.folderIndex ?? linked?.folderIndex ?? 0);
+      if (form.elements.documentSourceMode) {
+        form.elements.documentSourceMode.value = data?.url ? "google" : data?.fileName || data?.fileUrl ? "upload" : "onlyoffice";
+      }
       $("#document-dialog-title").textContent = "Редагувати документ";
       $("#document-submit-button").textContent = "Зберегти документ";
     }
+    setupDocumentCustomSelects(form);
+    syncDocumentTargetMode();
+    syncDocumentSourceMode();
     $("#document-dialog").showModal();
   }
 
@@ -660,6 +1481,8 @@ export function createDialogOpeners({
     findFolderFileByDocument,
     getDocumentPayload,
     openStoredDocument,
+    exportStoredDocument,
+    openOfficeEditor,
     openDocumentDialog,
     openTaskDialog,
     openSubtaskDialog,

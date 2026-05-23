@@ -6,7 +6,7 @@ from urllib.parse import unquote, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1] / "frontend"
-PORT = 8000
+PORT = 8001
 
 
 def asset_version():

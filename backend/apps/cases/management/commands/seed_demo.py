@@ -1,11 +1,16 @@
 import json
 import re
+import urllib.request
+from html import escape
 from hashlib import sha1
+from io import BytesIO
 from datetime import date, datetime, time
 from decimal import Decimal
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
@@ -170,6 +175,123 @@ def ensure_case_member(case, user):
     return member
 
 
+def sample_docx_bytes(title, paragraphs):
+    body = "".join(
+        f"<w:p><w:r><w:t>{escape(str(paragraph))}</w:t></w:r></w:p>"
+        for paragraph in [title, *paragraphs]
+    )
+    document_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        f"<w:body>{body}<w:sectPr><w:pgSz w:w=\"11906\" w:h=\"16838\"/>"
+        '<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body>'
+        "</w:document>"
+    )
+    buffer = BytesIO()
+    with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "[Content_Types].xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+            "</Types>",
+        )
+        archive.writestr(
+            "_rels/.rels",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
+            "</Relationships>",
+        )
+        archive.writestr("word/document.xml", document_xml)
+    return buffer.getvalue()
+
+
+def pdf_escape(value):
+    return str(value).replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
+def sample_pdf_bytes(title, lines):
+    try:
+        with urllib.request.urlopen(
+            "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+            timeout=2,
+        ) as response:
+            return response.read()
+    except Exception:
+        pass
+
+    text_lines = [title, *lines]
+    stream = ["BT", "/F1 14 Tf", "72 760 Td"]
+    for index, line in enumerate(text_lines):
+        if index:
+            stream.append("0 -24 Td")
+        stream.append(f"({pdf_escape(line)}) Tj")
+    stream.append("ET")
+    stream_bytes = "\n".join(stream).encode("latin-1", "ignore")
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+        b"<< /Length " + str(len(stream_bytes)).encode("ascii") + b" >>\nstream\n" + stream_bytes + b"\nendstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    payload = b"%PDF-1.4\n"
+    offsets = []
+    for index, obj in enumerate(objects, start=1):
+        offsets.append(len(payload))
+        payload += f"{index} 0 obj\n".encode("ascii") + obj + b"\nendobj\n"
+    xref_offset = len(payload)
+    payload += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode("ascii")
+    for offset in offsets:
+        payload += f"{offset:010d} 00000 n \n".encode("ascii")
+    payload += (
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
+        f"startxref\n{xref_offset}\n%%EOF\n"
+    ).encode("ascii")
+    return payload
+
+
+def sample_file_for_document(document):
+    source = document.get("sampleFile", "")
+    if source == "crm":
+        return (
+            "crm-demo-pozov.docx",
+            sample_docx_bytes(
+                "CRM файл: Адміністративний позов",
+                [
+                    "Цей DOCX збережений всередині CRM і відкривається через ONLYOFFICE.",
+                    "Його можна редагувати, а збережена версія повертається у картку документа.",
+                ],
+            ),
+        )
+    if source == "pdf":
+        return (
+            "real-test-pdf-document.pdf",
+            sample_pdf_bytes(
+                "Real CRM PDF demo",
+                [
+                    "This file is stored in CRM media and can be opened as a real PDF.",
+                    "Use it to test preview, download and document source labels.",
+                ],
+            ),
+        )
+    if source == "computer":
+        return (
+            "uploaded-from-computer-demo.docx",
+            sample_docx_bytes(
+                "Файл, завантажений з комп'ютера",
+                [
+                    "Демо-сценарій імітує документ, який співробітник додав вручну з ноутбука.",
+                    "Перевірте редагування тексту, збереження і повторне відкриття документа.",
+                ],
+            ),
+        )
+    return None
+
+
 def date_time_from_event(event, key="time"):
     date = event.get("date")
     value_time = event.get(key) or event.get("time") or "09:00"
@@ -281,23 +403,29 @@ class Command(BaseCommand):
             item.tasks.filter(is_demo=True).delete()
             for document in row.get("documents", []):
                 document_responsible = user_for_name(document.get("responsible", row.get("responsible", "")))
-                CaseDocument.objects.create(
+                created_document = CaseDocument.objects.create(
                     case=item,
                     title=document.get("name", ""),
                     document_type=document.get("type", ""),
                     status=document.get("status", ""),
+                    external_url=document.get("url", ""),
                     submitted_at=parse_date(document.get("submitted")),
                     response_due_at=parse_date(document.get("responseDue")),
                     responsible_name=document.get("responsible", row.get("responsible", "")),
                     comment=document.get("comment", ""),
                     history=document.get("history", []),
+                    content=document.get("content", ""),
                     is_demo=True,
                 )
+                sample_file = sample_file_for_document(document)
+                if sample_file:
+                    file_name, content = sample_file
+                    created_document.file.save(file_name, ContentFile(content), save=True)
                 ensure_case_member(item, document_responsible)
             for folder in row.get("folders", []):
                 for document in folder.get("files", []):
                     document_responsible = user_for_name(document.get("responsible", row.get("responsible", "")))
-                    CaseDocument.objects.create(
+                    created_document = CaseDocument.objects.create(
                         case=item,
                         title=document.get("name", ""),
                         document_type=document.get("type", ""),
@@ -309,8 +437,13 @@ class Command(BaseCommand):
                         responsible_name=document.get("responsible", row.get("responsible", "")),
                         comment=document.get("comment", ""),
                         history=document.get("history", []),
+                        content=document.get("content", ""),
                         is_demo=True,
                     )
+                    sample_file = sample_file_for_document(document)
+                    if sample_file:
+                        file_name, content = sample_file
+                        created_document.file.save(file_name, ContentFile(content), save=True)
                     ensure_case_member(item, document_responsible)
             for task in row.get("tasks", []):
                 planner_at = None

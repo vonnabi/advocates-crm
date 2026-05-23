@@ -1,6 +1,7 @@
-import { changePasswordInApi, clearDemoDataInApi, getDemoDataStatusFromApi, loginToApi, logoutFromApi, restoreDemoDataInApi, shouldUseApi } from "./api.js?v=demo-data-status-1";
+import { changePasswordInApi, clearDemoDataInApi, getDemoDataStatusFromApi, importCrmSnapshotToApi, loginToApi, logoutFromApi, restoreDemoDataInApi, shouldUseApi } from "./api.js?v=server-snapshot-1";
 
 const DEMO_URL = "https://vonnabi.github.io/advocates-crm/";
+const SNAPSHOT_STORAGE_KEY = "advocates-crm-snapshot";
 let topbarClockTimer = null;
 
 export function closeTopbarPanels($) {
@@ -182,15 +183,20 @@ function focusSettingsSection(sectionKey) {
 function demoDataSummary(status) {
   const counts = status?.counts || {};
   const total = status?.total ?? Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0);
+  if (status?.snapshot) return `Локальна копія · ${total || 0} записів`;
   if (!status?.enabled) return "Вимкнено";
   if (!total) return "Увімкнено";
   return `Увімкнено · ${total} записів`;
 }
 
+function isSnapshotMode(state) {
+  return state?.dataSource === "snapshot";
+}
+
 function syncDemoDataToggle(state) {
   const toggle = document.querySelector("[data-demo-data-toggle]");
   if (!toggle) return;
-  const visible = shouldUseApi(state) && state.sessionPermissions?.canManageUsers;
+  const visible = (shouldUseApi(state) || isSnapshotMode(state)) && state.sessionPermissions?.canManageUsers;
   toggle.hidden = !visible;
   if (!visible) return;
   const enabled = Boolean(state.demoDataStatus?.enabled);
@@ -201,6 +207,7 @@ function syncDemoDataToggle(state) {
 }
 
 async function refreshDemoDataStatus(state) {
+  if (isSnapshotMode(state)) return state.demoDataStatus;
   if (!shouldUseApi(state)) return state.demoDataStatus;
   const status = await getDemoDataStatusFromApi();
   state.demoDataStatus = status;
@@ -219,16 +226,29 @@ function ensureDemoDataOverlay(ctx) {
   overlay.innerHTML = `
     <section class="demo-data-card" role="dialog" aria-modal="true" aria-labelledby="demo-data-title">
       <button class="demo-data-close" type="button" data-demo-data-close aria-label="Закрити">×</button>
-      <div class="demo-data-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d="M4 7h16"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M6 7l1 14h10l1-14"></path><path d="M9 7V4h6v3"></path></svg>
+      <div class="demo-data-head">
+        <div class="demo-data-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M4 7h16"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M6 7l1 14h10l1-14"></path><path d="M9 7V4h6v3"></path></svg>
+        </div>
+        <h2 id="demo-data-title">Демо-дані</h2>
+        <p data-demo-data-text></p>
       </div>
-      <h2 id="demo-data-title">Демо-дані</h2>
-      <p data-demo-data-text></p>
       <div class="demo-data-counts" data-demo-data-counts></div>
       <div class="demo-data-actions">
-        <button class="secondary" type="button" data-demo-data-close>Скасувати</button>
-        <button class="danger-soft" type="button" data-demo-data-clear>Очистити</button>
-        <button class="primary" type="button" data-demo-data-restore>Відновити</button>
+        <div class="demo-data-actions-main">
+          <button class="secondary" type="button" data-demo-data-export>Скачати копію</button>
+          <label class="secondary demo-data-import" data-demo-data-import-local-wrap>Завантажити копію
+            <input type="file" accept="application/json,.json" data-demo-data-import />
+          </label>
+          <label class="secondary demo-data-import" data-demo-data-import-server-wrap>Відновити на сервер
+            <input type="file" accept="application/json,.json" data-demo-data-import-server />
+          </label>
+          <button class="secondary" type="button" data-demo-data-close>Скасувати</button>
+        </div>
+        <div class="demo-data-actions-status">
+          <button class="danger-soft" type="button" data-demo-data-clear>Очистити</button>
+          <button class="primary" type="button" data-demo-data-restore>Відновити</button>
+        </div>
       </div>
     </section>
   `;
@@ -241,9 +261,52 @@ function ensureDemoDataOverlay(ctx) {
   overlay.addEventListener("click", (event) => {
     if (event.target === overlay) overlay.hidden = true;
   });
+  overlay.querySelector("[data-demo-data-export]")?.addEventListener("click", () => {
+    downloadCrmSnapshot(state, showToast);
+  });
+  overlay.querySelector("[data-demo-data-import]")?.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      await importCrmSnapshot(file);
+      overlay.hidden = true;
+      showToast("Копію завантажено локально. Оновлюю кабінет.");
+      window.setTimeout(() => window.location.reload(), 350);
+    } catch (error) {
+      showToast(error.message || "Не вдалося завантажити JSON-копію.", "warning");
+    }
+  });
+  overlay.querySelector("[data-demo-data-import-server]")?.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const snapshot = await readCrmSnapshotFile(file);
+      const ok = window.confirm("Відновити цю JSON-копію в серверну базу CRM? Дані з копії будуть додані або оновлені, але наявні записи без збігу не видаляться.");
+      if (!ok) return;
+      const result = await importCrmSnapshotToApi(snapshot);
+      localStorage.removeItem(SNAPSHOT_STORAGE_KEY);
+      overlay.hidden = true;
+      const total = Object.entries(result.summary || {})
+        .filter(([key, value]) => key !== "skipped" && Number.isFinite(Number(value)))
+        .reduce((sum, [_key, value]) => sum + Number(value || 0), 0);
+      showToast(`JSON-копію відновлено на сервері: ${total} записів.`);
+      window.setTimeout(() => window.location.reload(), 450);
+    } catch (error) {
+      showToast(error.message || "Не вдалося відновити JSON-копію на сервер.", "warning");
+    }
+  });
   overlay.querySelector("[data-demo-data-clear]")?.addEventListener("click", async () => {
     const button = overlay.querySelector("[data-demo-data-clear]");
     button.disabled = true;
+    if (isSnapshotMode(state)) {
+      localStorage.removeItem(SNAPSHOT_STORAGE_KEY);
+      overlay.hidden = true;
+      showToast("Локальну копію вимкнено. Повертаю звичайний режим.");
+      window.setTimeout(() => window.location.reload(), 350);
+      return;
+    }
     try {
       const payload = await clearDemoDataInApi();
       state.demoDataStatus = payload.demoData;
@@ -259,6 +322,7 @@ function ensureDemoDataOverlay(ctx) {
   overlay.querySelector("[data-demo-data-restore]")?.addEventListener("click", async () => {
     const button = overlay.querySelector("[data-demo-data-restore]");
     button.disabled = true;
+    localStorage.removeItem(SNAPSHOT_STORAGE_KEY);
     try {
       const payload = await restoreDemoDataInApi();
       state.demoDataStatus = payload.demoData;
@@ -274,6 +338,66 @@ function ensureDemoDataOverlay(ctx) {
   return overlay;
 }
 
+function downloadCrmSnapshot(state, showToast) {
+  const timestamp = new Date().toISOString();
+  const snapshot = {
+    exportedAt: timestamp,
+    source: state.dataSource || "static",
+    demoData: state.demoDataStatus || {},
+    currentUser: state.currentUser || null,
+    bureauSettings: state.bureauSettings || {},
+    settingsUsers: state.settingsUsers || [],
+    settingsIntegrations: state.settingsIntegrations || {},
+    settingsIntegrationSettings: state.settingsIntegrationSettings || {},
+    settingsNotifications: state.settingsNotifications || {},
+    clients: state.clients || [],
+    cases: state.cases || [],
+    tasks: state.tasks || [],
+    events: state.events || [],
+    financeOperations: state.financeOperations || [],
+    mailing: {
+      templates: state.mailingTemplates || [],
+      campaigns: state.mailingCampaigns || [],
+      automationRules: state.mailingAutomationRules || [],
+      testContacts: state.mailingTestContacts || []
+    },
+    auditLogs: state.auditLogs || []
+  };
+  const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `advocates-crm-snapshot-${timestamp.slice(0, 10)}.json`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast("JSON-копію CRM підготовлено для завантаження.");
+}
+
+async function readCrmSnapshotFile(file) {
+  const text = await file.text();
+  let snapshot = null;
+  try {
+    snapshot = JSON.parse(text);
+  } catch (_error) {
+    throw new Error("Файл не схожий на коректну JSON-копію CRM.");
+  }
+  if (!snapshot || !Array.isArray(snapshot.clients) || !Array.isArray(snapshot.cases) || !Array.isArray(snapshot.events)) {
+    throw new Error("У копії немає базових розділів CRM: clients, cases, events.");
+  }
+  return snapshot;
+}
+
+async function importCrmSnapshot(file) {
+  const snapshot = await readCrmSnapshotFile(file);
+  localStorage.setItem(SNAPSHOT_STORAGE_KEY, JSON.stringify({
+    ...snapshot,
+    importedAt: new Date().toISOString()
+  }));
+  return snapshot;
+}
+
 async function openDemoDataOverlay(ctx) {
   const overlay = ensureDemoDataOverlay(ctx);
   try {
@@ -283,7 +407,9 @@ async function openDemoDataOverlay(ctx) {
   }
   const status = ctx.state.demoDataStatus || {};
   const enabled = Boolean(status.enabled);
-  overlay.querySelector("[data-demo-data-text]").textContent = enabled
+  overlay.querySelector("[data-demo-data-text]").textContent = isSnapshotMode(ctx.state)
+    ? "Зараз відкрито локальну JSON-копію CRM у цьому браузері. Вона не змінює серверну базу. Кнопка «Очистити» прибере локальну копію і поверне звичайний режим."
+    : enabled
     ? "Вимкнення очистить тільки записи, позначені як демо: клієнтів, справи, задачі, документи, календар і фінанси. Те, що ви або замовник додали вручну, залишиться."
     : "Демо-кабінет зараз порожній. Можна відновити стартовий набір клієнтів, справ, задач, документів, календаря та фінансів.";
   const counts = status.counts || {};
@@ -296,7 +422,8 @@ async function openDemoDataOverlay(ctx) {
     ["Фінанси", counts.financeOperations],
   ].map(([label, value]) => `<span><strong>${Number(value || 0)}</strong><em>${label}</em></span>`).join("");
   overlay.querySelector("[data-demo-data-clear]").hidden = !enabled;
-  overlay.querySelector("[data-demo-data-restore]").hidden = enabled;
+  overlay.querySelector("[data-demo-data-restore]").hidden = enabled || isSnapshotMode(ctx.state);
+  overlay.querySelector("[data-demo-data-import-server-wrap]").hidden = !shouldUseApi(ctx.state);
   overlay.hidden = false;
 }
 
