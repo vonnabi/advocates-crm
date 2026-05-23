@@ -28,8 +28,18 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Install dependencies
         run: npm ci
+
+      - name: Install backend dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -r requirements.txt
 
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
