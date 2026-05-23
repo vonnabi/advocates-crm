@@ -131,50 +131,88 @@ function readinessTone(score) {
 
 function buildProjectReadiness(state, activeIntegrations, integrationsCount, activeUsers) {
   const apiReady = shouldUseApi(state);
-  const hasCoreData = Boolean(state.clients?.length && state.cases?.length && state.tasks?.length && state.events?.length);
-  const integrationScore = Math.min(72, 34 + activeIntegrations * 9);
+  const caseTasksCount = (state.cases || []).reduce((sum, caseItem) => sum + (caseItem.tasks || []).length, 0);
+  const totalTasksCount = (state.tasks || []).length + caseTasksCount;
+  const hasCoreData = Boolean(state.clients?.length && state.cases?.length && totalTasksCount && state.events?.length);
+  const caseDocuments = (state.cases || []).flatMap((caseItem) => [
+    ...(caseItem.documents || []),
+    ...(caseItem.folders || []).flatMap((folder) => folder.files || [])
+  ]);
+  const documentSources = new Set(caseDocuments.map((documentItem) => documentItem.source).filter(Boolean));
+  const archiveFolders = state.documentArchiveFolders || [];
+  const archiveFolderCount = (folders = []) => folders.reduce((sum, folder) => sum + 1 + archiveFolderCount(folder.children || []), 0);
+  const onlyOfficeProgress = integrationConfigProgress("ONLYOFFICE", state);
+  const onlyOfficeReady = Boolean(onlyOfficeProgress.total && onlyOfficeProgress.filled >= onlyOfficeProgress.total);
+  const eSignUiReady = Boolean(integrationConfigFields["Е-підпис"]);
+  const hasDocumentArchive = archiveFolderCount(archiveFolders) >= 2;
+  const hasDocumentSources = ["Комп'ютер", "Google Docs", "CRM файл"].filter((source) => documentSources.has(source)).length;
+  const backupReady = Boolean(apiReady || state.demoDataStatus);
+  const noDemoResetMode = apiReady && state.demoDataStatus?.enabled === false;
+  const auditReady = Boolean((state.auditLogs || []).length || (state.settingsAudit || []).length);
+  const integrationRequiredTotal = Object.keys(integrationConfigFields).reduce((sum, channel) => sum + integrationConfigProgress(channel, state).total, 0);
+  const integrationFilledTotal = Object.keys(integrationConfigFields).reduce((sum, channel) => sum + integrationConfigProgress(channel, state).filled, 0);
+  const integrationSetupScore = integrationRequiredTotal
+    ? Math.round((integrationFilledTotal / integrationRequiredTotal) * 18)
+    : 0;
+  const integrationScore = Math.min(82, 38 + activeIntegrations * 7 + integrationSetupScore + (onlyOfficeReady ? 4 : 0) + (eSignUiReady ? 3 : 0));
+  const documentScore = Math.min(88,
+    38
+    + (caseDocuments.length ? 12 : 0)
+    + Math.min(12, hasDocumentSources * 4)
+    + (hasDocumentArchive ? 10 : 0)
+    + (onlyOfficeReady ? 10 : 0)
+    + (apiReady ? 6 : 0)
+    + (eSignUiReady ? 4 : 0)
+    + 6
+  );
+  const pilotScore = Math.min(84,
+    (apiReady ? 64 : 48)
+    + (backupReady ? 8 : 0)
+    + (auditReady ? 5 : 0)
+    + (noDemoResetMode ? 7 : 0)
+  );
   const items = [
     {
       title: "Основний сценарій",
-      score: hasCoreData ? 88 : 70,
+      score: hasCoreData ? 91 : 70,
       status: "Сильна зона",
-      detail: "Клієнти, справи, задачі, календар і фінанси вже проходять основний демо-сценарій.",
-      next: "Далі варто полірувати документи та роботу зі справою."
+      detail: "Клієнти, справи, задачі, календар, фінанси й документи вже проходять основний демо-сценарій.",
+      next: "Далі варто перевірити сценарій на 10-20 реальних прикладах замовника."
     },
     {
       title: "Backend і збереження",
-      score: apiReady ? 84 : 58,
+      score: apiReady ? 88 : 64,
       status: apiReady ? "Працює через API" : "Статичний режим",
-      detail: apiReady ? "Django API, база, ролі, журнал дій і Render-запуск уже підключені." : "Без API зміни залишаються демонстраційними.",
-      next: "Перед пілотом потрібно чітко зафіксувати режим без автоскидання демо."
+      detail: apiReady ? "Django API, база, ролі, журнал дій, файли документів і Render-запуск уже підключені." : "Без API зміни залишаються демонстраційними.",
+      next: apiReady ? "Перед пілотом лишається зафіксувати правила резервних копій." : "Для пілота потрібно відкривати CRM через Render/API, а не статичну сторінку."
     },
     {
       title: "Користувачі та доступ",
-      score: activeUsers > 1 ? 78 : 62,
+      score: activeUsers > 1 ? 82 : 64,
       status: `${activeUsers} користувачів`,
-      detail: "Є ролі, права, доступ до справ і попередження при видаленні користувача.",
-      next: "Залишився аудит крайніх ролей: помічник, бухгалтер, адвокат."
+      detail: "Є ролі, права, доступ до справ, вибір кількох справ клієнта і попередження при видаленні користувача.",
+      next: "Залишився практичний прогін ролей: помічник, бухгалтер, адвокат."
     },
     {
       title: "Інтеграції",
       score: integrationScore,
       status: `${activeIntegrations}/${integrationsCount} активні`,
-      detail: "Telegram, SMS, Email і AI мають UI та mock-перевірки, але ще не є бойовими провайдерами.",
-      next: "Після UI-полірування підключати реальний Telegram як перший канал."
+      detail: "Telegram, SMS, Email, КЕП, ONLYOFFICE і AI мають UI, налаштування та підготовлені поля під провайдерів.",
+      next: "Першими бойовими варто підключати Telegram/Email, потім КЕП і ONLYOFFICE сервер."
     },
     {
       title: "Документи та AI",
-      score: 54,
-      status: "Демо-логіка",
-      detail: "Документи, Word/AI та OSINT добре показують задум, але ще не працюють як реальний файловий архив.",
-      next: "Найкращий наступний крок: довести документи у справі до робочого зберігання і красивої картки."
+      score: documentScore,
+      status: `${caseDocuments.length} документів · ${archiveFolderCount(archiveFolders)} папки архіву`,
+      detail: "Є створення документа з комп'ютера, Google Docs і ONLYOFFICE, перегляд/редагування, експорт, КЕП-статуси та окремий архів.",
+      next: "Наступний крок: перевірити з реальними DOCX/PDF клієнта і вирішити, які формати лишаємо в бойовому меню."
     },
     {
       title: "Пілот і безпека",
-      score: apiReady ? 64 : 46,
-      status: "Потребує підготовки",
-      detail: "Є тести й журнал дій, але перед реальними даними потрібні правила резервних копій, режим без демо-скидання та інструкція для клієнта.",
-      next: "Перед передачею клієнту зробити чек-лист пілота і перемикач демо-режиму."
+      score: pilotScore,
+      status: noDemoResetMode ? "Можна готувати пілот" : "Потребує фінального режиму",
+      detail: "Є smoke-тести, backend-тести, журнал дій, JSON-копії CRM і відновлення копії на сервер.",
+      next: noDemoResetMode ? "Залишилось скласти коротку інструкцію для замовника." : "Перед реальними даними потрібно вимкнути демо-скидання і домовитись про графік копій."
     }
   ];
   const overall = Math.round(items.reduce((sum, item) => sum + item.score, 0) / items.length);
