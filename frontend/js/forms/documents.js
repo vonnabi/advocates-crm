@@ -139,6 +139,80 @@ export function setupDocumentForm({
     state.documentStorageArchiveFolderId = folder.id;
   }
 
+  function removeDocumentFromArchive(documentId) {
+    if (!documentId) return;
+    const walk = (folders = []) => folders.forEach((folder) => {
+      folder.documents = (folder.documents || []).filter((archiveDoc) => String(archiveDoc.documentId || "") !== String(documentId));
+      walk(folder.children || []);
+    });
+    walk(ensureArchiveFolders());
+  }
+
+  function syncArchivedDocumentCopies(doc) {
+    if (!doc?.documentId) return;
+    const walk = (folders = []) => folders.forEach((folder) => {
+      (folder.documents || []).forEach((archiveDoc) => {
+        if (String(archiveDoc.documentId || "") !== String(doc.documentId)) return;
+        archiveDoc.name = doc.name;
+        archiveDoc.type = doc.type;
+        archiveDoc.caseId = doc.caseId || archiveDoc.caseId || "";
+        archiveDoc.caseTitle = doc.caseTitle || archiveDoc.caseTitle || "";
+        archiveDoc.folderName = doc.folder || archiveDoc.folderName || "";
+        archiveDoc.status = doc.status || archiveDoc.status || "";
+      });
+      walk(folder.children || []);
+    });
+    walk(ensureArchiveFolders());
+  }
+
+  function removeCaseDocumentCopies(caseItem, documentId, docIndex, linked) {
+    if (!caseItem) return;
+    if (documentId) {
+      caseItem.documents = (caseItem.documents || []).filter((doc) => String(doc.documentId || doc.id || "") !== String(documentId));
+      caseFolders(caseItem).forEach((folder) => {
+        folder.files = (folder.files || []).filter((file) => String(file.documentId || file.id || "") !== String(documentId));
+      });
+      return;
+    }
+    if (docIndex >= 0) caseItem.documents.splice(docIndex, 1);
+    if (linked?.folder && linked.fileIndex >= 0) linked.folder.files.splice(linked.fileIndex, 1);
+  }
+
+  function upsertCaseDocumentCopy(caseItem, doc, folder) {
+    if (!caseItem || !doc || !folder) return;
+    if (!Array.isArray(caseItem.documents)) caseItem.documents = [];
+    if (!Array.isArray(folder.files)) folder.files = [];
+    const documentId = doc.documentId || doc.id;
+    const existingDoc = documentId
+      ? caseItem.documents.find((itemDoc) => String(itemDoc.documentId || itemDoc.id || "") === String(documentId))
+      : null;
+    if (existingDoc) Object.assign(existingDoc, doc);
+    else caseItem.documents.unshift(doc);
+    const existingFile = documentId
+      ? folder.files.find((file) => String(file.documentId || file.id || "") === String(documentId))
+      : null;
+    const folderFile = {
+      id: doc.id,
+      documentId,
+      name: doc.name,
+      type: doc.type,
+      folder: doc.folder,
+      status: doc.status,
+      submitted: doc.submitted,
+      responseDue: doc.responseDue,
+      comment: doc.comment,
+      content: doc.content,
+      updated: doc.updated,
+      fileName: doc.fileName,
+      fileObject: doc.fileObject || null,
+      fileUrl: doc.fileUrl || "",
+      onlyOfficeCallbackUrl: doc.onlyOfficeCallbackUrl || "",
+      url: doc.url || ""
+    };
+    if (existingFile) Object.assign(existingFile, folderFile);
+    else folder.files.unshift(folderFile);
+  }
+
   function safeFileName(value = "document") {
     return String(value || "document")
       .trim()
@@ -510,13 +584,19 @@ export function setupDocumentForm({
     }
 
     if (editSource) {
+      const targetMode = form.get("documentTargetMode") || "case";
+      const originalItem = caseById(form.get("originalCaseId")) || item;
       const docIndex = form.get("docIndex") === "" ? -1 : Number(form.get("docIndex"));
       const folderIndex = form.get("folderIndex") === "" ? -1 : Number(form.get("folderIndex"));
       const fileIndex = form.get("fileIndex") === "" ? -1 : Number(form.get("fileIndex"));
-      const doc = item.documents[docIndex];
-      const linked = doc ? findFolderFileByDocument(item, doc) : null;
-      const folderFile = folderIndex >= 0 ? folders[folderIndex]?.files[fileIndex] : linked?.file;
-      const documentId = doc?.documentId || folderFile?.documentId || makeDocumentId();
+      const originalFolders = originalItem ? caseFolders(originalItem) : [];
+      const doc = originalItem?.documents?.[docIndex];
+      const linked = doc ? findFolderFileByDocument(originalItem, doc) : (
+        folderIndex >= 0 ? { folder: originalFolders[folderIndex], folderIndex, file: originalFolders[folderIndex]?.files?.[fileIndex], fileIndex } : null
+      );
+      const folderFile = folderIndex >= 0 ? originalFolders[folderIndex]?.files[fileIndex] : linked?.file;
+      const existingDocumentId = doc?.documentId || folderFile?.documentId || doc?.id || folderFile?.id || "";
+      const documentId = existingDocumentId || makeDocumentId();
       const previousFileName = doc?.fileName || folderFile?.fileName || "";
       const previousFileObject = doc?.fileObject || folderFile?.fileObject || null;
       const previousUrl = doc?.url || folderFile?.url || "";
@@ -530,8 +610,8 @@ export function setupDocumentForm({
           : "ONLYOFFICE";
       const selectedFolderName = folders[Number(form.get("folder"))]?.name;
       const folderName = inferCaseDocumentFolder(
-        { name, type: form.get("type"), folder: folders[folderIndex]?.name || linked?.folder?.name || selectedFolderName },
-        folders[folderIndex]?.name || linked?.folder?.name || selectedFolderName
+        { name, type: form.get("type"), folder: selectedFolderName || linked?.folder?.name },
+        selectedFolderName || linked?.folder?.name
       );
       const documentCopyPayload = {
         item,
@@ -547,6 +627,14 @@ export function setupDocumentForm({
       const shouldGenerateOnlyOfficeFile = documentSourceMode === "onlyoffice" && !fileName && !nextFileName;
       const generatedUploadFile = shouldGenerateOnlyOfficeFile ? makeDocumentFile(documentCopyPayload, onlyOfficeCreateFormat) : null;
       let savedDocument = null;
+      let targetArchiveFolder = null;
+      if (targetMode === "archive") {
+        targetArchiveFolder = resolveArchiveFolder(form, today);
+        if (!targetArchiveFolder) {
+          showToast("Оберіть папку архіву або створіть нову.", "warning");
+          return;
+        }
+      }
       if (shouldUseApi(state)) {
         try {
           savedDocument = normalizeDocument(await saveDocumentToApi({
@@ -577,45 +665,60 @@ export function setupDocumentForm({
           return;
         }
       }
-      const update = (target) => {
-        if (!target) return;
-        target.id = savedDocument?.id || target.id;
-        target.documentId = savedDocument?.documentId || savedDocument?.id || documentId;
-        target.name = savedDocument?.name || name;
-        target.type = savedDocument?.type || form.get("type");
-        target.folder = savedDocument?.folder || folderName;
-        target.status = savedDocument?.status || form.get("status");
-        target.submitted = savedDocument?.submitted || submitted;
-        target.responseDue = savedDocument?.responseDue || responseDue;
-        target.comment = savedDocument?.comment || form.get("comment");
-        target.content = savedDocument?.content || content;
-        target.fileName = savedDocument?.fileName || nextFileName || generatedUploadFile?.name || "";
-        target.fileObject = nextFileObject || generatedUploadFile || null;
-        target.fileUrl = savedDocument?.fileUrl || target.fileUrl || "";
-        target.onlyOfficeCallbackUrl = savedDocument?.onlyOfficeCallbackUrl || target.onlyOfficeCallbackUrl || "";
-        target.url = savedDocument?.url || nextUrl;
-        target.source = nextSource;
-        target.updated = today;
-        target.history = savedDocument?.history || target.history || [];
+      const updatedDocument = {
+        ...(doc || folderFile || {}),
+        ...savedDocument,
+        id: savedDocument?.id || doc?.id || folderFile?.id,
+        documentId: savedDocument?.documentId || savedDocument?.id || documentId,
+        caseId: item.id,
+        caseTitle: item.title || "",
+        name: savedDocument?.name || name,
+        type: savedDocument?.type || form.get("type"),
+        folder: savedDocument?.folder || folderName,
+        status: savedDocument?.status || form.get("status"),
+        submitted: savedDocument?.submitted || submitted,
+        responseDue: savedDocument?.responseDue || responseDue,
+        comment: savedDocument?.comment || form.get("comment"),
+        content: savedDocument?.content || content,
+        fileName: savedDocument?.fileName || nextFileName || generatedUploadFile?.name || "",
+        fileObject: nextFileObject || generatedUploadFile || null,
+        fileUrl: savedDocument?.fileUrl || doc?.fileUrl || folderFile?.fileUrl || "",
+        onlyOfficeCallbackUrl: savedDocument?.onlyOfficeCallbackUrl || doc?.onlyOfficeCallbackUrl || folderFile?.onlyOfficeCallbackUrl || "",
+        url: savedDocument?.url || nextUrl,
+        source: nextSource,
+        added: doc?.added || today,
+        updated: today,
+        history: savedDocument?.history || doc?.history || folderFile?.history || []
       };
-      update(doc);
-      update(folderFile);
-      if (doc) {
-        doc.added = doc.added || today;
-      }
-      if (folderFile) {
-        const changedFolder = folders[folderIndex] || linked?.folder;
-        if (changedFolder) changedFolder.updated = today;
+      const targetFolder = findOrCreateCaseFolder(folders, folderName, today);
+      removeCaseDocumentCopies(originalItem, existingDocumentId, docIndex, linked);
+      upsertCaseDocumentCopy(item, updatedDocument, targetFolder);
+      targetFolder.updated = today;
+      syncArchivedDocumentCopies(updatedDocument);
+      if (targetMode === "archive") {
+        addDocumentToArchive(targetArchiveFolder, updatedDocument, item, today, form.get("comment"));
+      } else {
+        removeDocumentFromArchive(updatedDocument.documentId);
       }
       item.history.unshift({
         date: today,
-        text: `Оновлено документ: ${name}.`
+        text: targetMode === "archive"
+          ? `Оновлено документ і додано в архів: ${name}.`
+          : `Оновлено документ: ${name}.`
       });
       state.selectedCaseId = item.id;
+      state.openCaseSection = "documents";
+      state.documentArchiveScope = targetMode === "archive" ? "storage" : "cases";
+      if (targetMode === "archive") state.documentStorageArchiveFolderId = targetArchiveFolder.id;
+      else {
+        state.documentArchiveClientId = String(item.clientId || "all");
+        state.documentArchiveCaseId = item.id;
+        state.documentArchiveFolder = targetFolder.name;
+      }
       $("#document-dialog").close();
       renderAll();
       switchView(state.documentDialogReturnView || "cases");
-      showToast("Документ оновлено.");
+      showToast(targetMode === "archive" ? "Документ оновлено і додано в архів." : "Документ оновлено.");
       return;
     }
 

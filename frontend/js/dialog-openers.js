@@ -922,6 +922,7 @@ export function createDialogOpeners({
     const requestedCaseId = caseId || state.selectedCaseId || state.cases[0]?.id || "";
     let item = caseById(requestedCaseId) || state.cases[0] || null;
     form.elements.caseId.value = item?.id || "";
+    form.elements.originalCaseId.value = item?.id || "";
     if (form.elements.documentTargetMode) {
       form.elements.documentTargetMode.value = "case";
     }
@@ -930,7 +931,7 @@ export function createDialogOpeners({
     const clientSelect = form.elements.targetClientId;
     const caseSelect = form.elements.targetCaseId;
     const destinationSummary = form.querySelector("[data-document-destination-summary]");
-    const shouldShowDestination = !editContext && state.documentDialogReturnView === "documents";
+    const shouldShowDestination = Boolean(editContext) || state.documentDialogReturnView === "documents";
 
     const caseLabel = (caseItem) => {
       const client = clientById(caseItem.clientId);
@@ -1028,13 +1029,13 @@ export function createDialogOpeners({
 
     const syncDocumentTargetMode = () => {
       const targetMode = form.elements.documentTargetMode?.value || "case";
-      if (targetModeCard) targetModeCard.hidden = Boolean(editContext) || state.documentDialogReturnView !== "documents";
+      if (targetModeCard) targetModeCard.hidden = !editContext && state.documentDialogReturnView !== "documents";
       if (destinationCard) destinationCard.hidden = !shouldShowDestination || targetMode !== "case";
       form.querySelectorAll("[data-document-case-destination]").forEach((field) => {
-        field.hidden = !editContext && targetMode === "archive";
+        field.hidden = targetMode === "archive";
       });
       form.querySelectorAll("[data-document-archive-destination]").forEach((field) => {
-        field.hidden = Boolean(editContext) || targetMode !== "archive";
+        field.hidden = targetMode !== "archive";
       });
     };
     form.querySelectorAll('input[name="documentTargetMode"]').forEach((input) => {
@@ -1109,6 +1110,8 @@ export function createDialogOpeners({
     if (editContext) {
       const data = editContext.file || editContext.doc;
       const linked = editContext.linked || (editContext.doc ? findFolderFileByDocument(item, editContext.doc) : null);
+      form.elements.originalCaseId.value = item?.id || "";
+      if (form.elements.documentTargetMode) form.elements.documentTargetMode.value = "case";
       form.elements.editSource.value = editContext.source;
       form.elements.docIndex.value = editContext.docIndex ?? "";
       form.elements.folderIndex.value = editContext.folderIndex ?? linked?.folderIndex ?? "";

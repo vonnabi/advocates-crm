@@ -206,6 +206,34 @@ test("document rows show inferred type labels inside standard folders", async ({
   await expect(page.locator(".documents-side .documents-meta")).toContainText("Запит");
 });
 
+test("document edit can move a document to another case folder", async ({ page }) => {
+  await openApp(page);
+
+  await page.locator('.nav-item[data-view="documents"]').click();
+  await expect(page.locator("#documents")).toHaveClass(/active/);
+  await page.locator("#documents [data-document-client-node]").filter({ hasText: "Андрієнко Тест Документів" }).click();
+  await page.locator("#documents [data-document-case-node]").filter({ hasText: "0001" }).click();
+  await page.locator("#documents .documents-tree-case.open [data-document-folder-node]").filter({ hasText: "Інші документи" }).click();
+
+  const row = page.locator("#documents [data-document-row]").filter({ hasText: "Паспорт клієнта.pdf" }).first();
+  await expect(row).toBeVisible();
+  await row.locator("[data-action-menu-trigger]").click();
+  await page.locator(".row-action-menu:not([hidden]) [data-edit-global-document]").click();
+
+  await expect(page.locator("#document-dialog")).toHaveJSProperty("open", true);
+  await expect(page.locator("[data-document-target-mode]")).toBeVisible();
+  await expect(page.locator("[data-document-destination]")).toBeVisible();
+  await page.locator('#document-form select[name="type"]').selectOption("Клопотання", { force: true });
+  await page.locator("#document-folder").selectOption("1", { force: true });
+  await page.locator("#document-submit-button").click();
+
+  await expect(page.locator("#document-dialog")).toHaveJSProperty("open", false);
+  await expect(page.locator(".documents-folder-head")).toContainText("Клопотання");
+  await expect(page.locator(".documents-table")).toContainText("Паспорт клієнта.pdf");
+  await page.locator("#documents .documents-tree-case.open [data-document-folder-node]").filter({ hasText: "Інші документи" }).click();
+  await expect(page.locator(".documents-table")).not.toContainText("Паспорт клієнта.pdf");
+});
+
 test("document dialog cancel, escape, and enter shortcuts work", async ({ page }) => {
   await openApp(page);
   await page.locator('.nav-item[data-view="documents"]').click();
