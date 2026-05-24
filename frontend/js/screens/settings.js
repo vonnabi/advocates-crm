@@ -1900,11 +1900,14 @@ export function renderSettingsScreen(ctx) {
   state.settingsFocusedSection ||= "profile";
   const readiness = buildProjectReadiness(state, activeIntegrations, integrations.length, activeUsers);
   const pilotChecklist = buildPilotChecklist(state, providerStatusByChannel, activeUsers);
-  state.settingsAudit ||= [
-    { date: settingsAuditDate(0, "09:30"), text: "Синхронізовано канали Telegram та SMS.", tone: "green" },
-    { date: settingsAuditDate(1, "18:10"), text: "Оновлено профіль бюро для документів.", tone: "blue" },
-    { date: settingsAuditDate(1, "12:40"), text: "Перевірено правила сповіщень по дедлайнах.", tone: "amber" }
-  ];
+  if (!shouldUseApi(state) && !state.settingsAudit) {
+    state.settingsAudit = [
+      { date: settingsAuditDate(0, "09:30"), text: "Синхронізовано канали Telegram та SMS.", tone: "green" },
+      { date: settingsAuditDate(1, "18:10"), text: "Оновлено профіль бюро для документів.", tone: "blue" },
+      { date: settingsAuditDate(1, "12:40"), text: "Перевірено правила сповіщень по дедлайнах.", tone: "amber" }
+    ];
+  }
+  state.settingsAudit ||= [];
   const auditItems = [
     ...(state.auditLogs || []),
     ...(state.settingsAudit || [])

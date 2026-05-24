@@ -592,7 +592,7 @@ export async function createInitialState() {
     settingsIntegrations: demoData.settings.integrations,
     settingsIntegrationSettings: demoData.settings.integrationSettings || {},
     settingsNotifications: demoData.settings.notifications,
-    settingsAudit: [
+    settingsAudit: demoDataDisabled ? [] : [
       { date: shiftDemoDateString("16.05.2024 09:30"), text: "Синхронізовано канали Telegram та SMS.", tone: "green" },
       { date: shiftDemoDateString("15.05.2024 18:10"), text: "Оновлено профіль бюро для документів.", tone: "blue" },
       { date: shiftDemoDateString("15.05.2024 12:40"), text: "Перевірено правила сповіщень по дедлайнах.", tone: "amber" }

@@ -1,4 +1,4 @@
-import { createInitialState } from "./js/state.js?v=demo-empty-state-1";
+import { createInitialState } from "./js/state.js?v=empty-audit-1";
 import {
   closeTopbarPanels as closeTopbarPanelsInChrome,
   isTopbarPanelOpen,
@@ -48,7 +48,7 @@ import {
 import { renderFinanceScreen } from "./js/screens/finance.js?v=live-demo-1";
 import { renderOSINTScreen } from "./js/screens/osint.js?v=live-demo-1";
 import { renderPlannerScreen } from "./js/screens/planner.js";
-import { renderSettingsScreen } from "./js/screens/settings.js?v=readiness-audit-1";
+import { renderSettingsScreen } from "./js/screens/settings.js?v=empty-audit-1";
 import {
   allCaseTasks as allCaseTasksScreen,
   renderTasksScreen
