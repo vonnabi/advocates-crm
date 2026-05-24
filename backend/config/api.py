@@ -22,7 +22,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 from apps.accounts.models import CRMSettings, UserProfile
 from apps.audit.models import AuditLog
 from apps.calendar_app.models import CalendarEvent
-from apps.cases.demo_data import clear_demo_business_data, demo_data_counts
+from apps.cases.demo_data import clear_all_business_data, demo_data_counts
 from apps.cases.models import Case, CaseDocument, CaseMember
 from apps.clients.models import Client, ClientCommunication
 from apps.communications.models import AutomationRule, Campaign, MessageDelivery, MessageTemplate
@@ -1460,7 +1460,7 @@ def mailing_payload():
 
 
 def clear_crm_business_data():
-    clear_demo_business_data()
+    clear_all_business_data()
 
 
 SNAPSHOT_LIST_KEYS = ("clients", "cases", "events")

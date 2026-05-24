@@ -121,9 +121,9 @@ class DemoApiTests(TestCase):
         self.assertEqual(CaseMember.objects.filter(is_demo=True).count(), 0)
         self.assertEqual(CalendarEvent.objects.filter(is_demo=True).count(), 0)
         self.assertEqual(Payment.objects.filter(is_demo=True).count() + Invoice.objects.filter(is_demo=True).count() + Expense.objects.filter(is_demo=True).count(), 0)
-        self.assertTrue(Client.objects.filter(pk=manual_client.pk, is_demo=False).exists())
-        self.assertTrue(Case.objects.filter(number=manual_case.number, is_demo=False).exists())
-        self.assertTrue(Task.objects.filter(title="Реальна задача", is_demo=False).exists())
+        self.assertFalse(Client.objects.filter(pk=manual_client.pk).exists())
+        self.assertFalse(Case.objects.filter(number=manual_case.number).exists())
+        self.assertFalse(Task.objects.filter(title="Реальна задача").exists())
         self.assertTrue(get_user_model().objects.filter(email="ivanenko@advocates.crm").exists())
         self.assertFalse(get_user_model().objects.filter(email__in=[
             "melnyk@advocates.crm",
@@ -133,7 +133,7 @@ class DemoApiTests(TestCase):
 
         empty_bootstrap = self.client.get("/api/bootstrap/")
         self.assertEqual(empty_bootstrap.status_code, 200)
-        self.assertEqual(empty_bootstrap.json()["meta"]["clients"], 1)
+        self.assertEqual(empty_bootstrap.json()["meta"]["clients"], 0)
 
         restore_response = self.client.post(
             "/api/demo-data/",
@@ -146,9 +146,9 @@ class DemoApiTests(TestCase):
         self.assertEqual(Case.objects.filter(is_demo=True).count(), 5)
         self.assertEqual(Task.objects.filter(is_demo=True).count(), 9)
         self.assertEqual(CalendarEvent.objects.filter(is_demo=True).count(), 6)
-        self.assertEqual(Client.objects.count(), 6)
-        self.assertEqual(Case.objects.count(), 6)
-        self.assertEqual(Task.objects.count(), 10)
+        self.assertEqual(Client.objects.count(), 5)
+        self.assertEqual(Case.objects.count(), 5)
+        self.assertEqual(Task.objects.count(), 9)
         self.assertEqual(CalendarEvent.objects.count(), 6)
         self.assertGreater(ClientCommunication.objects.count(), 0)
 
@@ -243,7 +243,7 @@ class DemoApiTests(TestCase):
         self.assertTrue(get_user_model().objects.filter(email="kravchuk@advocates.crm").exists())
         self.assertTrue(get_user_model().objects.filter(email="petrenko@advocates.crm").exists())
 
-    def test_demo_clear_preserves_user_records_attached_to_demo_parent(self):
+    def test_demo_clear_removes_user_records_attached_to_demo_parent(self):
         demo_case = Case.objects.get(number=demo_case_number("12345"))
         demo_client_id = demo_case.client_id
         user_document = CaseDocument.objects.create(
@@ -261,9 +261,9 @@ class DemoApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["demoData"]["enabled"])
-        self.assertTrue(CaseDocument.objects.filter(pk=user_document.pk, is_demo=False).exists())
-        self.assertTrue(Case.objects.filter(number=demo_case_number("12345"), is_demo=False).exists())
-        self.assertTrue(Client.objects.filter(pk=demo_client_id, is_demo=False).exists())
+        self.assertFalse(CaseDocument.objects.filter(pk=user_document.pk).exists())
+        self.assertFalse(Case.objects.filter(number=demo_case_number("12345")).exists())
+        self.assertFalse(Client.objects.filter(pk=demo_client_id).exists())
         self.assertEqual(Case.objects.filter(is_demo=True).count(), 0)
         self.assertEqual(Client.objects.filter(is_demo=True).count(), 0)
 

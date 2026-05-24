@@ -90,3 +90,23 @@ def clear_demo_business_data():
                 client.delete()
 
         get_user_model().objects.filter(email__in=DEMO_TEAM_EMAILS).exclude(email=DEMO_OWNER_EMAIL).delete()
+
+
+def clear_all_business_data():
+    with transaction.atomic():
+        MessageDelivery.objects.all().delete()
+        AutomationRule.objects.all().delete()
+        Campaign.objects.all().delete()
+        MessageTemplate.objects.all().delete()
+        Reminder.objects.all().delete()
+        Payment.objects.all().delete()
+        Invoice.objects.all().delete()
+        Expense.objects.all().delete()
+        CalendarEvent.objects.all().delete()
+        Task.objects.all().delete()
+        CaseDocument.objects.all().delete()
+        CaseMember.objects.all().delete()
+        ClientCommunication.objects.all().delete()
+        Case.objects.all().delete()
+        Client.objects.all().delete()
+        get_user_model().objects.filter(email__in=DEMO_TEAM_EMAILS).exclude(email=DEMO_OWNER_EMAIL).delete()
