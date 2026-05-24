@@ -20961,7 +20961,8 @@ dialog::backdrop {
 }
 
 .document-editor-field > select.document-native-select,
-.documents-filter-field > select.document-native-select {
+.documents-filter-field > select.document-native-select,
+#case-form label > select.document-native-select {
   position: absolute;
   width: 1px;
   height: 1px;

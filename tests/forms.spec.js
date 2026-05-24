@@ -80,8 +80,12 @@ test("case form creates a case and opens its detail screen", async ({ page }) =>
   await page.locator("#create-case-from-list").click();
 
   await expect(page.locator("#case-dialog")).toHaveJSProperty("open", true);
+  await expect(page.locator("#case-form .case-custom-select")).toHaveCount(5);
+  await page.locator('#case-form select[name="type"] + .case-custom-select .document-custom-select-button').click();
+  await expect(page.locator('#case-form select[name="type"] + .case-custom-select .document-custom-select-menu')).toBeVisible();
+  await expect(page.locator('#case-form select[name="type"] + .case-custom-select .document-custom-select-menu')).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await page.locator('#case-form select[name="type"] + .case-custom-select .document-custom-select-option', { hasText: "Цивільна" }).click();
   await page.locator('#case-form [name="title"]').fill(caseTitle);
-  await page.locator('#case-form [name="type"]').selectOption("Цивільна");
   await page.locator('#case-form [name="stage"]').fill("Первинний аналіз");
   await page.locator('#case-form [name="priority"]').selectOption("Високий");
   await page.locator('#case-form [name="deadline"]').fill("2026-06-15");

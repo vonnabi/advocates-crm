@@ -148,6 +148,60 @@ export function createDialogOpeners({
     }
   }
 
+  function setupCaseCustomSelects(form) {
+    form.querySelectorAll("label > select").forEach((select) => {
+      select.classList.add("document-native-select");
+      select.tabIndex = -1;
+      select.setAttribute("aria-hidden", "true");
+      let shell = select.nextElementSibling?.classList?.contains("document-custom-select")
+        ? select.nextElementSibling
+        : null;
+      if (!shell) {
+        shell = document.createElement("div");
+        shell.className = "document-custom-select case-custom-select";
+        shell.innerHTML = `
+          <button class="document-custom-select-button" type="button" aria-haspopup="listbox" aria-expanded="false">
+            <span data-document-select-value></span>
+            <span class="document-custom-select-chevron" aria-hidden="true"></span>
+          </button>
+          <div class="document-custom-select-menu" role="listbox" hidden></div>
+        `;
+        select.insertAdjacentElement("afterend", shell);
+        shell.querySelector(".document-custom-select-button")?.addEventListener("click", () => {
+          const isOpen = shell.classList.contains("is-open");
+          closeDocumentSelectMenus(form, isOpen ? null : shell);
+          shell.classList.toggle("is-open", !isOpen);
+          shell.querySelector(".document-custom-select-button")?.setAttribute("aria-expanded", String(!isOpen));
+          const menu = shell.querySelector(".document-custom-select-menu");
+          if (menu) menu.hidden = isOpen;
+        });
+        shell.querySelector(".document-custom-select-menu")?.addEventListener("click", (event) => {
+          const optionButton = event.target.closest(".document-custom-select-option");
+          if (!optionButton) return;
+          select.value = optionButton.dataset.value || "";
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+          syncDocumentCustomSelect(select);
+          closeDocumentSelectMenus(form);
+        });
+      }
+      if (!select.dataset.caseSelectSyncBound) {
+        select.dataset.caseSelectSyncBound = "true";
+        select.addEventListener("change", () => syncDocumentCustomSelect(select));
+      }
+      syncDocumentCustomSelect(select);
+    });
+    if (!form.dataset.caseCustomSelectsBound) {
+      form.dataset.caseCustomSelectsBound = "true";
+      form.addEventListener("click", (event) => {
+        if (event.target.closest(".document-custom-select")) return;
+        closeDocumentSelectMenus(form);
+      });
+      form.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") closeDocumentSelectMenus(form);
+      });
+    }
+  }
+
   function openCaseDialog(caseId = null) {
     const form = $("#case-form");
     form.reset();
@@ -176,6 +230,7 @@ export function createDialogOpeners({
       $("#case-submit-button").textContent = "Зберегти справу";
     }
 
+    setupCaseCustomSelects(form);
     $("#case-dialog").showModal();
   }
 
