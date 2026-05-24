@@ -20726,6 +20726,10 @@ dialog::backdrop {
   display: none;
 }
 
+[data-document-new-folder-label][hidden] {
+  display: none;
+}
+
 .document-target-mode legend,
 .document-source-mode legend {
   padding: 0 8px;

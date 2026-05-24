@@ -962,6 +962,7 @@ export function createDialogOpeners({
       const folderSelect = form.elements.folder;
       const newFolderInput = form.elements.newFolderName;
       const proceduralNote = form.querySelector("[data-document-procedural-note]");
+      const newFolderLabel = form.querySelector("[data-document-new-folder-label]");
       if (!folderSelect || !newFolderInput) return;
       const procedural = isProceduralType();
       if (procedural) {
@@ -972,6 +973,7 @@ export function createDialogOpeners({
         newFolderInput.value = "";
         newFolderInput.required = false;
         newFolderInput.hidden = true;
+        if (newFolderLabel) newFolderLabel.hidden = true;
         newFolderInput.closest(".document-editor-field")?.classList.add("is-procedural-document");
         if (proceduralNote) {
           proceduralNote.hidden = false;
@@ -981,6 +983,7 @@ export function createDialogOpeners({
       }
       folderSelect.disabled = false;
       newFolderInput.hidden = false;
+      if (newFolderLabel) newFolderLabel.hidden = false;
       if (proceduralNote) proceduralNote.hidden = true;
       newFolderInput.closest(".document-editor-field")?.classList.remove("is-procedural-document");
       const isCreatingFolder = folderSelect.value === "__new__";
