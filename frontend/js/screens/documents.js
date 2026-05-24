@@ -41,7 +41,13 @@ function documentRows(ctx) {
         encoded: `procedural:${docIndex}`,
         caseId: item.id,
         caseTitle: item.title,
+        clientId: String(item.clientId || client?.id || ""),
         client: client?.name || "Клієнт не вказаний",
+        court: item.court || "",
+        authorityType: item.authorityType || "",
+        authorityAddress: item.authorityAddress || "",
+        authorityContact: item.authorityContact || "",
+        authorityEmail: item.authorityEmail || "",
         responsible: doc.responsible || item.responsible || client?.manager || "Не вказано",
         casePriority: item.priority,
         type: inferCaseDocumentType(doc, folderName),
@@ -60,7 +66,13 @@ function documentRows(ctx) {
           encoded: `folder:${folderIndex}:${fileIndex}`,
           caseId: item.id,
           caseTitle: item.title,
+          clientId: String(item.clientId || client?.id || ""),
           client: client?.name || "Клієнт не вказаний",
+          court: item.court || "",
+          authorityType: item.authorityType || "",
+          authorityAddress: item.authorityAddress || "",
+          authorityContact: item.authorityContact || "",
+          authorityEmail: item.authorityEmail || "",
           responsible: file.responsible || item.responsible || client?.manager || "Не вказано",
           casePriority: item.priority,
           folderName: inferCaseDocumentFolder(file, folder.name),
@@ -150,10 +162,107 @@ function documentStatusUiTone(status) {
   return tones[status] || "doc-default";
 }
 
+function sortedUnique(values = []) {
+  return [...new Set(values.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "uk"));
+}
+
+function optionHtml(value, label, selectedValue) {
+  const selected = String(selectedValue || "all") === String(value) ? "selected" : "";
+  return `<option value="${escapeHtml(value)}" ${selected}>${escapeHtml(label)}</option>`;
+}
+
+function resetDocumentArchiveFilterScope(state) {
+  state.documentArchiveScope = "cases";
+  state.documentArchiveClientId = "all";
+  state.documentArchiveCaseId = "all";
+  state.documentArchiveFolder = "";
+  state.selectedDocumentKey = "";
+  state.selectedDocumentKeys = [];
+}
+
+function closeDocumentFilterSelectMenus(root, except = null) {
+  root.querySelectorAll(".document-custom-select.is-open").forEach((selectShell) => {
+    if (selectShell === except) return;
+    selectShell.classList.remove("is-open");
+    selectShell.querySelector(".document-custom-select-button")?.setAttribute("aria-expanded", "false");
+    const menu = selectShell.querySelector(".document-custom-select-menu");
+    if (menu) menu.hidden = true;
+  });
+}
+
+function syncDocumentFilterCustomSelect(select) {
+  const shell = select.nextElementSibling?.classList?.contains("document-custom-select")
+    ? select.nextElementSibling
+    : null;
+  if (!shell) return;
+  const selected = select.selectedOptions?.[0] || select.options[0];
+  const buttonText = shell.querySelector("[data-document-select-value]");
+  const menu = shell.querySelector(".document-custom-select-menu");
+  if (buttonText) buttonText.textContent = selected?.textContent || "";
+  if (!menu) return;
+  menu.innerHTML = [...select.options].map((option) => `
+    <button class="document-custom-select-option ${option.value === select.value ? "is-selected" : ""}" type="button" role="option" data-value="${escapeHtml(option.value)}" aria-selected="${option.value === select.value ? "true" : "false"}">
+      <span aria-hidden="true">✓</span>
+      <strong>${escapeHtml(option.textContent || "")}</strong>
+    </button>
+  `).join("");
+}
+
+function setupDocumentFilterCustomSelects(root) {
+  root.querySelectorAll(".documents-filter-field > select").forEach((select) => {
+    select.classList.add("document-native-select");
+    select.tabIndex = -1;
+    select.setAttribute("aria-hidden", "true");
+    let shell = select.nextElementSibling?.classList?.contains("document-custom-select")
+      ? select.nextElementSibling
+      : null;
+    if (!shell) {
+      shell = document.createElement("div");
+      shell.className = "document-custom-select documents-filter-select";
+      shell.innerHTML = `
+        <button class="document-custom-select-button" type="button" aria-haspopup="listbox" aria-expanded="false">
+          <span data-document-select-value></span>
+          <span class="document-custom-select-chevron" aria-hidden="true"></span>
+        </button>
+        <div class="document-custom-select-menu" role="listbox" hidden></div>
+      `;
+      select.insertAdjacentElement("afterend", shell);
+      shell.querySelector(".document-custom-select-button")?.addEventListener("click", () => {
+        const isOpen = shell.classList.contains("is-open");
+        closeDocumentFilterSelectMenus(root, isOpen ? null : shell);
+        shell.classList.toggle("is-open", !isOpen);
+        shell.querySelector(".document-custom-select-button")?.setAttribute("aria-expanded", String(!isOpen));
+        const menu = shell.querySelector(".document-custom-select-menu");
+        if (menu) menu.hidden = isOpen;
+      });
+      shell.querySelector(".document-custom-select-menu")?.addEventListener("click", (event) => {
+        const optionButton = event.target.closest(".document-custom-select-option");
+        if (!optionButton) return;
+        select.value = optionButton.dataset.value || "";
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        syncDocumentFilterCustomSelect(select);
+        closeDocumentFilterSelectMenus(root);
+      });
+    }
+    syncDocumentFilterCustomSelect(select);
+  });
+  if (!root.dataset.documentFilterCustomSelectsBound) {
+    root.dataset.documentFilterCustomSelectsBound = "true";
+    root.addEventListener("click", (event) => {
+      if (event.target.closest(".document-custom-select")) return;
+      closeDocumentFilterSelectMenus(root);
+    });
+    root.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeDocumentFilterSelectMenus(root);
+    });
+  }
+}
+
 function filteredDocuments(ctx, rows) {
   const { state } = ctx;
   const query = (state.documentQuery || "").trim().toLowerCase();
   return rows.filter((doc) => {
+    const dueState = documentDueState(ctx, doc);
     const matchesQuery = !query || [
       doc.name,
       doc.caseId,
@@ -162,21 +271,31 @@ function filteredDocuments(ctx, rows) {
       doc.folderName,
       doc.responsible,
       doc.status,
-      doc.type
+      doc.type,
+      doc.sourceLabel,
+      doc.comment,
+      doc.submitted,
+      doc.responseDue,
+      dueState.label,
+      doc.court,
+      doc.authorityType,
+      doc.authorityAddress,
+      doc.authorityContact,
+      doc.authorityEmail
     ].some((value) => String(value || "").toLowerCase().includes(query));
     const matchesStatus = (state.documentStatusFilter || "all") === "all" || doc.status === state.documentStatusFilter;
     const matchesCase = (state.documentCaseFilter || "all") === "all" || doc.caseId === state.documentCaseFilter;
     const matchesType = (state.documentTypeFilter || "all") === "all" || (doc.type || "Інше") === state.documentTypeFilter;
-    const matchesClient = (state.documentClientFilter || "all") === "all" || doc.client === state.documentClientFilter;
-    const matchesDue = (state.documentDueFilter || "all") === "all" || documentDueState(ctx, doc).overdue;
+    const matchesClient = (state.documentClientFilter || "all") === "all" || doc.clientId === String(state.documentClientFilter);
+    const matchesDue = (state.documentDueFilter || "all") === "all" || dueState.overdue;
     const quickFilter = state.documentQuickFilter || "all";
     const matchesQuick =
       quickFilter === "all" ||
       (quickFilter === "submitted" && ["Подано", "Відповідь очікується", "Отримано"].includes(doc.status)) ||
-      (quickFilter === "overdue" && documentDueState(ctx, doc).overdue) ||
+      (quickFilter === "overdue" && dueState.overdue) ||
       (quickFilter === "drafts" && ["Чернетка", "Не подано"].includes(doc.status)) ||
       (quickFilter === "esign" && E_SIGN_STATUSES.has(doc.status)) ||
-      (quickFilter === "ai" && ["Позов", "Адвокатський запит", "Доказ"].includes(doc.type || ""));
+      (quickFilter === "ai" && ["Позов", "Запит", "Клопотання", "Доказ"].includes(doc.type || ""));
     return matchesQuery && matchesStatus && matchesCase && matchesType && matchesClient && matchesDue && matchesQuick;
   });
 }
@@ -767,9 +886,14 @@ export function renderDocumentsScreen(ctx) {
   const archiveScope = state.documentArchiveScope || "cases";
   const documentKeys = new Set(rows.map((doc) => doc.key));
   state.selectedDocumentKeys = (state.selectedDocumentKeys || []).filter((key) => documentKeys.has(key));
-  const statuses = [...new Set(rows.map((doc) => doc.status).filter(Boolean))];
-  const types = [...new Set(rows.map((doc) => doc.type || "Інше").filter(Boolean))];
-  const clients = [...new Set(rows.map((doc) => doc.client).filter(Boolean))];
+  const statuses = DOCUMENT_STATUS_OPTIONS.filter((status) => rows.some((doc) => doc.status === status));
+  const types = sortedUnique(rows.map((doc) => doc.type || "Інше"));
+  const clients = state.clients
+    .filter((client) => rows.some((doc) => doc.clientId === String(client.id)))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), "uk"));
+  const filterCaseOptions = state.cases
+    .filter((item) => (state.documentClientFilter || "all") === "all" || String(item.clientId) === String(state.documentClientFilter))
+    .sort((a, b) => String(a.id).localeCompare(String(b.id), "uk"));
   const filtered = filteredDocuments(ctx, rows);
   const archive = activeArchiveSelection(ctx, filtered);
   const allStorageRows = flattenStorageArchiveRows(storageArchiveFolders, rows);
@@ -938,24 +1062,34 @@ export function renderDocumentsScreen(ctx) {
       </section>
 
       <div class="documents-filters panel">
-        <input type="search" data-document-query placeholder="Пошук документа, справи, клієнта..." value="${state.documentQuery || ""}">
-        <select data-document-status>
-          <option value="all">Всі статуси</option>
-          ${statuses.map((status) => `<option value="${status}" ${state.documentStatusFilter === status ? "selected" : ""}>${status}</option>`).join("")}
-        </select>
-        <select data-document-type>
-          <option value="all">Всі типи</option>
-          ${types.map((type) => `<option value="${type}" ${state.documentTypeFilter === type ? "selected" : ""}>${type}</option>`).join("")}
-        </select>
-        <select data-document-client>
-          <option value="all">Всі клієнти</option>
-          ${clients.map((client) => `<option value="${client}" ${state.documentClientFilter === client ? "selected" : ""}>${client}</option>`).join("")}
-        </select>
-        <select data-document-case>
-          <option value="all">Всі справи</option>
-          ${state.cases.map((item) => `<option value="${item.id}" ${state.documentCaseFilter === item.id ? "selected" : ""}>№${item.id}</option>`).join("")}
-        </select>
-        <button class="secondary ${state.documentDueFilter === "overdue" ? "active" : ""}" type="button" data-document-due-filter>${icon("bell")} Без відповіді</button>
+        <label class="documents-filter-field documents-filter-search">Пошук
+          <input type="search" data-document-query placeholder="Документ, справа, клієнт, папка, орган..." value="${escapeHtml(state.documentQuery || "")}">
+        </label>
+        <label class="documents-filter-field">Статус
+          <select data-document-status>
+            ${optionHtml("all", "Всі статуси", state.documentStatusFilter)}
+            ${statuses.map((status) => optionHtml(status, status, state.documentStatusFilter)).join("")}
+          </select>
+        </label>
+        <label class="documents-filter-field">Тип
+          <select data-document-type>
+            ${optionHtml("all", "Всі типи", state.documentTypeFilter)}
+            ${types.map((type) => optionHtml(type, type, state.documentTypeFilter)).join("")}
+          </select>
+        </label>
+        <label class="documents-filter-field">Клієнт
+          <select data-document-client>
+            ${optionHtml("all", "Всі клієнти", state.documentClientFilter)}
+            ${clients.map((client) => optionHtml(client.id, client.name, state.documentClientFilter)).join("")}
+          </select>
+        </label>
+        <label class="documents-filter-field">Справа
+          <select data-document-case>
+            ${optionHtml("all", "Всі справи", state.documentCaseFilter)}
+            ${filterCaseOptions.map((item) => optionHtml(item.id, `№${item.id} · ${item.title}`, state.documentCaseFilter)).join("")}
+          </select>
+        </label>
+        <button class="secondary documents-filter-toggle ${state.documentDueFilter === "overdue" ? "active" : ""}" type="button" data-document-due-filter>${icon("bell")} Без відповіді</button>
         <button class="secondary documents-filter-reset" type="button" data-document-reset ${quickFilter === "all" && !hasManualDocumentFilters ? "disabled" : ""}>Скинути</button>
       </div>
 
@@ -1193,6 +1327,8 @@ export function renderDocumentsScreen(ctx) {
       </div>
     </div>
   `;
+
+  setupDocumentFilterCustomSelects(documentsNode);
 
   const archiveDialog = $("#document-archive-dialog");
   const archiveForm = $("#document-archive-form");
@@ -1595,11 +1731,7 @@ export function renderDocumentsScreen(ctx) {
   documentsNode.querySelector("[data-document-query]")?.addEventListener("input", (event) => {
     state.documentQuery = event.currentTarget.value;
     state.documentQuickFilter = "all";
-    state.documentArchiveScope = "cases";
-    state.documentArchiveClientId = "all";
-    state.documentArchiveCaseId = "all";
-    state.documentArchiveFolder = "";
-    state.selectedDocumentKeys = [];
+    resetDocumentArchiveFilterScope(state);
     renderDocumentsScreen(ctx);
     const input = documentsNode.querySelector("[data-document-query]");
     input?.focus();
@@ -1608,15 +1740,13 @@ export function renderDocumentsScreen(ctx) {
   documentsNode.querySelector("[data-document-status]")?.addEventListener("change", (event) => {
     state.documentQuickFilter = "all";
     state.documentStatusFilter = event.currentTarget.value;
-    state.documentArchiveScope = "cases";
-    state.selectedDocumentKeys = [];
+    resetDocumentArchiveFilterScope(state);
     renderDocumentsScreen(ctx);
   });
   documentsNode.querySelector("[data-document-type]")?.addEventListener("change", (event) => {
     state.documentQuickFilter = "all";
     state.documentTypeFilter = event.currentTarget.value;
-    state.documentArchiveScope = "cases";
-    state.selectedDocumentKeys = [];
+    resetDocumentArchiveFilterScope(state);
     renderDocumentsScreen(ctx);
   });
   documentsNode.querySelector("[data-document-client]")?.addEventListener("change", (event) => {
@@ -1624,7 +1754,7 @@ export function renderDocumentsScreen(ctx) {
     state.documentClientFilter = event.currentTarget.value;
     state.documentCaseFilter = "all";
     state.documentArchiveScope = "cases";
-    state.documentArchiveClientId = "all";
+    state.documentArchiveClientId = event.currentTarget.value;
     state.documentArchiveCaseId = "all";
     state.documentArchiveFolder = "";
     state.selectedDocumentKey = "";
@@ -1651,8 +1781,7 @@ export function renderDocumentsScreen(ctx) {
   documentsNode.querySelector("[data-document-due-filter]")?.addEventListener("click", () => {
     state.documentQuickFilter = "all";
     state.documentDueFilter = state.documentDueFilter === "overdue" ? "all" : "overdue";
-    state.documentArchiveScope = "cases";
-    state.selectedDocumentKeys = [];
+    resetDocumentArchiveFilterScope(state);
     renderDocumentsScreen(ctx);
   });
   documentsNode.querySelector("[data-document-reset]")?.addEventListener("click", () => {

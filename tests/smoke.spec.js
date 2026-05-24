@@ -122,6 +122,25 @@ test("documents archive groups cases under clients", async ({ page }) => {
   await expect(page.locator("#documents .documents-tree-case.open [data-document-folder-node]").filter({ hasText: "Клопотання" })).toBeVisible();
 });
 
+test("documents filters use CRM dropdowns and search across case metadata", async ({ page }) => {
+  await openApp(page);
+
+  await page.locator('.nav-item[data-view="documents"]').click();
+  await expect(page.locator("#documents")).toHaveClass(/active/);
+  await expect(page.locator(".documents-filters .document-custom-select")).toHaveCount(4);
+
+  await page.locator('[data-document-type] + .document-custom-select .document-custom-select-button').click();
+  await expect(page.locator('[data-document-type] + .document-custom-select .document-custom-select-menu')).toBeVisible();
+  await expect(page.locator('[data-document-type] + .document-custom-select .document-custom-select-menu')).toContainText("Запит");
+
+  await page.locator("[data-document-query]").fill("Дарницький");
+  await expect(page.locator("#documents [data-document-row]").first()).toBeVisible();
+
+  await page.locator("[data-document-reset]").click();
+  await page.locator("[data-document-client]").selectOption({ index: 1 });
+  await expect(page.locator("[data-document-case] option")).toHaveCount(2);
+});
+
 test("document creation uses selected existing case folder", async ({ page }) => {
   await openApp(page);
 

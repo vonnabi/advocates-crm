@@ -4232,9 +4232,24 @@ button {
 
 .documents-filters {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(120px, 0.65fr) minmax(112px, 0.55fr) minmax(145px, 0.75fr) minmax(120px, 0.55fr) minmax(120px, 0.55fr) 86px;
+  grid-template-columns: minmax(220px, 1.35fr) repeat(4, minmax(132px, 0.8fr)) minmax(130px, 0.7fr) 92px;
+  align-items: end;
   gap: 10px;
   padding: 12px;
+}
+
+.documents-filter-field {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.documents-filter-search {
+  min-width: 0;
 }
 
 .documents-esign-overview {
@@ -4334,11 +4349,43 @@ button {
 }
 
 .documents-filters input,
-.documents-filters select,
-.documents-filters button {
+.documents-filters button,
+.documents-filter-select .document-custom-select-button {
   width: 100%;
   min-height: 38px;
   font-size: 13px;
+}
+
+.documents-filters input {
+  box-sizing: border-box;
+  border: 1px solid #d8e5f3;
+  border-radius: 10px;
+  outline: 0;
+  background: #fbfdff;
+  color: var(--text);
+  padding: 0 13px;
+  font-weight: 750;
+}
+
+.documents-filters input:hover,
+.documents-filters input:focus {
+  border-color: #8abdf3;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(53, 130, 220, .12);
+}
+
+.documents-filter-toggle {
+  min-width: 0;
+}
+
+.documents-filter-toggle.active {
+  border-color: var(--action-dark);
+  background: var(--action-dark);
+  color: #fff;
+}
+
+.documents-filter-toggle.active .ui-icon {
+  color: #fff;
 }
 
 .documents-filter-reset:disabled {
@@ -20863,7 +20910,8 @@ dialog::backdrop {
   font-weight: 750;
 }
 
-.document-editor-field > select.document-native-select {
+.document-editor-field > select.document-native-select,
+.documents-filter-field > select.document-native-select {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -20875,7 +20923,8 @@ dialog::backdrop {
   pointer-events: none;
 }
 
-.document-editor-field:has(> select.document-native-select)::after {
+.document-editor-field:has(> select.document-native-select)::after,
+.documents-filter-field:has(> select.document-native-select)::after {
   content: none;
 }
 
