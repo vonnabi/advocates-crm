@@ -13,4 +13,5 @@ playwright-report/
 # Local project materials that can contain private chat/task context.
 materials/
 data/source_whatsapp_chat.txt
+data/exports/
 design/screenshots/
