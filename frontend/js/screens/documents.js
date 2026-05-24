@@ -437,10 +437,91 @@ function documentSendContactLabel(source = {}, channel = "") {
   return [telegram && `Telegram: ${telegram}`, email && `Email: ${email}`, phone && `Телефон: ${phone}`].filter(Boolean).join(" · ");
 }
 
+function closeDocumentSendSelectMenus(form, except = null) {
+  form.querySelectorAll(".document-custom-select.is-open").forEach((selectShell) => {
+    if (selectShell === except) return;
+    selectShell.classList.remove("is-open");
+    selectShell.querySelector(".document-custom-select-button")?.setAttribute("aria-expanded", "false");
+    const menu = selectShell.querySelector(".document-custom-select-menu");
+    if (menu) menu.hidden = true;
+  });
+}
+
+function syncDocumentSendCustomSelect(select) {
+  const shell = select.nextElementSibling?.classList?.contains("document-custom-select")
+    ? select.nextElementSibling
+    : null;
+  if (!shell) return;
+  const selected = select.selectedOptions?.[0] || select.options[0];
+  const buttonText = shell.querySelector("[data-document-select-value]");
+  const menu = shell.querySelector(".document-custom-select-menu");
+  if (buttonText) buttonText.textContent = selected?.textContent || "";
+  if (!menu) return;
+  menu.innerHTML = [...select.options].map((option) => `
+    <button class="document-custom-select-option ${option.value === select.value ? "is-selected" : ""}" type="button" role="option" data-value="${escapeHtml(option.value)}" aria-selected="${option.value === select.value ? "true" : "false"}">
+      <span aria-hidden="true">✓</span>
+      <strong>${escapeHtml(option.textContent || "")}</strong>
+    </button>
+  `).join("");
+}
+
+function setupDocumentSendCustomSelects(form) {
+  form.querySelectorAll(".document-editor-field > select").forEach((select) => {
+    select.classList.add("document-native-select");
+    select.tabIndex = -1;
+    select.setAttribute("aria-hidden", "true");
+    let shell = select.nextElementSibling?.classList?.contains("document-custom-select")
+      ? select.nextElementSibling
+      : null;
+    if (!shell) {
+      shell = document.createElement("div");
+      shell.className = "document-custom-select";
+      shell.innerHTML = `
+        <button class="document-custom-select-button" type="button" aria-haspopup="listbox" aria-expanded="false">
+          <span data-document-select-value></span>
+          <span class="document-custom-select-chevron" aria-hidden="true"></span>
+        </button>
+        <div class="document-custom-select-menu" role="listbox" hidden></div>
+      `;
+      select.insertAdjacentElement("afterend", shell);
+      shell.querySelector(".document-custom-select-button")?.addEventListener("click", () => {
+        const isOpen = shell.classList.contains("is-open");
+        closeDocumentSendSelectMenus(form, isOpen ? null : shell);
+        shell.classList.toggle("is-open", !isOpen);
+        shell.querySelector(".document-custom-select-button")?.setAttribute("aria-expanded", String(!isOpen));
+        const menu = shell.querySelector(".document-custom-select-menu");
+        if (menu) menu.hidden = isOpen;
+      });
+      shell.querySelector(".document-custom-select-menu")?.addEventListener("click", (event) => {
+        const optionButton = event.target.closest(".document-custom-select-option");
+        if (!optionButton) return;
+        select.value = optionButton.dataset.value || "";
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        syncDocumentSendCustomSelect(select);
+        closeDocumentSendSelectMenus(form);
+      });
+    }
+    if (!select.dataset.documentSendSelectSyncBound) {
+      select.dataset.documentSendSelectSyncBound = "true";
+      select.addEventListener("change", () => syncDocumentSendCustomSelect(select));
+    }
+    syncDocumentSendCustomSelect(select);
+  });
+  if (!form.dataset.documentSendCustomSelectsBound) {
+    form.dataset.documentSendCustomSelectsBound = "true";
+    form.addEventListener("click", (event) => {
+      if (event.target.closest(".document-custom-select")) return;
+      closeDocumentSendSelectMenus(form);
+    });
+    form.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeDocumentSendSelectMenus(form);
+    });
+  }
+}
+
 function documentSendContact(state, client, authority, channel, mode, manual = "") {
   if (mode === "manual") return manual.trim();
-  const bureau = state.bureauSettings || {};
-  const source = mode === "bureau" ? bureau : mode === "authority" ? authority || {} : client || {};
+  const source = mode === "authority" ? authority || {} : client || {};
   if (channel === "Telegram") return source.telegramUsername || source.telegram || "";
   if (channel === "Email") return source.email || "";
   if (channel === "SMS") return source.phone || source.contact || source.whatsapp || "";
@@ -531,11 +612,9 @@ function openDocumentSendDialog(ctx, key) {
     if (preview) {
       const label = mode === "client"
         ? selectedClient?.name || "Клієнт"
-        : mode === "bureau"
-          ? state.bureauSettings?.name || "Організація"
-          : mode === "authority"
-            ? authority?.name || "Орган"
-            : "Ручний отримувач";
+        : mode === "authority"
+          ? authority?.name || "Орган"
+          : "Ручний отримувач";
       preview.textContent = contact ? `${label}: ${contact}` : `${label}: контакт для ${channel} не заповнений`;
     }
     if (!form.elements.message.value.trim()) {
@@ -578,7 +657,7 @@ function openDocumentSendDialog(ctx, key) {
     const campaign = {
       title: `Документ: ${doc.name}`,
       status: "Готова к отправке",
-      meta: `${channel} · ${mode === "client" ? selectedClient?.name || "клієнт" : mode === "bureau" ? "організація" : mode === "authority" ? authority?.name || "орган" : contact}`,
+      meta: `${channel} · ${mode === "client" ? selectedClient?.name || "клієнт" : mode === "authority" ? authority?.name || "орган" : contact}`,
       createdAt: new Date().toLocaleString("uk-UA"),
       text: message,
       channels: { Telegram: channel === "Telegram", SMS: channel === "SMS", Email: channel === "Email" },
@@ -617,6 +696,7 @@ function openDocumentSendDialog(ctx, key) {
       dialog.close();
     }
   }, { once: true });
+  setupDocumentSendCustomSelects(form);
   sync();
   dialog.showModal();
 }
