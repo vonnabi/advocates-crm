@@ -830,6 +830,8 @@ export function createDialogOpeners({
       const target = new URL(url);
       if (target.origin !== window.location.origin) return url;
       const base = new URL(serverAccessUrl);
+      const localAccessHosts = new Set(["localhost", "127.0.0.1", "host.docker.internal", "host.lima.internal"]);
+      if (!localAccessHosts.has(window.location.hostname) && localAccessHosts.has(base.hostname)) return url;
       target.protocol = base.protocol;
       target.host = base.host;
       return target.href;
