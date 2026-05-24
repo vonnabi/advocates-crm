@@ -235,20 +235,9 @@ function ensureDemoDataOverlay(ctx) {
       </div>
       <div class="demo-data-counts" data-demo-data-counts></div>
       <div class="demo-data-actions">
-        <div class="demo-data-actions-main">
-          <button class="secondary" type="button" data-demo-data-export>Скачати копію</button>
-          <label class="secondary demo-data-import" data-demo-data-import-local-wrap>Завантажити копію
-            <input type="file" accept="application/json,.json" data-demo-data-import />
-          </label>
-          <label class="secondary demo-data-import" data-demo-data-import-server-wrap>Відновити на сервер
-            <input type="file" accept="application/json,.json" data-demo-data-import-server />
-          </label>
-          <button class="secondary" type="button" data-demo-data-close>Скасувати</button>
-        </div>
-        <div class="demo-data-actions-status">
-          <button class="danger-soft" type="button" data-demo-data-clear>Очистити</button>
-          <button class="primary" type="button" data-demo-data-restore>Відновити</button>
-        </div>
+        <button class="danger-soft" type="button" data-demo-data-clear>Вимкнути демо-дані</button>
+        <button class="primary" type="button" data-demo-data-restore>Увімкнути демо-дані</button>
+        <button class="secondary" type="button" data-demo-data-close>Скасувати</button>
       </div>
     </section>
   `;
@@ -260,42 +249,6 @@ function ensureDemoDataOverlay(ctx) {
   });
   overlay.addEventListener("click", (event) => {
     if (event.target === overlay) overlay.hidden = true;
-  });
-  overlay.querySelector("[data-demo-data-export]")?.addEventListener("click", () => {
-    downloadCrmSnapshot(state, showToast);
-  });
-  overlay.querySelector("[data-demo-data-import]")?.addEventListener("change", async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    try {
-      await importCrmSnapshot(file);
-      overlay.hidden = true;
-      showToast("Копію завантажено локально. Оновлюю кабінет.");
-      window.setTimeout(() => window.location.reload(), 350);
-    } catch (error) {
-      showToast(error.message || "Не вдалося завантажити JSON-копію.", "warning");
-    }
-  });
-  overlay.querySelector("[data-demo-data-import-server]")?.addEventListener("change", async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    try {
-      const snapshot = await readCrmSnapshotFile(file);
-      const ok = window.confirm("Відновити цю JSON-копію в серверну базу CRM? Дані з копії будуть додані або оновлені, але наявні записи без збігу не видаляться.");
-      if (!ok) return;
-      const result = await importCrmSnapshotToApi(snapshot);
-      localStorage.removeItem(SNAPSHOT_STORAGE_KEY);
-      overlay.hidden = true;
-      const total = Object.entries(result.summary || {})
-        .filter(([key, value]) => key !== "skipped" && Number.isFinite(Number(value)))
-        .reduce((sum, [_key, value]) => sum + Number(value || 0), 0);
-      showToast(`JSON-копію відновлено на сервері: ${total} записів.`);
-      window.setTimeout(() => window.location.reload(), 450);
-    } catch (error) {
-      showToast(error.message || "Не вдалося відновити JSON-копію на сервер.", "warning");
-    }
   });
   overlay.querySelector("[data-demo-data-clear]")?.addEventListener("click", async () => {
     const button = overlay.querySelector("[data-demo-data-clear]");
@@ -429,7 +382,6 @@ async function openDemoDataOverlay(ctx) {
   ].map(([label, value]) => `<span><strong>${Number(value || 0)}</strong><em>${label}</em></span>`).join("");
   overlay.querySelector("[data-demo-data-clear]").hidden = !enabled;
   overlay.querySelector("[data-demo-data-restore]").hidden = enabled || isSnapshotMode(ctx.state);
-  overlay.querySelector("[data-demo-data-import-server-wrap]").hidden = !shouldUseApi(ctx.state);
   overlay.hidden = false;
 }
 

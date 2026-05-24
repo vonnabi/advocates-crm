@@ -1420,40 +1420,14 @@ h3 {
 }
 
 .demo-data-actions {
-  display: grid;
-  gap: 10px;
-  justify-items: center;
-}
-
-.demo-data-actions-main,
-.demo-data-actions-status {
   display: flex;
   justify-content: center;
   flex-wrap: wrap;
   gap: 10px;
 }
 
-.demo-data-actions button,
-.demo-data-import {
-  min-width: 124px;
-}
-
-.demo-data-actions-status .primary,
-.demo-data-actions-status .danger-soft {
+.demo-data-actions button {
   min-width: 132px;
-}
-
-.demo-data-import {
-  position: relative;
-  overflow: hidden;
-}
-
-.demo-data-import input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
 }
 
 .danger-soft {
