@@ -41,6 +41,17 @@ function isProceduralCaseDocument(doc = {}, folderName = "") {
 
 function documentRows(ctx) {
   const { state, clientById, caseFolders, findFolderFileByDocument } = ctx;
+  const flattenFolderFiles = (folders = [], path = []) => folders.flatMap((folder, folderIndex) => {
+    const folderPath = [...path, folderIndex];
+    const files = (folder.files || []).map((file, fileIndex) => ({
+      folder,
+      folderIndex: folderPath[0],
+      folderPath,
+      file,
+      fileIndex
+    }));
+    return [...files, ...flattenFolderFiles(folder.children || [], folderPath)];
+  });
   return state.cases.flatMap((item) => {
     const client = clientById(item.clientId);
     const linkedDocumentIds = new Set(item.documents.map((doc) => doc.documentId).filter(Boolean));
@@ -68,32 +79,34 @@ function documentRows(ctx) {
         docIndex
       };
     });
-    const folderRows = caseFolders(item).flatMap((folder, folderIndex) =>
-      folder.files
-        .map((file, fileIndex) => ({ folder, folderIndex, file, fileIndex }))
-        .filter(({ file }) => !file.documentId || !linkedDocumentIds.has(file.documentId))
-        .map(({ folder, folderIndex, file, fileIndex }) => ({
-          ...file,
-          key: `${item.id}|folder:${folderIndex}:${fileIndex}`,
-          encoded: `folder:${folderIndex}:${fileIndex}`,
-          caseId: item.id,
-          caseTitle: item.title,
-          clientId: String(item.clientId || client?.id || ""),
-          client: client?.name || "Клієнт не вказаний",
-          court: item.court || "",
-          authorityType: item.authorityType || "",
-          authorityAddress: item.authorityAddress || "",
-          authorityContact: item.authorityContact || "",
-          authorityEmail: item.authorityEmail || "",
-          responsible: file.responsible || item.responsible || client?.manager || "Не вказано",
-          casePriority: item.priority,
-          folderName: inferCaseDocumentFolder(file, folder.name),
-          sourceLabel: file.source || "Папка справи",
-          folderIndex,
-          fileIndex
-        }))
-        .map((row) => ({ ...row, type: inferCaseDocumentType(row, row.folderName) }))
-    );
+    const folderRows = flattenFolderFiles(caseFolders(item))
+      .filter(({ file }) => !file.documentId || !linkedDocumentIds.has(file.documentId))
+      .map(({ folder, folderIndex, folderPath, file, fileIndex }) => ({
+        ...file,
+        key: folderPath.length > 1
+          ? `${item.id}|folderPath:${folderPath.join(".")}:${fileIndex}`
+          : `${item.id}|folder:${folderIndex}:${fileIndex}`,
+        encoded: folderPath.length > 1
+          ? `folderPath:${folderPath.join(".")}:${fileIndex}`
+          : `folder:${folderIndex}:${fileIndex}`,
+        caseId: item.id,
+        caseTitle: item.title,
+        clientId: String(item.clientId || client?.id || ""),
+        client: client?.name || "Клієнт не вказаний",
+        court: item.court || "",
+        authorityType: item.authorityType || "",
+        authorityAddress: item.authorityAddress || "",
+        authorityContact: item.authorityContact || "",
+        authorityEmail: item.authorityEmail || "",
+        responsible: file.responsible || item.responsible || client?.manager || "Не вказано",
+        casePriority: item.priority,
+        folderName: inferCaseDocumentFolder(file, folder.name),
+        sourceLabel: file.source || "Папка справи",
+        folderIndex,
+        folderPath,
+        fileIndex
+      }))
+      .map((row) => ({ ...row, type: inferCaseDocumentType(row, row.folderName) }));
     return [...proceduralRows, ...folderRows];
   });
 }

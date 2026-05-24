@@ -158,10 +158,12 @@ test("document creation uses selected existing case folder", async ({ page }) =>
 
   await page.locator("#documents [data-documents-add-current]").click();
   await expect(page.locator("#document-dialog")).toHaveJSProperty("open", true);
-  await expect(page.locator("#document-folder")).toHaveValue("1");
+  await expect(page.locator("#document-folder")).toHaveValue("4");
+  await expect(page.locator("#document-folder option").filter({ hasText: "Клопотання" })).toHaveJSProperty("hidden", true);
   await expect(page.locator('#document-form input[name="newFolderName"]')).toBeEnabled();
   await page.locator('#document-form select[name="type"]').selectOption("Клопотання", { force: true });
   await expect(page.locator("#document-folder")).toHaveValue("1");
+  await expect(page.locator("#document-folder option").filter({ hasText: "Клопотання" })).toHaveJSProperty("hidden", false);
   await expect(page.locator('[data-document-procedural-note]')).toBeVisible();
   await expect(page.locator('[data-document-procedural-note]')).toContainText("Процесуальний документ");
   await expect(page.locator('[data-document-new-folder-label]')).toBeHidden();
@@ -217,23 +219,22 @@ test("document dialog can create a subfolder under selected case folder", async 
   await expect(page.locator("#documents")).toHaveClass(/active/);
   await page.locator("#documents [data-document-client-node]").filter({ hasText: "Андрієнко Тест Документів" }).click();
   await page.locator("#documents [data-document-case-node]").filter({ hasText: "0001" }).click();
-  await page.locator("#documents .documents-tree-case.open [data-document-folder-node]").filter({ hasText: "Позови" }).first().click();
+  await page.locator("#documents .documents-tree-case.open [data-document-folder-node]").filter({ hasText: "Інші документи" }).click();
 
   await page.locator("#documents [data-documents-add-current]").click();
   await expect(page.locator("#document-dialog")).toHaveJSProperty("open", true);
-  await expect(page.locator("#document-folder")).toHaveValue("0");
+  await expect(page.locator("#document-folder")).toHaveValue("4");
   await expect(page.locator('#document-form input[name="newFolderName"]')).toBeEnabled();
   await page.locator('#document-form input[name="newFolderName"]').fill("Апеляція");
-  await page.locator('#document-form input[name="name"]').fill("Апеляційний позов.docx");
+  await page.locator('#document-form input[name="name"]').fill("Апеляційні докази.docx");
   await page.locator("#document-submit-button").click();
   await expect(page.locator("#office-editor-dialog")).toHaveJSProperty("open", true);
   await page.locator("#office-editor-close").click();
 
+  await expect(page.locator(".documents-folder-head")).toContainText("Апеляція");
+  await expect(page.locator(".documents-table")).toContainText("Апеляційні докази.docx");
   const subfolder = page.locator("#documents .documents-tree-case.open [data-document-folder-node]").filter({ hasText: "Апеляція" });
   await expect(subfolder).toBeVisible();
-  await subfolder.click();
-  await expect(page.locator(".documents-folder-head")).toContainText("Апеляція");
-  await expect(page.locator(".documents-table")).toContainText("Апеляційний позов.docx");
 });
 
 test("document rows show inferred type labels inside standard folders", async ({ page }) => {

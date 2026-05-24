@@ -86,7 +86,7 @@ export function createDialogOpeners({
     const menu = shell.querySelector(".document-custom-select-menu");
     if (buttonText) buttonText.textContent = selected?.textContent || "";
     if (!menu) return;
-    menu.innerHTML = [...select.options].map((option) => `
+    menu.innerHTML = [...select.options].filter((option) => !option.hidden).map((option) => `
       <button class="document-custom-select-option ${option.value === select.value ? "is-selected" : ""} ${option.disabled ? "is-disabled" : ""} ${option.dataset.proceduralOption === "true" ? "is-procedural-option" : ""}" type="button" role="option" data-value="${escapeHtml(option.value)}" aria-selected="${option.value === select.value ? "true" : "false"}" ${option.disabled ? "disabled" : ""}>
         <span aria-hidden="true">✓</span>
         <strong>${escapeHtml(option.textContent || "")}</strong>
@@ -220,17 +220,38 @@ export function createDialogOpeners({
 
   function findFolderFileByDocument(item, doc) {
     const folders = caseFolders(item);
-    if (doc?.documentId) {
-      for (let folderIndex = 0; folderIndex < folders.length; folderIndex += 1) {
-        const fileIndex = folders[folderIndex].files.findIndex((file) => file.documentId === doc.documentId);
-        if (fileIndex >= 0) return { folder: folders[folderIndex], folderIndex, file: folders[folderIndex].files[fileIndex], fileIndex };
+    const findInFolders = (list = folders, path = []) => {
+      for (let folderIndex = 0; folderIndex < list.length; folderIndex += 1) {
+        const folder = list[folderIndex];
+        const folderPath = [...path, folderIndex];
+        const files = folder.files || [];
+        const fileIndex = doc?.documentId
+          ? files.findIndex((file) => file.documentId === doc.documentId)
+          : files.findIndex((file) => file.name === doc?.name);
+        if (fileIndex >= 0) return {
+          folder,
+          folderIndex: folderPath[0],
+          folderPath,
+          file: files[fileIndex],
+          fileIndex
+        };
+        const nested = findInFolders(folder.children || [], folderPath);
+        if (nested) return nested;
       }
+      return null;
+    };
+    return findInFolders();
+  }
+
+  function folderByPath(folders = [], path = []) {
+    let current = null;
+    let list = folders;
+    for (const index of path) {
+      current = list[Number(index)];
+      if (!current) return null;
+      list = current.children || [];
     }
-    for (let folderIndex = 0; folderIndex < folders.length; folderIndex += 1) {
-      const fileIndex = folders[folderIndex].files.findIndex((file) => file.name === doc?.name);
-      if (fileIndex >= 0) return { folder: folders[folderIndex], folderIndex, file: folders[folderIndex].files[fileIndex], fileIndex };
-    }
-    return null;
+    return current;
   }
 
   function getDocumentPayload(caseId, encoded) {
@@ -239,6 +260,16 @@ export function createDialogOpeners({
     if (source === "procedural") {
       const docIndex = Number(first);
       return { item, source, docIndex, doc: item.documents[docIndex], linked: findFolderFileByDocument(item, item.documents[docIndex]) };
+    }
+    if (source === "folderPath") {
+      const folderPath = String(first || "").split(".").map((value) => Number(value)).filter((value) => Number.isInteger(value));
+      const fileIndex = Number(second);
+      const folder = folderByPath(caseFolders(item), folderPath);
+      const file = folder?.files?.[fileIndex];
+      const docIndex = file?.documentId
+        ? item.documents.findIndex((doc) => doc.documentId === file.documentId)
+        : item.documents.findIndex((doc) => doc.name === file?.name);
+      return { item, source, folderIndex: folderPath[0] ?? -1, folderPath, fileIndex, folder, file, docIndex, doc: item.documents[docIndex] };
     }
     const folderIndex = Number(first);
     const fileIndex = Number(second);
@@ -939,6 +970,7 @@ export function createDialogOpeners({
       ["Адвокатський запит", "Запити"],
       ["Ухвала / відповідь", "Відповіді та ухвали"]
     ]);
+    const proceduralFolderNames = new Set([...proceduralTypeFolders.values()]);
     [...form.elements.type.options].forEach((option) => {
       option.dataset.proceduralOption = String(proceduralTypeFolders.has(option.value));
     });
@@ -979,6 +1011,7 @@ export function createDialogOpeners({
         const targetFolderValue = ensureFolderOptionByName(targetFolderName);
         if (targetFolderValue !== "") folderSelect.value = targetFolderValue;
         [...folderSelect.options].forEach((option) => {
+          option.hidden = false;
           option.disabled = option.value !== targetFolderValue;
         });
         newFolderInput.value = "";
@@ -998,9 +1031,16 @@ export function createDialogOpeners({
         }
         return;
       }
+      const selectedFolderName = folderSelect.selectedOptions?.[0]?.textContent || "";
       [...folderSelect.options].forEach((option) => {
+        const isProceduralFolder = proceduralFolderNames.has(option.textContent || "");
+        option.hidden = isProceduralFolder;
         option.disabled = false;
       });
+      if (proceduralFolderNames.has(selectedFolderName)) {
+        const fallback = [...folderSelect.options].find((option) => !option.hidden && option.value !== "__new__");
+        folderSelect.value = fallback?.value || "__new__";
+      }
       newFolderInput.hidden = false;
       if (newFolderLabel) newFolderLabel.hidden = false;
       if (fixedFolder) fixedFolder.hidden = true;
