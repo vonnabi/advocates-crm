@@ -38,7 +38,7 @@ import {
   renderClientProfile as renderClientProfileScreen,
   renderClientRows as renderClientRowsScreen,
   renderClientsScreen
-} from "./js/screens/clients.js?v=clients-clean-1";
+} from "./js/screens/clients.js?v=clients-filter-1";
 import { renderDashboardScreen } from "./js/screens/dashboard.js?v=live-demo-1";
 import { renderDocumentsScreen } from "./js/screens/documents.js?v=document-archive-books-1";
 import {

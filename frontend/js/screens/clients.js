@@ -5,19 +5,48 @@ export function renderClientsScreen(ctx) {
   const { state, $, icon, openClientDialog } = ctx;
   const selected = clientById(ctx, state.selectedClientId) || state.clients[0];
   const totalClients = state.clients.length;
+  const managerOptions = uniqueClientOptions(state.clients.map((client) => client.manager));
   $("#clients").innerHTML = `
     <div class="toolbar clients-toolbar">
       <div class="left">
         <label class="search-control">${icon("search")}<input id="client-filter" type="search" placeholder="Пошук клієнта..." /></label>
-        <button class="secondary icon-text">${icon("filter")}Фільтри</button>
-        <select id="client-date-filter">
-          <option>Дата додавання</option>
-          <option>Останній контакт</option>
-          <option>ПІБ клієнта</option>
+        <button class="secondary icon-text" id="client-filter-toggle" type="button" aria-expanded="false" aria-controls="client-filter-panel">${icon("filter")}Фільтри</button>
+        <select id="client-date-filter" data-client-select aria-label="Сортування клієнтів">
+          <option value="added">Дата додавання</option>
+          <option value="lastContact">Останній контакт</option>
+          <option value="name">ПІБ клієнта</option>
         </select>
         <button class="ghost" id="client-reset-filter">Скинути</button>
       </div>
       <button class="primary" id="add-client">+ Додати клієнта</button>
+    </div>
+    <div class="clients-filter-panel" id="client-filter-panel" hidden>
+      <label>Статус
+        <select id="client-status-filter" data-client-select>
+          <option value="all">Всі статуси</option>
+          <option value="Активний">Активний</option>
+          <option value="Постійний клієнт">Постійний клієнт</option>
+          <option value="Новий">Новий</option>
+          <option value="Не турбувати">Не турбувати</option>
+        </select>
+      </label>
+      <label>Джерело
+        <select id="client-source-filter" data-client-select>
+          <option value="all">Всі джерела</option>
+          <option value="Вручну">Вручну</option>
+          <option value="Рекомендація">Рекомендація</option>
+          <option value="Сайт">Сайт</option>
+          <option value="Instagram">Instagram</option>
+          <option value="Telegram">Telegram</option>
+          <option value="Повторне звернення">Повторне звернення</option>
+        </select>
+      </label>
+      <label>Відповідальний
+        <select id="client-manager-filter" data-client-select>
+          <option value="all">Всі відповідальні</option>
+          ${managerOptions.map((manager) => `<option value="${escapeHtml(manager)}">${escapeHtml(manager)}</option>`).join("")}
+        </select>
+      </label>
     </div>
     <div class="clients-layout">
       <div class="clients-left">
@@ -51,10 +80,10 @@ export function renderClientsScreen(ctx) {
             <div><span class="muted">Одержувачі</span><strong data-client-mailing-recipient-count>${clientCountLabel(totalClients)}</strong></div>
             <label class="client-select-field">
               <span class="muted">Тип розсилки</span>
-              <select>
-                <option>Інформаційна</option>
-                <option>Юридичне повідомлення</option>
-                <option>Нагадування</option>
+              <select data-client-select>
+                <option value="info">Інформаційна</option>
+                <option value="legal">Юридичне повідомлення</option>
+                <option value="reminder">Нагадування</option>
               </select>
             </label>
           </div>
@@ -74,13 +103,53 @@ export function renderClientsScreen(ctx) {
     $("#client-profile").innerHTML = `<h2 class="profile-section-title">${icon("telegram")} Профіль клієнта</h2><p class="muted">Клієнтів не знайдено.</p>`;
   }
   bindClientMailingPreview(ctx);
+  $("#client-date-filter").value = state.clientSort || "added";
+  $("#client-status-filter").value = state.clientStatusFilter || "all";
+  $("#client-source-filter").value = state.clientSourceFilter || "all";
+  $("#client-manager-filter").value = state.clientManagerFilter || "all";
+  setupClientScreenSelects($("#clients"));
   $("#add-client").addEventListener("click", () => openClientDialog());
   $("#client-filter").addEventListener("input", () => {
     state.clientPage = 1;
     renderClientRows(ctx);
   });
+  $("#client-filter-toggle").addEventListener("click", () => {
+    const panel = $("#client-filter-panel");
+    const nextOpen = panel.hidden;
+    panel.hidden = !nextOpen;
+    $("#client-filter-toggle").setAttribute("aria-expanded", String(nextOpen));
+  });
+  $("#client-date-filter").addEventListener("change", () => {
+    state.clientSort = $("#client-date-filter").value || "added";
+    state.clientPage = 1;
+    renderClientRows(ctx);
+  });
+  $("#client-status-filter").addEventListener("change", () => {
+    state.clientStatusFilter = $("#client-status-filter").value || "all";
+    state.clientPage = 1;
+    renderClientRows(ctx);
+  });
+  $("#client-source-filter").addEventListener("change", () => {
+    state.clientSourceFilter = $("#client-source-filter").value || "all";
+    state.clientPage = 1;
+    renderClientRows(ctx);
+  });
+  $("#client-manager-filter").addEventListener("change", () => {
+    state.clientManagerFilter = $("#client-manager-filter").value || "all";
+    state.clientPage = 1;
+    renderClientRows(ctx);
+  });
   $("#client-reset-filter").addEventListener("click", () => {
     $("#client-filter").value = "";
+    state.clientSort = "added";
+    state.clientStatusFilter = "all";
+    state.clientSourceFilter = "all";
+    state.clientManagerFilter = "all";
+    $("#client-date-filter").value = state.clientSort;
+    $("#client-status-filter").value = state.clientStatusFilter;
+    $("#client-source-filter").value = state.clientSourceFilter;
+    $("#client-manager-filter").value = state.clientManagerFilter;
+    syncClientScreenCustomSelects($("#clients"));
     state.clientPage = 1;
     renderClientRows(ctx);
   });
@@ -88,10 +157,14 @@ export function renderClientsScreen(ctx) {
 
 export function renderClientRows(ctx) {
   const { state, $, icon, actionMenu, bindActionMenus, openClientDialog, openDeleteDocumentConfirm } = ctx;
-  const query = ($("#client-filter")?.value || "").toLowerCase();
+  const query = $("#client-filter")?.value || "";
   const selectedClientSet = new Set((state.selectedClientKeys || []).map(String));
   const filteredClients = state.clients
-    .filter((client) => !query || `${client.name} ${client.phone} ${client.email} ${client.request} ${client.telegramUsername} ${client.manager}`.toLowerCase().includes(query));
+    .filter((client) => clientMatchesSearch(client, query))
+    .filter((client) => state.clientStatusFilter === "all" || !state.clientStatusFilter || client.status === state.clientStatusFilter)
+    .filter((client) => state.clientSourceFilter === "all" || !state.clientSourceFilter || client.source === state.clientSourceFilter)
+    .filter((client) => state.clientManagerFilter === "all" || !state.clientManagerFilter || client.manager === state.clientManagerFilter)
+    .sort((a, b) => compareClients(a, b, state.clientSort || "added"));
   const pageSize = Number(state.clientPageSize || 10);
   const pageCount = Math.max(1, Math.ceil(filteredClients.length / pageSize));
   state.clientPage = Math.min(Math.max(1, Number(state.clientPage || 1)), pageCount);
@@ -175,6 +248,156 @@ export function renderClientRows(ctx) {
       openDeleteDocumentConfirm({ type: "client", clientId: Number(button.dataset.deleteClient), returnView: "clients" });
     });
   });
+}
+
+function escapeHtml(value = "") {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function uniqueClientOptions(values = []) {
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "uk"));
+}
+
+function normalizeSearch(value = "") {
+  return String(value)
+    .toLowerCase()
+    .replace(/[’']/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function digitsOnly(value = "") {
+  return String(value).replace(/\D/g, "");
+}
+
+function clientSearchHaystack(client = {}) {
+  return normalizeSearch([
+    client.name,
+    client.phone,
+    client.email,
+    client.address,
+    client.telegramUsername,
+    client.request,
+    client.status,
+    client.source,
+    client.manager,
+    client.notes
+  ].filter(Boolean).join(" "));
+}
+
+function clientMatchesSearch(client, query) {
+  const cleanQuery = normalizeSearch(query);
+  if (!cleanQuery) return true;
+  const haystack = clientSearchHaystack(client);
+  const queryDigits = digitsOnly(cleanQuery);
+  const phoneDigits = digitsOnly(client.phone);
+  return cleanQuery.split(" ").filter(Boolean).every((token) => {
+    const tokenDigits = digitsOnly(token);
+    return haystack.includes(token) || (tokenDigits && phoneDigits.includes(tokenDigits)) || (queryDigits.length >= 3 && phoneDigits.includes(queryDigits));
+  });
+}
+
+function dateOrder(value = "") {
+  const [day, month, year] = String(value || "").split(".");
+  if (!day || !month || !year) return 0;
+  return new Date(Number(year), Number(month) - 1, Number(day)).getTime();
+}
+
+function compareClients(a, b, sortKey) {
+  if (sortKey === "name") return String(a.name || "").localeCompare(String(b.name || ""), "uk");
+  if (sortKey === "lastContact") return dateOrder(b.lastContact) - dateOrder(a.lastContact);
+  return dateOrder(b.added) - dateOrder(a.added);
+}
+
+function closeClientScreenSelects(root = document, except = null) {
+  root.querySelectorAll(".client-screen-select.is-open").forEach((selectShell) => {
+    if (selectShell === except) return;
+    selectShell.classList.remove("is-open");
+    selectShell.querySelector(".client-screen-select-button")?.setAttribute("aria-expanded", "false");
+    const menu = selectShell.querySelector(".client-screen-select-menu");
+    if (menu) menu.hidden = true;
+  });
+}
+
+function syncClientScreenCustomSelect(select) {
+  const shell = select.nextElementSibling?.classList?.contains("client-screen-select")
+    ? select.nextElementSibling
+    : null;
+  if (!shell) return;
+  const selected = select.selectedOptions?.[0] || select.options[0];
+  const buttonText = shell.querySelector("[data-client-select-value]");
+  const menu = shell.querySelector(".client-screen-select-menu");
+  if (buttonText) buttonText.textContent = selected?.textContent || "";
+  if (!menu) return;
+  menu.innerHTML = [...select.options].filter((option) => !option.hidden).map((option) => `
+    <button class="client-screen-select-option ${option.value === select.value ? "is-selected" : ""}" type="button" role="option" data-value="${escapeHtml(option.value)}" aria-selected="${option.value === select.value ? "true" : "false"}">
+      <span aria-hidden="true">✓</span>
+      <strong>${escapeHtml(option.textContent || "")}</strong>
+    </button>
+  `).join("");
+}
+
+function syncClientScreenCustomSelects(root = document) {
+  root.querySelectorAll("select[data-client-select]").forEach(syncClientScreenCustomSelect);
+}
+
+function setupClientScreenSelects(root = document) {
+  root.querySelectorAll("select[data-client-select]").forEach((select) => {
+    select.classList.add("client-native-select");
+    select.tabIndex = -1;
+    select.setAttribute("aria-hidden", "true");
+    let shell = select.nextElementSibling?.classList?.contains("client-screen-select")
+      ? select.nextElementSibling
+      : null;
+    if (!shell) {
+      shell = document.createElement("div");
+      shell.className = "client-screen-select";
+      shell.innerHTML = `
+        <button class="client-screen-select-button" type="button" aria-haspopup="listbox" aria-expanded="false">
+          <span data-client-select-value></span>
+          <span class="client-screen-select-chevron" aria-hidden="true"></span>
+        </button>
+        <div class="client-screen-select-menu" role="listbox" hidden></div>
+      `;
+      select.insertAdjacentElement("afterend", shell);
+      shell.querySelector(".client-screen-select-button")?.addEventListener("click", () => {
+        const isOpen = shell.classList.contains("is-open");
+        closeClientScreenSelects(root, isOpen ? null : shell);
+        shell.classList.toggle("is-open", !isOpen);
+        shell.querySelector(".client-screen-select-button")?.setAttribute("aria-expanded", String(!isOpen));
+        const menu = shell.querySelector(".client-screen-select-menu");
+        if (menu) menu.hidden = isOpen;
+      });
+      shell.querySelector(".client-screen-select-menu")?.addEventListener("click", (event) => {
+        const optionButton = event.target.closest(".client-screen-select-option");
+        if (!optionButton) return;
+        select.value = optionButton.dataset.value || "";
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        syncClientScreenCustomSelect(select);
+        closeClientScreenSelects(root);
+      });
+    }
+    if (!select.dataset.clientScreenSelectSyncBound) {
+      select.dataset.clientScreenSelectSyncBound = "true";
+      select.addEventListener("change", () => syncClientScreenCustomSelect(select));
+    }
+    syncClientScreenCustomSelect(select);
+  });
+  if (!root.dataset.clientScreenSelectsBound) {
+    root.dataset.clientScreenSelectsBound = "true";
+    root.addEventListener("click", (event) => {
+      if (event.target.closest(".client-screen-select")) return;
+      closeClientScreenSelects(root);
+    });
+    root.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeClientScreenSelects(root);
+    });
+  }
 }
 
 function clientCountLabel(count) {
