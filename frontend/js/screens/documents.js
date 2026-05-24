@@ -426,6 +426,17 @@ function documentSendAuthorities(state) {
   return [...rows.values()].sort((a, b) => a.name.localeCompare(b.name, "uk"));
 }
 
+function documentSendContactLabel(source = {}, channel = "") {
+  if (!source) return "";
+  const telegram = source.telegramUsername || source.telegram || "";
+  const email = source.email || "";
+  const phone = source.phone || source.contact || source.whatsapp || "";
+  if (channel === "Telegram") return telegram ? `Telegram: ${telegram}` : "Telegram не заповнений";
+  if (channel === "Email") return email ? `Email: ${email}` : "Email не заповнений";
+  if (channel === "SMS") return phone ? `Телефон: ${phone}` : "Телефон не заповнений";
+  return [telegram && `Telegram: ${telegram}`, email && `Email: ${email}`, phone && `Телефон: ${phone}`].filter(Boolean).join(" · ");
+}
+
 function documentSendContact(state, client, authority, channel, mode, manual = "") {
   if (mode === "manual") return manual.trim();
   const bureau = state.bureauSettings || {};
@@ -470,6 +481,7 @@ function openDocumentSendDialog(ctx, key) {
   const item = caseById(caseId);
   const doc = payload.file || payload.doc;
   if (!doc || !item) return;
+  const clients = state.clients || [];
   const client = clientById(item.clientId);
   const authorities = documentSendAuthorities(state);
   form.reset();
@@ -477,10 +489,23 @@ function openDocumentSendDialog(ctx, key) {
   form.elements.channel.value = "Telegram";
   form.elements.recipientMode.value = "client";
   document.querySelector("#document-send-name").textContent = doc.name || "Документ";
+  const clientField = form.querySelector("[data-document-send-client]");
   const manualField = form.querySelector("[data-document-send-manual]");
   const authorityField = form.querySelector("[data-document-send-authority]");
+  const clientSelect = form.elements.clientRecipient;
   const authoritySelect = form.elements.authorityRecipient;
+  const clientContact = document.querySelector("#document-send-client-contact");
+  const authorityContact = document.querySelector("#document-send-authority-contact");
   const preview = document.querySelector("#document-send-recipient-preview");
+  if (clientSelect) {
+    clientSelect.innerHTML = clients.length
+      ? clients.map((recipient) => {
+        const meta = [recipient.email, recipient.phone || recipient.whatsapp].filter(Boolean).join(" · ");
+        return `<option value="${recipient.id}">${escapeHtml(recipient.name || "Клієнт")}${meta ? ` — ${escapeHtml(meta)}` : ""}</option>`;
+      }).join("")
+      : `<option value="">Клієнтів ще немає</option>`;
+    clientSelect.value = String(client?.id || clients[0]?.id || "");
+  }
   if (authoritySelect) {
     authoritySelect.innerHTML = authorities.length
       ? authorities.map((authority, index) => {
@@ -495,13 +520,17 @@ function openDocumentSendDialog(ctx, key) {
     const channel = form.elements.channel.value;
     const mode = form.elements.recipientMode.value;
     const manual = form.elements.manualRecipient.value;
+    const selectedClient = clientById(form.elements.clientRecipient?.value) || client;
     const authority = authorities[Number(form.elements.authorityRecipient?.value || 0)];
-    const contact = documentSendContact(state, client, authority, channel, mode, manual);
+    const contact = documentSendContact(state, selectedClient, authority, channel, mode, manual);
+    if (clientField) clientField.hidden = mode !== "client";
     if (manualField) manualField.hidden = mode !== "manual";
     if (authorityField) authorityField.hidden = mode !== "authority";
+    if (clientContact) clientContact.textContent = documentSendContactLabel(selectedClient, channel);
+    if (authorityContact) authorityContact.textContent = documentSendContactLabel(authority, channel);
     if (preview) {
       const label = mode === "client"
-        ? client?.name || "Клієнт"
+        ? selectedClient?.name || "Клієнт"
         : mode === "bureau"
           ? state.bureauSettings?.name || "Організація"
           : mode === "authority"
@@ -521,6 +550,12 @@ function openDocumentSendDialog(ctx, key) {
     form.elements.message.value = "";
     sync();
   };
+  if (clientSelect) {
+    clientSelect.onchange = () => {
+      form.elements.message.value = "";
+      sync();
+    };
+  }
   if (authoritySelect) {
     authoritySelect.onchange = () => {
       form.elements.message.value = "";
@@ -532,8 +567,9 @@ function openDocumentSendDialog(ctx, key) {
     event.preventDefault();
     const channel = form.elements.channel.value;
     const mode = form.elements.recipientMode.value;
+    const selectedClient = clientById(form.elements.clientRecipient?.value) || client;
     const authority = authorities[Number(form.elements.authorityRecipient?.value || 0)];
-    const contact = documentSendContact(state, client, authority, channel, mode, form.elements.manualRecipient.value);
+    const contact = documentSendContact(state, selectedClient, authority, channel, mode, form.elements.manualRecipient.value);
     if (!contact) {
       showToast?.(`Заповніть контакт для ${channel}.`, "warning");
       return;
@@ -542,13 +578,13 @@ function openDocumentSendDialog(ctx, key) {
     const campaign = {
       title: `Документ: ${doc.name}`,
       status: "Готова к отправке",
-      meta: `${channel} · ${mode === "client" ? client?.name || "клієнт" : mode === "bureau" ? "організація" : mode === "authority" ? authority?.name || "орган" : contact}`,
+      meta: `${channel} · ${mode === "client" ? selectedClient?.name || "клієнт" : mode === "bureau" ? "організація" : mode === "authority" ? authority?.name || "орган" : contact}`,
       createdAt: new Date().toLocaleString("uk-UA"),
       text: message,
       channels: { Telegram: channel === "Telegram", SMS: channel === "SMS", Email: channel === "Email" },
       sendMode: "now",
       recipientMode: mode === "client" ? "manual" : "external",
-      manualClientIds: mode === "client" && client?.id ? [client.id] : [],
+      manualClientIds: mode === "client" && selectedClient?.id ? [selectedClient.id] : [],
       filters: [],
       recipientCount: 1,
       documentId: doc.documentId || doc.id || "",

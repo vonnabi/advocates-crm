@@ -20775,6 +20775,10 @@ dialog::backdrop {
   transform-origin: center;
 }
 
+.document-editor-field:has(.document-send-contact-line)::after {
+  bottom: 42px;
+}
+
 .document-editor-field > input:hover,
 .document-editor-field > select:hover,
 .document-editor-field > textarea:hover {
@@ -21358,6 +21362,25 @@ dialog::backdrop {
   grid-template-columns: none;
 }
 
+.document-send-modal .crm-modal-head {
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
+  gap: 10px;
+  align-items: start;
+}
+
+.document-send-modal .crm-modal-title {
+  justify-self: stretch;
+  width: auto;
+  display: block;
+  text-align: left;
+}
+
+.document-send-modal .crm-modal-title h2,
+.document-send-modal .crm-modal-title p {
+  margin-inline: 0;
+  overflow-wrap: anywhere;
+}
+
 .document-export-title h2,
 .document-export-title p,
 .document-send-title h2,
@@ -21408,6 +21431,16 @@ dialog::backdrop {
   color: var(--muted);
   font-size: 12px;
   font-weight: 750;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.document-send-contact-line {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .document-export-options {
