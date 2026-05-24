@@ -161,6 +161,9 @@ test("document creation uses selected existing case folder", async ({ page }) =>
   await expect(page.locator("#document-folder")).toHaveValue("1");
   await expect(page.locator('#document-form input[name="newFolderName"]')).toBeEnabled();
   await page.locator('#document-form select[name="type"]').selectOption("Клопотання", { force: true });
+  await expect(page.locator("#document-folder")).toHaveValue("1");
+  await expect(page.locator('[data-document-procedural-note]')).toBeVisible();
+  await expect(page.locator('[data-document-procedural-note]')).toContainText("Процесуальний документ");
   await page.locator('#document-form input[name="name"]').fill("Документ у клопотання.docx");
   await page.locator("#document-submit-button").click();
   await expect(page.locator("#office-editor-dialog")).toHaveJSProperty("open", true);
@@ -185,6 +188,8 @@ test("document creation sorts standard folders by document type", async ({ page 
   await expect(page.locator("#document-dialog")).toHaveJSProperty("open", true);
   await expect(page.locator("#document-folder")).toHaveValue("4");
   await page.locator('#document-form select[name="type"]').selectOption("Позов", { force: true });
+  await expect(page.locator("#document-folder")).toHaveValue("0");
+  await expect(page.locator('[data-document-procedural-note]')).toContainText("папці «Позови»");
   await page.locator('#document-form input[name="name"]').fill("Авто позов з іншої папки.docx");
   await page.locator("#document-submit-button").click();
   await expect(page.locator("#office-editor-dialog")).toHaveJSProperty("open", true);
@@ -255,7 +260,8 @@ test("document edit can move a document to another case folder", async ({ page }
   await expect(page.locator("[data-document-target-mode]")).toBeVisible();
   await expect(page.locator("[data-document-destination]")).toBeVisible();
   await page.locator('#document-form select[name="type"]').selectOption("Клопотання", { force: true });
-  await page.locator("#document-folder").selectOption("1", { force: true });
+  await expect(page.locator("#document-folder")).toHaveValue("1");
+  await expect(page.locator('[data-document-procedural-note]')).toContainText("папці «Клопотання»");
   await page.locator("#document-submit-button").click();
 
   await expect(page.locator("#document-dialog")).toHaveJSProperty("open", false);

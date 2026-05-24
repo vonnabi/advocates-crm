@@ -20707,6 +20707,25 @@ dialog::backdrop {
   gap: 12px;
 }
 
+.document-editor-field.is-procedural-document {
+  padding: 12px;
+  border: 1px solid #b7d8ff;
+  border-radius: 12px;
+  background: #eef6ff;
+}
+
+.document-procedural-note {
+  display: block;
+  color: #1f5d92;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.document-procedural-note[hidden] {
+  display: none;
+}
+
 .document-target-mode legend,
 .document-source-mode legend {
   padding: 0 8px;

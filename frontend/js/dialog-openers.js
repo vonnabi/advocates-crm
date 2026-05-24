@@ -933,6 +933,19 @@ export function createDialogOpeners({
     const caseSelect = form.elements.targetCaseId;
     const destinationSummary = form.querySelector("[data-document-destination-summary]");
     const shouldShowDestination = Boolean(editContext) || state.documentDialogReturnView === "documents";
+    const proceduralTypeFolders = new Map([
+      ["Позов", "Позови"],
+      ["Клопотання", "Клопотання"],
+      ["Адвокатський запит", "Запити"],
+      ["Ухвала / відповідь", "Відповіді та ухвали"]
+    ]);
+    const isProceduralType = () => proceduralTypeFolders.has(form.elements.type?.value || "");
+    const ensureFolderOptionByName = (folderName) => {
+      const folderSelect = form.elements.folder;
+      if (!folderSelect || !folderName) return "";
+      const option = [...folderSelect.options].find((itemOption) => itemOption.textContent === folderName);
+      return option?.value || "";
+    };
 
     const caseLabel = (caseItem) => {
       const client = clientById(caseItem.clientId);
@@ -948,7 +961,28 @@ export function createDialogOpeners({
     const syncNewFolderField = () => {
       const folderSelect = form.elements.folder;
       const newFolderInput = form.elements.newFolderName;
+      const proceduralNote = form.querySelector("[data-document-procedural-note]");
       if (!folderSelect || !newFolderInput) return;
+      const procedural = isProceduralType();
+      if (procedural) {
+        const targetFolderName = proceduralTypeFolders.get(form.elements.type.value);
+        const targetFolderValue = ensureFolderOptionByName(targetFolderName);
+        if (targetFolderValue !== "") folderSelect.value = targetFolderValue;
+        folderSelect.disabled = true;
+        newFolderInput.value = "";
+        newFolderInput.required = false;
+        newFolderInput.hidden = true;
+        newFolderInput.closest(".document-editor-field")?.classList.add("is-procedural-document");
+        if (proceduralNote) {
+          proceduralNote.hidden = false;
+          proceduralNote.textContent = `Процесуальний документ: буде у блоці 6 і в папці «${targetFolderName}» блоку 7.`;
+        }
+        return;
+      }
+      folderSelect.disabled = false;
+      newFolderInput.hidden = false;
+      if (proceduralNote) proceduralNote.hidden = true;
+      newFolderInput.closest(".document-editor-field")?.classList.remove("is-procedural-document");
       const isCreatingFolder = folderSelect.value === "__new__";
       newFolderInput.required = isCreatingFolder;
       newFolderInput.placeholder = isCreatingFolder ? "Наприклад: Докази" : "Підпапка у вибраній папці";
@@ -1063,6 +1097,12 @@ export function createDialogOpeners({
         syncDocumentCustomSelect(form.elements.folder);
       };
     }
+    if (form.elements.type) {
+      form.elements.type.onchange = () => {
+        syncNewFolderField();
+        syncDocumentCustomSelect(form.elements.folder);
+      };
+    }
     setupDocumentCustomSelects(form);
     syncDocumentTargetMode();
     form.elements.editSource.value = "";
@@ -1072,6 +1112,7 @@ export function createDialogOpeners({
     form.classList.toggle("is-editing-document", Boolean(editContext));
     $("#document-dialog-title").textContent = "Новий документ";
     $("#document-submit-button").textContent = "Додати документ";
+    form.elements.type.value = "Інше";
     if (form.elements.documentSourceMode) {
       form.elements.documentSourceMode.value = "onlyoffice";
     }
@@ -1133,6 +1174,7 @@ export function createDialogOpeners({
       $("#document-dialog-title").textContent = "Редагувати документ";
       $("#document-submit-button").textContent = "Зберегти документ";
     }
+    syncNewFolderField();
     setupDocumentCustomSelects(form);
     syncDocumentTargetMode();
     syncDocumentSourceMode();

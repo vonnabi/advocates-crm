@@ -511,6 +511,7 @@ export function setupDocumentForm({
     const content = form.get("content") || "";
     const documentSourceMode = form.get("documentSourceMode") || (fileName ? "upload" : url ? "google" : "onlyoffice");
     const onlyOfficeCreateFormat = form.get("onlyOfficeCreateFormat") || "docx";
+    const folderValue = event.currentTarget.elements.folder?.value || "";
     if (documentSourceMode === "upload" && !fileName && !form.get("editSource")) {
       showToast("Оберіть файл з комп'ютера або змініть спосіб додавання документа.", "warning");
       return;
@@ -622,7 +623,7 @@ export function setupDocumentForm({
         : nextUrl
           ? (nextFileName ? "Файл + Google посилання" : "Google посилання")
           : "ONLYOFFICE";
-      const selectedFolderName = folders[Number(form.get("folder"))]?.name;
+      const selectedFolderName = folders[Number(folderValue)]?.name;
       const folderName = inferCaseDocumentFolder(
         { name, type: form.get("type"), folder: selectedFolderName || linked?.folder?.name },
         selectedFolderName || linked?.folder?.name
@@ -736,9 +737,9 @@ export function setupDocumentForm({
       return;
     }
 
-    let targetFolder = folders[Number(selectedFolder)] || folders[0];
+    let targetFolder = folders[Number(folderValue)] || folders[Number(selectedFolder)] || folders[0];
     const requestedSubfolderName = String(form.get("newFolderName") || "").trim();
-    if (selectedFolder === "__new__") {
+    if (folderValue === "__new__" || selectedFolder === "__new__") {
       const folderName = requestedSubfolderName || "Нова папка";
       targetFolder = { name: folderName, updated: today, files: [], children: [] };
       folders.push(targetFolder);
