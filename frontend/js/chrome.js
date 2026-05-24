@@ -321,19 +321,8 @@ function ensureDemoDataOverlay(ctx) {
   });
   overlay.querySelector("[data-demo-data-restore]")?.addEventListener("click", async () => {
     const button = overlay.querySelector("[data-demo-data-restore]");
-    button.disabled = true;
-    localStorage.removeItem(SNAPSHOT_STORAGE_KEY);
-    try {
-      const payload = await restoreDemoDataInApi();
-      state.demoDataStatus = payload.demoData;
-      syncDemoDataToggle(state);
-      overlay.hidden = true;
-      showToast("Демо-дані відновлено. Оновлюю кабінет.");
-      window.setTimeout(() => window.location.reload(), 350);
-    } catch (_error) {
-      showToast("Не вдалося відновити демо-дані.", "warning");
-      button.disabled = false;
-    }
+    overlay.hidden = true;
+    await restoreDemoDataAndReload({ state, showToast }, button);
   });
   return overlay;
 }
@@ -398,6 +387,22 @@ async function importCrmSnapshot(file) {
   return snapshot;
 }
 
+async function restoreDemoDataAndReload(ctx, control = null) {
+  const { state, showToast } = ctx;
+  localStorage.removeItem(SNAPSHOT_STORAGE_KEY);
+  if (control) control.disabled = true;
+  try {
+    const payload = await restoreDemoDataInApi();
+    state.demoDataStatus = payload.demoData;
+    syncDemoDataToggle(state);
+    showToast("Демо-дані відновлено. Оновлюю кабінет.");
+    window.setTimeout(() => window.location.reload(), 350);
+  } catch (_error) {
+    showToast("Не вдалося відновити демо-дані.", "warning");
+    if (control) control.disabled = false;
+  }
+}
+
 async function openDemoDataOverlay(ctx) {
   const overlay = ensureDemoDataOverlay(ctx);
   try {
@@ -407,6 +412,7 @@ async function openDemoDataOverlay(ctx) {
   }
   const status = ctx.state.demoDataStatus || {};
   const enabled = Boolean(status.enabled);
+  syncDemoDataToggle(ctx.state);
   overlay.querySelector("[data-demo-data-text]").textContent = isSnapshotMode(ctx.state)
     ? "Зараз відкрито локальну JSON-копію CRM у цьому браузері. Вона не змінює серверну базу. Кнопка «Очистити» прибере локальну копію і поверне звичайний режим."
     : enabled
@@ -425,6 +431,21 @@ async function openDemoDataOverlay(ctx) {
   overlay.querySelector("[data-demo-data-restore]").hidden = enabled || isSnapshotMode(ctx.state);
   overlay.querySelector("[data-demo-data-import-server-wrap]").hidden = !shouldUseApi(ctx.state);
   overlay.hidden = false;
+}
+
+async function handleDemoDataToggleClick(ctx) {
+  const { state, showToast } = ctx;
+  const toggle = document.querySelector("[data-demo-data-toggle]");
+  try {
+    await refreshDemoDataStatus(state);
+  } catch (_error) {
+    showToast("Не вдалося перевірити стан демо-даних.", "warning");
+  }
+  if (!isSnapshotMode(state) && shouldUseApi(state) && !state.demoDataStatus?.enabled) {
+    await restoreDemoDataAndReload(ctx, toggle);
+    return;
+  }
+  await openDemoDataOverlay(ctx);
 }
 
 export function syncTopbarUser($, state) {
@@ -715,7 +736,7 @@ export function setupTopbarControls({ $, state, switchView, saveNavigationState,
 
   $(".collapse-menu")?.addEventListener("click", () => toggleSidebar({ saveNavigationState, showToast }));
   $(".sidebar-restore")?.addEventListener("click", () => toggleSidebar({ saveNavigationState, showToast }));
-  $("[data-demo-data-toggle]")?.addEventListener("click", () => openDemoDataOverlay({ state, showToast }));
+  $("[data-demo-data-toggle]")?.addEventListener("click", () => handleDemoDataToggleClick({ state, showToast }));
   if (shouldUseApi(state) && state.sessionPermissions?.canManageUsers) {
     window.setTimeout(() => refreshDemoDataStatus(state).catch(() => {}), 0);
   }

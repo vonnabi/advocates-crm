@@ -394,7 +394,23 @@ test("API empty demo mode still renders the workspace and AI empty state", async
   await page.route("**/api/bootstrap/", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(emptyPayload) });
   });
+  let restoreCalls = 0;
   await page.route("**/api/demo-data/", async (route) => {
+    if (route.request().method() === "POST") {
+      restoreCalls += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          demoData: {
+            enabled: true,
+            total: 33,
+            counts: { clients: 5, cases: 5, tasks: 9, documents: 13, events: 6, financeOperations: 0, communications: 0, campaigns: 0 }
+          }
+        })
+      });
+      return;
+    }
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(emptyPayload.meta.demoData) });
   });
 
@@ -410,11 +426,7 @@ test("API empty demo mode still renders the workspace and AI empty state", async
   await expect(page.locator("[data-demo-data-toggle]")).toBeVisible();
   await expect(page.locator("[data-demo-data-summary]")).toHaveText("Вимкнено");
   await page.locator("[data-demo-data-toggle]").click();
-  await expect(page.locator("#demo-data-overlay")).toBeVisible();
-  await expect(page.locator("[data-demo-data-export]")).toContainText("Скачати копію");
-  await expect(page.locator("[data-demo-data-import-local-wrap]")).toContainText("Завантажити копію");
-  await expect(page.locator("[data-demo-data-import-server-wrap]")).toContainText("Відновити на сервер");
-  await page.locator("[data-demo-data-close]").first().click();
+  await expect.poll(() => restoreCalls).toBe(1);
   await expect(page.locator("#demo-data-overlay")).toBeHidden();
   await expect(page.locator("#notifications-count")).toHaveText("0");
   await expect(page.locator("#notifications-count")).toHaveClass(/empty/);
