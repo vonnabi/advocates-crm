@@ -4113,6 +4113,17 @@ button {
   white-space: normal;
 }
 
+.documents-action-button:active {
+  border-color: var(--action-dark);
+  background: var(--action-dark);
+  color: #fff;
+  transform: translateY(1px);
+}
+
+.documents-action-button:active .ui-icon {
+  color: #fff;
+}
+
 .documents-toolbar-actions .ui-icon,
 .documents-side-actions .ui-icon {
   width: 14px;

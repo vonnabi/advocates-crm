@@ -1149,16 +1149,16 @@ export function renderDocumentsScreen(ctx) {
             </dl>
             <p class="documents-comment">${selected.comment || "Коментар по документу ще не додано."}</p>
             <div class="documents-side-actions">
-              <button class="primary documents-action-button" type="button" data-view-global-document="${selected.key}">${icon("eye")} Відкрити</button>
+              <button class="secondary documents-action-button" type="button" data-view-global-document="${selected.key}">${icon("eye")} Відкрити</button>
               <button class="secondary documents-action-button" type="button" data-edit-global-document="${selected.key}">${icon("edit")} Редагувати</button>
               <button class="secondary documents-action-button" type="button" data-copy-global-document="${selected.key}">${icon("file")} Копіювати</button>
-              <button class="primary documents-action-button" type="button" data-send-global-document="${selected.key}">${icon("telegram")} Відправити</button>
+              <button class="secondary documents-action-button" type="button" data-send-global-document="${selected.key}">${icon("telegram")} Відправити</button>
               <button class="secondary documents-action-button" type="button" data-esign-global-document="${selected.key}">${icon("signature")} ${E_SIGN_STATUSES.has(selected.status) ? "Статус КЕП" : "На підпис"}</button>
               <button class="secondary documents-action-button" type="button" data-office-global-document="${selected.key}">${icon("file")} ONLYOFFICE</button>
               <button class="secondary documents-action-button" type="button" data-export-global-document="${selected.key}">${icon("fileUp")} Експорт</button>
               <button class="secondary documents-action-button" type="button" data-archive-global-document="${selected.key}">${icon("archive")} В архів</button>
               <button class="secondary documents-action-button" type="button" data-open-document-case="${selected.caseId}">${icon("briefcase")} Справа</button>
-              <button class="primary documents-action-button" type="button" data-documents-ai>${icon("search")} AI перевірка</button>
+              <button class="secondary documents-action-button" type="button" data-documents-ai>${icon("search")} AI перевірка</button>
             </div>
             <div class="documents-esign-card ${E_SIGN_STATUSES.has(selected.status) ? "active" : ""}">
               <div>
