@@ -1,6 +1,6 @@
 import { deleteCaseFromApi, saveCaseToApi, saveTaskToApi, shouldUseApi } from "../api.js";
 import { normalizeCase, normalizeTask } from "../state.js";
-import { archiveDocumentInStorage, copyDocumentInCase, openDocumentSendDialog } from "./documents.js";
+import { copyDocumentInCase, openDocumentArchiveDialog, openDocumentSendDialog } from "./documents.js";
 
 let currentContext;
 let state;
@@ -1395,11 +1395,21 @@ function caseFolderRows(item) {
               <span>${file.name}</span>
             </div>
             <div class="folder-actions">
-              ${documentMenu([
-                { label: "Відкрити", icon: "eye", attrs: { "data-view-document": `folder:${index}:${fileIndex}` } },
-                { label: "Редагувати", icon: "edit", attrs: { "data-edit-document": `folder:${index}:${fileIndex}` } },
-                { label: "Видалити", icon: "trash", danger: true, attrs: { "data-delete-folder-file": `${index}:${fileIndex}` } }
-              ])}
+              ${(() => {
+                const encoded = `folder:${index}:${fileIndex}`;
+                const key = `${item.id}|${encoded}`;
+                return documentMenu([
+                  { label: "Відкрити", icon: "eye", attrs: { "data-view-document": encoded } },
+                  { label: "Редагувати", icon: "edit", attrs: { "data-edit-document": encoded } },
+                  { label: "Копіювати документ", icon: "file", attrs: { "data-copy-case-document": key } },
+                  { label: "Відправити", icon: "telegram", attrs: { "data-send-case-document": key } },
+                  { label: caseESignStatuses.has(file.status) ? "Перевірити підпис" : "На е-підпис", icon: "signature", attrs: { "data-esign-case-document": encoded } },
+                  { label: "ONLYOFFICE", icon: "file", attrs: { "data-office-case-document": encoded } },
+                  { label: "Експорт", icon: "fileUp", attrs: { "data-export-case-document": encoded } },
+                  { label: "Додати в архів", icon: "archive", attrs: { "data-archive-case-document": key } },
+                  { label: "Видалити", icon: "trash", danger: true, attrs: { "data-delete-folder-file": `${index}:${fileIndex}` } }
+                ]);
+              })()}
             </div>
           </div>
           <div class="folder-status-cell">${documentStatusControl(file.status)}</div>
@@ -1682,7 +1692,7 @@ function renderCaseProfile(id) {
   }));
   document.querySelectorAll("[data-archive-case-document]").forEach((button) => button.addEventListener("click", (event) => {
     event.stopPropagation();
-    archiveDocumentInStorage(currentContext, button.dataset.archiveCaseDocument);
+    openDocumentArchiveDialog(currentContext, button.dataset.archiveCaseDocument);
   }));
   document.querySelector(`[data-edit-finance="${item.id}"]`)?.addEventListener("click", () => openFinanceDialog(item.id));
   document.querySelectorAll(`[data-edit-case-section="${item.id}"]`).forEach((button) => button.addEventListener("click", () => openEssenceDialog(item.id)));

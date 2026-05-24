@@ -420,15 +420,25 @@ function archiveFolderExists(folders = [], id) {
   return Boolean(findArchiveFolder(folders, id));
 }
 
-export function archiveDocumentInStorage(ctx, key) {
+export function archiveDocumentInStorage(ctx, key, options = {}) {
   const { state, caseById, clientById, getDocumentPayload, renderAll, showToast } = ctx;
+  const { folderId = "", newFolderName = "", comment = "", render = true, notify = true } = options;
   const { caseId, encoded } = payloadFromKey(key);
   const payload = getDocumentPayload(caseId, encoded);
   const item = caseById(caseId);
   const source = payload.file || payload.doc;
   if (!item || !source) return false;
   const folders = ensureDocumentStorageArchive(state);
-  let folder = findArchiveFolder(folders, "saved")?.folder || folders[0];
+  let folder = folderId ? findArchiveFolder(folders, folderId)?.folder : findArchiveFolder(folders, "saved")?.folder || folders[0];
+  if (newFolderName) {
+    const name = String(newFolderName || "").trim() || "Нова папка архіву";
+    let id = archiveFolderId(name);
+    if (archiveFolderExists(folders, id)) id = `${id}-${Date.now()}`;
+    const nextFolder = { id, name, createdAt: new Date().toLocaleDateString("uk-UA"), documents: [], children: [] };
+    if (folder) folder.children.unshift(nextFolder);
+    else folders.unshift(nextFolder);
+    folder = nextFolder;
+  }
   if (!folder) {
     folder = { id: "saved", name: "На зберіганні", documents: [], children: [] };
     folders.unshift(folder);
@@ -447,7 +457,7 @@ export function archiveDocumentInStorage(ctx, key) {
     client: client?.name || "",
     folderName,
     archivedAt,
-    comment: source.comment || ""
+    comment: comment || source.comment || ""
   };
   const existing = folder.documents.find((archiveDoc) =>
     archiveDoc.sourceKey === key || archivePayload.documentId && archiveDoc.documentId === archivePayload.documentId
@@ -457,9 +467,81 @@ export function archiveDocumentInStorage(ctx, key) {
   state.documentArchiveScope = "storage";
   state.documentStorageArchiveFolderId = folder.id;
   state.selectedDocumentKey = key;
-  renderAll?.();
-  showToast?.("Документ додано в архів.");
+  if (render) renderAll?.();
+  if (notify) showToast?.("Документ додано в архів.");
   return true;
+}
+
+export function openDocumentArchiveDialog(ctx, key) {
+  const { state, $, caseById, clientById, getDocumentPayload, showToast } = ctx;
+  const archiveDialog = $("#document-archive-dialog");
+  const archiveForm = $("#document-archive-form");
+  const archiveSelect = $("#document-archive-dialog-folder");
+  const archiveTarget = archiveDialog?.querySelector("[data-document-archive-target]");
+  if (!archiveDialog || !archiveForm || !archiveSelect) return;
+  const { caseId, encoded } = payloadFromKey(key);
+  const payload = getDocumentPayload(caseId, encoded);
+  const item = caseById(caseId);
+  const doc = payload.file || payload.doc;
+  if (!doc || !item) return;
+  const folders = ensureDocumentStorageArchive(state);
+  const fillArchiveDialogFolders = () => {
+    if (!archiveSelect.value && folders[0]) archiveSelect.value = findArchiveFolder(folders, "saved")?.folder?.id || folders[0].id;
+    const picker = archiveDialog.querySelector('[data-document-archive-picker="archive-dialog"]');
+    if (!picker) return;
+    picker.innerHTML = renderArchivePickerTree(folders, archiveSelect.value, escapeHtml) || `<p>Архівних папок ще немає.</p>`;
+    picker.querySelectorAll("[data-document-archive-pick]").forEach((button) => {
+      button.addEventListener("click", () => {
+        archiveSelect.value = button.dataset.documentArchivePick || "";
+        fillArchiveDialogFolders();
+      });
+    });
+  };
+  archiveForm.reset();
+  archiveForm.elements.documentKey.value = key;
+  archiveSelect.value = findArchiveFolder(folders, "saved")?.folder?.id || folders[0]?.id || "";
+  fillArchiveDialogFolders();
+  if (archiveTarget) {
+    const client = clientById?.(item.clientId);
+    archiveTarget.innerHTML = `
+      <span aria-hidden="true">DOC</span>
+      <div>
+        <strong>${escapeHtml(doc.name || "Документ")}</strong>
+        <small>№${escapeHtml(item.id)} · ${escapeHtml(client?.name || "Клієнт не вказаний")}</small>
+      </div>
+    `;
+  }
+  archiveForm.onkeydown = (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      archiveDialog.close();
+      return;
+    }
+    if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.target?.matches?.("textarea, button, [role='button']")) return;
+    event.preventDefault();
+    archiveForm.requestSubmit();
+  };
+  archiveForm.onsubmit = (event) => {
+    if (event.submitter?.value === "cancel") return;
+    event.preventDefault();
+    const data = new FormData(archiveForm);
+    const ok = archiveDocumentInStorage(ctx, data.get("documentKey"), {
+      folderId: data.get("archiveFolderId"),
+      newFolderName: data.get("newArchiveFolderName"),
+      comment: data.get("archiveComment")
+    });
+    if (!ok) {
+      showToast?.("Не вдалося додати документ в архів.", "danger");
+      return;
+    }
+    archiveDialog.close();
+  };
+  const archiveClose = $("#document-archive-close");
+  const archiveCancel = $("#document-archive-cancel");
+  if (archiveClose) archiveClose.onclick = () => archiveDialog.close();
+  if (archiveCancel) archiveCancel.onclick = () => archiveDialog.close();
+  archiveDialog.showModal();
 }
 
 function renderArchivePickerTree(folders = [], selectedId = "", escapeHtml, depth = 0) {

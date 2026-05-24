@@ -430,7 +430,41 @@ test("case procedural document menu exposes full document actions", async ({ pag
   await expect(menu).toContainText("Додати в архів");
   await expect(menu).toContainText("Видалити");
 
+  await menu.locator("[data-archive-case-document]").click();
+  await expect(page.locator("#document-archive-dialog")).toHaveJSProperty("open", true);
+  await expect(page.locator("#document-archive-dialog")).toContainText("Додати в архів");
+  await page.locator("#document-archive-close").click();
+  await expect(page.locator("#document-archive-dialog")).toHaveJSProperty("open", false);
+
+  await page.locator(".case-documents-card .procedural-doc-row [data-action-menu-trigger]").first().click();
   await menu.locator("[data-send-case-document]").click();
   await expect(page.locator("#document-send-dialog")).toHaveJSProperty("open", true);
   await expect(page.locator("#document-send-dialog")).toContainText("Відправити документ");
+});
+
+test("case folder document menu exposes full document actions", async ({ page }) => {
+  await openApp(page);
+  const demoCaseId = `${new Date().getFullYear()}/0001`;
+
+  await page.locator('.nav-item[data-view="cases"]').click();
+  await page.locator(`[data-open-case="${demoCaseId}"]`).first().click();
+  await page.locator(".case-folders-card .folder-row", { hasText: "Запити" }).locator("[data-toggle-folder]").click();
+
+  const fileRow = page.locator(".case-folders-card .folder-file-row").filter({ hasText: "Запит документів до ТЦК" }).first();
+  await expect(fileRow).toBeVisible();
+  await fileRow.locator("[data-action-menu-trigger]").click();
+  const menu = page.locator(".row-action-menu:not([hidden])");
+  await expect(menu).toContainText("Відкрити");
+  await expect(menu).toContainText("Редагувати");
+  await expect(menu).toContainText("Копіювати документ");
+  await expect(menu).toContainText("Відправити");
+  await expect(menu).toContainText("На е-підпис");
+  await expect(menu).toContainText("ONLYOFFICE");
+  await expect(menu).toContainText("Експорт");
+  await expect(menu).toContainText("Додати в архів");
+  await expect(menu).toContainText("Видалити");
+
+  await menu.locator("[data-archive-case-document]").click();
+  await expect(page.locator("#document-archive-dialog")).toHaveJSProperty("open", true);
+  await expect(page.locator("#document-archive-dialog")).toContainText("Запит документів до ТЦК");
 });
