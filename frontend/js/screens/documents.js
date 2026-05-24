@@ -203,6 +203,13 @@ function folderDocumentCount(folder = {}) {
   return (folder.files || []).length + (folder.children || []).reduce((sum, child) => sum + folderDocumentCount(child), 0);
 }
 
+function makeDocumentCopyName(name = "Документ") {
+  const clean = String(name || "Документ").trim() || "Документ";
+  const match = clean.match(/^(.*?)(\.[A-Za-zА-Яа-яІіЇїЄєҐґ0-9]+)$/);
+  if (match) return `${match[1]} - копія${match[2]}`;
+  return `${clean} - копія`;
+}
+
 function findCaseFolderByName(folders = [], name = "") {
   for (const folder of folders) {
     if (folder.name === name) return folder;
@@ -302,6 +309,101 @@ function renderArchivePickerTree(folders = [], selectedId = "", escapeHtml, dept
     </button>
     ${renderArchivePickerTree(folder.children || [], selectedId, escapeHtml, depth + 1)}
   `).join("");
+}
+
+async function copyDocumentInCase(ctx, key) {
+  const {
+    state,
+    caseById,
+    caseFolders,
+    getDocumentPayload,
+    renderAll,
+    openDocumentDialog,
+    showToast
+  } = ctx;
+  const { caseId, encoded } = payloadFromKey(key);
+  const payload = getDocumentPayload(caseId, encoded);
+  const item = caseById(caseId);
+  const source = payload.file || payload.doc;
+  if (!item || !source) return;
+  const folders = caseFolders(item);
+  const sourceFolder = payload.folder || payload.linked?.folder || findCaseFolderByName(folders, source.folder || source.folderName);
+  const targetFolder = sourceFolder || folders[0];
+  if (!targetFolder) {
+    showToast?.("Оберіть справу з папкою для копії документа.", "warning");
+    return;
+  }
+  const today = new Date().toLocaleDateString("uk-UA");
+  const copyName = makeDocumentCopyName(source.name);
+  let saved = null;
+  if (shouldUseApi(state)) {
+    try {
+      saved = normalizeDocument(await saveDocumentToApi({
+        caseId: item.id,
+        name: copyName,
+        type: source.type || "Інше",
+        folder: targetFolder.name,
+        status: source.status || "Чернетка",
+        submitted: source.submitted || "-",
+        responseDue: source.responseDue || "-",
+        comment: source.comment || "",
+        content: source.content || "",
+        url: source.url || "",
+        responsible: source.responsible || item.responsible,
+        history: [{ date: today, text: `Створено копію документа: ${source.name}.` }]
+      }));
+    } catch (_error) {
+      showToast?.("Не вдалося створити копію документа у базі.", "danger");
+      return;
+    }
+  }
+  const documentId = saved?.documentId || saved?.id || `copy-${Date.now()}`;
+  const copyDoc = {
+    ...source,
+    ...saved,
+    id: saved?.id,
+    documentId,
+    name: saved?.name || copyName,
+    folder: saved?.folder || targetFolder.name,
+    fileName: "",
+    fileObject: null,
+    fileUrl: saved?.fileUrl || "",
+    onlyOfficeCallbackUrl: saved?.onlyOfficeCallbackUrl || "",
+    added: today,
+    updated: today,
+    history: saved?.history || [{ date: today, text: `Створено копію документа: ${source.name}.` }]
+  };
+  item.documents.unshift(copyDoc);
+  targetFolder.files.unshift({
+    id: copyDoc.id,
+    documentId,
+    name: copyDoc.name,
+    type: copyDoc.type,
+    folder: copyDoc.folder,
+    status: copyDoc.status,
+    submitted: copyDoc.submitted,
+    responseDue: copyDoc.responseDue,
+    comment: copyDoc.comment,
+    content: copyDoc.content,
+    updated: today,
+    fileName: copyDoc.fileName,
+    fileObject: null,
+    fileUrl: copyDoc.fileUrl || "",
+    onlyOfficeCallbackUrl: copyDoc.onlyOfficeCallbackUrl || "",
+    url: copyDoc.url || ""
+  });
+  targetFolder.updated = today;
+  item.history.unshift({ date: today, text: `Скопійовано документ: ${source.name}.` });
+  state.selectedCaseId = item.id;
+  state.openCaseSection = "documents";
+  state.documentArchiveScope = "cases";
+  state.documentArchiveClientId = String(item.clientId || "all");
+  state.documentArchiveCaseId = item.id;
+  state.documentArchiveFolder = targetFolder.name;
+  state.selectedDocumentKey = `${item.id}|procedural:0`;
+  renderAll?.();
+  openDocumentDialog?.(item.id, getDocumentPayload(item.id, "procedural:0"), "documents");
+  showToast?.("Копію документа створено.");
 }
 
 function flattenStorageArchiveRows(folders = [], rows = []) {
@@ -681,6 +783,7 @@ export function renderDocumentsScreen(ctx) {
                       ${actionMenu([
                         { label: "Відкрити", icon: "eye", attrs: { "data-view-global-document": doc.key, "aria-label": "Відкрити документ" } },
                         { label: "Редагувати", icon: "edit", attrs: { "data-edit-global-document": doc.key, "aria-label": "Редагувати документ" } },
+                        { label: "Копіювати документ", icon: "file", attrs: { "data-copy-global-document": doc.key, "aria-label": "Копіювати документ" } },
                         { label: E_SIGN_STATUSES.has(doc.status) ? "Перевірити підпис" : "На е-підпис", icon: "signature", attrs: { "data-esign-global-document": doc.key, "aria-label": "Електронний підпис" } },
                         { label: "ONLYOFFICE", icon: "file", attrs: { "data-office-global-document": doc.key, "aria-label": "Відкрити в ONLYOFFICE" } },
                         { label: "Експорт", icon: "fileUp", attrs: { "data-export-global-document": doc.key, "aria-label": "Експортувати документ" } },
@@ -752,6 +855,7 @@ export function renderDocumentsScreen(ctx) {
             <div class="documents-side-actions">
               <button class="primary" type="button" data-view-global-document="${selected.key}">${icon("eye")} Відкрити</button>
               <button class="secondary" type="button" data-edit-global-document="${selected.key}">${icon("edit")} Редагувати</button>
+              <button class="secondary" type="button" data-copy-global-document="${selected.key}">${icon("file")} Копіювати</button>
               <button class="secondary" type="button" data-esign-global-document="${selected.key}">${icon("signature")} ${E_SIGN_STATUSES.has(selected.status) ? "Статус КЕП" : "На підпис"}</button>
               <button class="secondary" type="button" data-office-global-document="${selected.key}">${icon("file")} ONLYOFFICE</button>
               <button class="secondary" type="button" data-export-global-document="${selected.key}">${icon("fileUp")} Експорт</button>
@@ -1541,6 +1645,12 @@ export function renderDocumentsScreen(ctx) {
     button.addEventListener("click", () => {
       const { caseId, encoded } = payloadFromKey(button.dataset.editGlobalDocument);
       openDocumentDialog(caseId, getDocumentPayload(caseId, encoded), "documents");
+    });
+  });
+  documentsNode.querySelectorAll("[data-copy-global-document]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      copyDocumentInCase(ctx, button.dataset.copyGlobalDocument);
     });
   });
   documentsNode.querySelectorAll("[data-delete-global-document]").forEach((button) => {

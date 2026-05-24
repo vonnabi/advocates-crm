@@ -72,6 +72,7 @@ test("global documents screen exposes document actions", async ({ page }) => {
   const documentMenu = page.locator("#documents .documents-row-actions .row-action-menu-wrap").first();
   await documentMenu.locator("[data-action-menu-trigger]").click();
   await expect(page.locator(".row-action-menu:not([hidden])")).toContainText(/е-підпис|підпис/i);
+  await expect(page.locator(".row-action-menu:not([hidden])")).toContainText("Копіювати документ");
   await expect(page.locator(".row-action-menu:not([hidden])")).toContainText("Експорт");
   await expect(page.locator(".row-action-menu:not([hidden])")).toContainText("ONLYOFFICE");
   await page.locator(".row-action-menu:not([hidden]) [data-esign-global-document]").click();
@@ -232,6 +233,22 @@ test("document edit can move a document to another case folder", async ({ page }
   await expect(page.locator(".documents-table")).toContainText("Паспорт клієнта.pdf");
   await page.locator("#documents .documents-tree-case.open [data-document-folder-node]").filter({ hasText: "Інші документи" }).click();
   await expect(page.locator(".documents-table")).not.toContainText("Паспорт клієнта.pdf");
+});
+
+test("document menu can copy a document and open the copy for editing", async ({ page }) => {
+  await openApp(page);
+
+  await page.locator('.nav-item[data-view="documents"]').click();
+  await expect(page.locator("#documents")).toHaveClass(/active/);
+  const row = page.locator("#documents [data-document-row]").filter({ hasText: "Запит документів до ТЦК" }).first();
+  await expect(row).toBeVisible();
+  await row.locator("[data-action-menu-trigger]").click();
+  await page.locator(".row-action-menu:not([hidden]) [data-copy-global-document]").click();
+
+  await expect(page.locator("#document-dialog")).toHaveJSProperty("open", true);
+  await expect(page.locator('#document-form input[name="name"]')).toHaveValue(/копія/);
+  await page.locator("#document-dialog-close").click();
+  await expect(page.locator("#documents")).toContainText("Запит документів до ТЦК - копія.docx");
 });
 
 test("document dialog cancel, escape, and enter shortcuts work", async ({ page }) => {
