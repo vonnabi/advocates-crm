@@ -252,6 +252,29 @@ test("document rows show inferred type labels inside standard folders", async ({
   await expect(page.locator(".documents-side .documents-meta")).toContainText("Запит");
 });
 
+test("document edit keeps regular file type and folder values", async ({ page }) => {
+  await openApp(page);
+
+  await page.locator('.nav-item[data-view="documents"]').click();
+  await expect(page.locator("#documents")).toHaveClass(/active/);
+  await page.locator("#documents [data-document-client-node]").filter({ hasText: "Андрієнко Тест Документів" }).click();
+  await page.locator("#documents [data-document-case-node]").filter({ hasText: "0001" }).click();
+  await page.locator("#documents .documents-tree-case.open [data-document-folder-node]").filter({ hasText: "Інші документи" }).click();
+
+  const row = page.locator("#documents [data-document-row]").filter({ hasText: "01 DOCX з комп'ютера.docx" }).first();
+  await expect(row).toBeVisible();
+  await row.locator("[data-action-menu-trigger]").click();
+  await page.locator(".row-action-menu:not([hidden]) [data-edit-global-document]").click();
+
+  await expect(page.locator("#document-dialog")).toHaveJSProperty("open", true);
+  await expect(page.locator('#document-form select[name="type"]')).toHaveValue("Інше");
+  await expect(page.locator('[data-document-type-field] .document-custom-select-button')).toContainText("Інше");
+  await expect(page.locator("#document-folder")).toHaveValue("4");
+  await expect(page.locator("#document-folder option").filter({ hasText: "Позови" })).toHaveJSProperty("hidden", true);
+  await expect(page.locator("#document-folder + .document-custom-select .document-custom-select-button")).toContainText("Інші документи");
+  await page.locator("#document-dialog-close").click();
+});
+
 test("document edit can move a document to another case folder", async ({ page }) => {
   await openApp(page);
 

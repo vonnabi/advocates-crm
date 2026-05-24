@@ -971,6 +971,11 @@ export function createDialogOpeners({
       ["Ухвала / відповідь", "Відповіді та ухвали"]
     ]);
     const proceduralFolderNames = new Set([...proceduralTypeFolders.values()]);
+    const setDocumentTypeValue = (value = "Інше") => {
+      const typeSelect = form.elements.type;
+      const allowedValues = new Set([...typeSelect.options].map((option) => option.value));
+      typeSelect.value = allowedValues.has(value) ? value : "Інше";
+    };
     [...form.elements.type.options].forEach((option) => {
       option.dataset.proceduralOption = String(proceduralTypeFolders.has(option.value));
     });
@@ -1177,7 +1182,7 @@ export function createDialogOpeners({
     form.classList.toggle("is-editing-document", Boolean(editContext));
     $("#document-dialog-title").textContent = "Новий документ";
     $("#document-submit-button").textContent = "Додати документ";
-    form.elements.type.value = "Інше";
+    setDocumentTypeValue("Інше");
     if (form.elements.documentSourceMode) {
       form.elements.documentSourceMode.value = "onlyoffice";
     }
@@ -1225,7 +1230,7 @@ export function createDialogOpeners({
       form.elements.fileIndex.value = editContext.fileIndex ?? linked?.fileIndex ?? "";
       form.elements.name.value = data?.name || "";
       form.elements.url.value = data?.url || "";
-      form.elements.type.value = data?.type || "Інше";
+      setDocumentTypeValue(data?.type || "Інше");
       form.elements.submitted.value = parseDisplayDate(data?.submitted);
       form.elements.responseDue.value = parseDisplayDate(data?.responseDue);
       form.elements.status.value = data?.status || "Чернетка";
