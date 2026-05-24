@@ -1,10 +1,10 @@
-import { createInitialState } from "./js/state.js?v=document-storage-archive-1";
+import { createInitialState } from "./js/state.js?v=demo-empty-state-1";
 import {
   closeTopbarPanels as closeTopbarPanelsInChrome,
   isTopbarPanelOpen,
   setupTopbarControls,
   syncTopbarNotifications
-} from "./js/chrome.js?v=server-snapshot-1";
+} from "./js/chrome.js?v=demo-empty-state-1";
 import { createDialogOpeners } from "./js/dialog-openers.js?v=document-archive-books-1";
 import { setupDialogControls } from "./js/dialogs.js?v=document-export-modal-1";
 import { setupCaseDetailForms } from "./js/forms/case-details.js";

@@ -1,4 +1,4 @@
-import { apiBaseUrl } from "./api.js?v=mailings-api-69";
+import { apiBaseUrl } from "./api.js?v=demo-empty-state-1";
 
 const DEMO_DATE_ANCHOR = new Date(2024, 4, 15);
 const ISO_DATE_RE = /(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)/g;
@@ -254,6 +254,49 @@ function mergeMailing(fallback, incoming = {}) {
   };
 }
 
+function emptyDemoDataStatus(extra = {}) {
+  const counts = {
+    clients: 0,
+    cases: 0,
+    tasks: 0,
+    documents: 0,
+    events: 0,
+    financeOperations: 0,
+    communications: 0,
+    campaigns: 0
+  };
+  return {
+    enabled: false,
+    counts,
+    total: 0,
+    ...extra
+  };
+}
+
+function emptyApiPayload(mailing, settings, demoData = {}) {
+  return {
+    clients: [],
+    cases: [],
+    events: [],
+    financeOperations: [],
+    finance: {},
+    mailing,
+    settings,
+    settingsUsers: [],
+    auditLogs: [],
+    session: {},
+    currentUser: null,
+    meta: {
+      clients: 0,
+      cases: 0,
+      tasks: 0,
+      events: 0,
+      demoData: emptyDemoDataStatus(demoData)
+    },
+    source: "api"
+  };
+}
+
 function readSnapshotOverride(fallbackMailing, fallbackSettings) {
   let snapshot = null;
   try {
@@ -305,12 +348,14 @@ async function loadDemoData() {
   const settings = shiftDemoPayloadDates(rawSettings);
   const snapshot = readSnapshotOverride(mailing, settings);
   if (snapshot) return snapshot;
+  const expectedApi = Boolean(apiBaseUrl());
   try {
     const apiData = normalizeBackendPayload(await readApiBootstrap());
     if (apiData) return { ...apiData, mailing: mergeMailing(mailing, apiData.mailing), settings: mergeSettings(settings, apiData.settings) };
   } catch (_error) {
-    // The static prototype must keep working when Django is not running.
+    if (expectedApi) return emptyApiPayload(mailing, settings, { apiError: true });
   }
+  if (expectedApi) return emptyApiPayload(mailing, settings);
   const [clients, cases, events] = await Promise.all([
     readDataFile("../data/clients.json"),
     readDataFile("../data/cases.json"),

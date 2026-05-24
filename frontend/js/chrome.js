@@ -1,4 +1,4 @@
-import { changePasswordInApi, clearDemoDataInApi, getDemoDataStatusFromApi, importCrmSnapshotToApi, loginToApi, logoutFromApi, restoreDemoDataInApi, shouldUseApi } from "./api.js?v=server-snapshot-1";
+import { changePasswordInApi, clearDemoDataInApi, getDemoDataStatusFromApi, importCrmSnapshotToApi, loginToApi, logoutFromApi, restoreDemoDataInApi, shouldUseApi } from "./api.js?v=demo-empty-state-1";
 
 const DEMO_URL = "https://vonnabi.github.io/advocates-crm/";
 const SNAPSHOT_STORAGE_KEY = "advocates-crm-snapshot";
@@ -265,7 +265,7 @@ function ensureDemoDataOverlay(ctx) {
       state.demoDataStatus = payload.demoData;
       syncDemoDataToggle(state);
       overlay.hidden = true;
-      showToast("Демо-записи очищено. Ваші додані дані залишаються.");
+      showToast("Кабінет очищено: клієнти, справи, задачі, документи, календар і фінанси видалені.");
       window.setTimeout(() => window.location.reload(), 350);
     } catch (_error) {
       showToast("Не вдалося очистити демо-дані.", "warning");
@@ -369,7 +369,7 @@ async function openDemoDataOverlay(ctx) {
   overlay.querySelector("[data-demo-data-text]").textContent = isSnapshotMode(ctx.state)
     ? "Зараз відкрито локальну JSON-копію CRM у цьому браузері. Вона не змінює серверну базу. Кнопка «Очистити» прибере локальну копію і поверне звичайний режим."
     : enabled
-    ? "Вимкнення очистить тільки записи, позначені як демо: клієнтів, справи, задачі, документи, календар і фінанси. Те, що ви або замовник додали вручну, залишиться."
+    ? "Вимкнення повністю очистить робочі записи CRM: клієнтів, справи, задачі, документи, календар і фінанси. Після цього кабінет буде порожній."
     : "Демо-кабінет зараз порожній. Можна відновити стартовий набір клієнтів, справ, задач, документів, календаря та фінансів.";
   const counts = status.counts || {};
   overlay.querySelector("[data-demo-data-counts]").innerHTML = [
