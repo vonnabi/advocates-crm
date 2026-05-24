@@ -20724,19 +20724,6 @@ dialog::backdrop {
   color: #174f80;
 }
 
-.document-editor-field.is-procedural-type .document-custom-select-button::before {
-  content: "§";
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 7px;
-  background: #d9ecff;
-  color: #1f5d92;
-  font-size: 14px;
-  font-weight: 950;
-}
-
 .document-fixed-folder {
   display: grid;
   min-height: 44px;
@@ -21103,7 +21090,7 @@ dialog::backdrop {
   overflow: hidden;
   min-width: 0;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .document-custom-select-option:hover,
@@ -21120,6 +21107,29 @@ dialog::backdrop {
 .document-custom-select-option.is-selected span {
   background: var(--action);
   color: #fff;
+}
+
+.document-custom-select-option.is-procedural-option {
+  color: #1f5d92;
+}
+
+.document-custom-select-option.is-procedural-option strong::after {
+  content: "Процесуальний";
+  display: inline-block;
+  margin-left: 8px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #e8f3ff;
+  color: #1f5d92;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.document-custom-select-option.is-procedural-option.is-selected {
+  background: #dceeff;
+  color: #174f80;
 }
 
 .document-custom-select-option.is-disabled {

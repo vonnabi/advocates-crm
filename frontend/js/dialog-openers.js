@@ -87,7 +87,7 @@ export function createDialogOpeners({
     if (buttonText) buttonText.textContent = selected?.textContent || "";
     if (!menu) return;
     menu.innerHTML = [...select.options].map((option) => `
-      <button class="document-custom-select-option ${option.value === select.value ? "is-selected" : ""} ${option.disabled ? "is-disabled" : ""}" type="button" role="option" data-value="${escapeHtml(option.value)}" aria-selected="${option.value === select.value ? "true" : "false"}" ${option.disabled ? "disabled" : ""}>
+      <button class="document-custom-select-option ${option.value === select.value ? "is-selected" : ""} ${option.disabled ? "is-disabled" : ""} ${option.dataset.proceduralOption === "true" ? "is-procedural-option" : ""}" type="button" role="option" data-value="${escapeHtml(option.value)}" aria-selected="${option.value === select.value ? "true" : "false"}" ${option.disabled ? "disabled" : ""}>
         <span aria-hidden="true">✓</span>
         <strong>${escapeHtml(option.textContent || "")}</strong>
       </button>
@@ -939,6 +939,9 @@ export function createDialogOpeners({
       ["Адвокатський запит", "Запити"],
       ["Ухвала / відповідь", "Відповіді та ухвали"]
     ]);
+    [...form.elements.type.options].forEach((option) => {
+      option.dataset.proceduralOption = String(proceduralTypeFolders.has(option.value));
+    });
     const isProceduralType = () => proceduralTypeFolders.has(form.elements.type?.value || "");
     const ensureFolderOptionByName = (folderName) => {
       const folderSelect = form.elements.folder;
