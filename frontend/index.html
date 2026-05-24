@@ -679,6 +679,55 @@
       </div>
     </dialog>
 
+    <dialog id="document-send-dialog">
+      <form method="dialog" class="modal-form crm-modal-form document-send-modal" id="document-send-form">
+        <div class="modal-head crm-modal-head">
+          <span class="crm-modal-title-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M21 4 3 11l7 3 3 7 8-17Z"></path><path d="m10 14 4-4"></path></svg>
+          </span>
+          <div class="crm-modal-title">
+            <h2>Відправити документ</h2>
+            <p>Оберіть канал і отримувача. CRM додасть файл або посилання на документ у повідомлення.</p>
+          </div>
+          <button id="document-send-close" class="crm-modal-close" type="button" aria-label="Закрити">×</button>
+        </div>
+        <input name="documentKey" type="hidden" />
+        <div class="document-export-file">
+          <span aria-hidden="true">SEND</span>
+          <div>
+            <strong id="document-send-name">Документ</strong>
+            <small id="document-send-recipient-preview">Отримувач буде визначений після вибору каналу.</small>
+          </div>
+        </div>
+        <div class="document-editor-grid">
+          <label class="document-editor-field">Канал
+            <select name="channel">
+              <option>Telegram</option>
+              <option>Email</option>
+              <option>SMS</option>
+            </select>
+          </label>
+          <label class="document-editor-field">Кому
+            <select name="recipientMode">
+              <option value="client">Клієнту у справі</option>
+              <option value="bureau">Організації / бюро</option>
+              <option value="manual">Вказати вручну</option>
+            </select>
+          </label>
+          <label class="document-editor-field document-editor-wide" data-document-send-manual hidden>Контакт отримувача
+            <input name="manualRecipient" placeholder="@telegram, email або номер телефону" />
+          </label>
+          <label class="document-editor-field document-editor-wide">Повідомлення
+            <textarea name="message" rows="4" placeholder="Короткий супровідний текст до документа"></textarea>
+          </label>
+        </div>
+        <div class="document-editor-actions">
+          <button class="secondary" id="document-send-cancel" type="button">Скасувати</button>
+          <button class="primary" id="document-send-submit" type="submit">Відправити</button>
+        </div>
+      </form>
+    </dialog>
+
     <dialog id="office-editor-dialog">
       <div class="modal-form crm-modal-form office-editor-modal">
         <div class="modal-head crm-modal-head office-editor-head">

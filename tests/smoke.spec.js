@@ -73,6 +73,7 @@ test("global documents screen exposes document actions", async ({ page }) => {
   await documentMenu.locator("[data-action-menu-trigger]").click();
   await expect(page.locator(".row-action-menu:not([hidden])")).toContainText(/е-підпис|підпис/i);
   await expect(page.locator(".row-action-menu:not([hidden])")).toContainText("Копіювати документ");
+  await expect(page.locator(".row-action-menu:not([hidden])")).toContainText("Відправити");
   await expect(page.locator(".row-action-menu:not([hidden])")).toContainText("Експорт");
   await expect(page.locator(".row-action-menu:not([hidden])")).toContainText("ONLYOFFICE");
   await page.locator(".row-action-menu:not([hidden]) [data-esign-global-document]").click();
@@ -249,6 +250,29 @@ test("document menu can copy a document and open the copy for editing", async ({
   await expect(page.locator('#document-form input[name="name"]')).toHaveValue(/копія/);
   await page.locator("#document-dialog-close").click();
   await expect(page.locator("#documents")).toContainText("Запит документів до ТЦК - копія.docx");
+});
+
+test("document menu can open send dialog and prepare Telegram send", async ({ page }) => {
+  await openApp(page);
+
+  await page.locator('.nav-item[data-view="documents"]').click();
+  await expect(page.locator("#documents")).toHaveClass(/active/);
+  const row = page.locator("#documents [data-document-row]").filter({ hasText: "Запит документів до ТЦК" }).first();
+  await expect(row).toBeVisible();
+  await row.locator("[data-action-menu-trigger]").click();
+  await page.locator(".row-action-menu:not([hidden]) [data-send-global-document]").click();
+
+  await expect(page.locator("#document-send-dialog")).toHaveJSProperty("open", true);
+  await expect(page.locator("#document-send-dialog")).toContainText("Відправити документ");
+  await expect(page.locator('#document-send-form select[name="channel"]')).toHaveValue("Telegram");
+  await expect(page.locator("#document-send-recipient-preview")).toContainText("@test_documents");
+  await page.locator('#document-send-form select[name="recipientMode"]').selectOption("manual");
+  await page.locator('#document-send-form input[name="manualRecipient"]').fill("@manual_client");
+  await page.locator("#document-send-submit").click();
+  await expect(page.locator("#document-send-dialog")).toHaveJSProperty("open", false);
+  await page.locator('.nav-item[data-view="mailings"]').click();
+  await page.locator('[data-mailing-main-tab="campaigns"]').click();
+  await expect(page.locator("#mailings")).toContainText("Документ: Запит документів до ТЦК");
 });
 
 test("document dialog cancel, escape, and enter shortcuts work", async ({ page }) => {

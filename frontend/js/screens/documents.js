@@ -1,4 +1,4 @@
-import { deleteDocumentFromApi, saveDocumentToApi, shouldUseApi } from "../api.js";
+import { deleteDocumentFromApi, saveDocumentToApi, saveMailingCampaignToApi, sendMailingCampaignInApi, shouldUseApi } from "../api.js";
 import { normalizeDocument } from "../state.js";
 
 const CASE_DOCUMENT_FOLDER_NAMES = ["Позови", "Клопотання", "Запити", "Відповіді та ухвали", "Інші документи"];
@@ -406,6 +406,124 @@ async function copyDocumentInCase(ctx, key) {
   showToast?.("Копію документа створено.");
 }
 
+function documentSendContact(state, client, channel, mode, manual = "") {
+  if (mode === "manual") return manual.trim();
+  const bureau = state.bureauSettings || {};
+  const source = mode === "bureau" ? bureau : client || {};
+  if (channel === "Telegram") return source.telegramUsername || source.telegram || "";
+  if (channel === "Email") return source.email || "";
+  if (channel === "SMS") return source.phone || source.whatsapp || "";
+  return "";
+}
+
+function documentSendMessage(doc, item, contact, channel) {
+  const fileLine = doc.fileUrl || doc.url
+    ? `Посилання на документ: ${doc.fileUrl || doc.url}`
+    : "Документ буде доступний у CRM.";
+  return [
+    `Надсилаємо документ: ${doc.name}`,
+    item ? `Справа: №${item.id}` : "",
+    fileLine,
+    contact ? `Отримувач (${channel}): ${contact}` : ""
+  ].filter(Boolean).join("\n");
+}
+
+function openDocumentSendDialog(ctx, key) {
+  const { state, caseById, clientById, getDocumentPayload, showToast } = ctx;
+  const dialog = document.querySelector("#document-send-dialog");
+  const form = document.querySelector("#document-send-form");
+  if (!dialog || !form) return;
+  const { caseId, encoded } = payloadFromKey(key);
+  const payload = getDocumentPayload(caseId, encoded);
+  const item = caseById(caseId);
+  const doc = payload.file || payload.doc;
+  if (!doc || !item) return;
+  const client = clientById(item.clientId);
+  form.reset();
+  form.elements.documentKey.value = key;
+  form.elements.channel.value = "Telegram";
+  form.elements.recipientMode.value = "client";
+  document.querySelector("#document-send-name").textContent = doc.name || "Документ";
+  const manualField = form.querySelector("[data-document-send-manual]");
+  const preview = document.querySelector("#document-send-recipient-preview");
+  const sync = () => {
+    const channel = form.elements.channel.value;
+    const mode = form.elements.recipientMode.value;
+    const manual = form.elements.manualRecipient.value;
+    const contact = documentSendContact(state, client, channel, mode, manual);
+    if (manualField) manualField.hidden = mode !== "manual";
+    if (preview) {
+      const label = mode === "client" ? client?.name || "Клієнт" : mode === "bureau" ? state.bureauSettings?.name || "Організація" : "Ручний отримувач";
+      preview.textContent = contact ? `${label}: ${contact}` : `${label}: контакт для ${channel} не заповнений`;
+    }
+    if (!form.elements.message.value.trim()) {
+      form.elements.message.value = documentSendMessage(doc, item, contact, channel);
+    }
+  };
+  form.elements.channel.onchange = () => {
+    form.elements.message.value = "";
+    sync();
+  };
+  form.elements.recipientMode.onchange = () => {
+    form.elements.message.value = "";
+    sync();
+  };
+  form.elements.manualRecipient.oninput = sync;
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    const channel = form.elements.channel.value;
+    const mode = form.elements.recipientMode.value;
+    const contact = documentSendContact(state, client, channel, mode, form.elements.manualRecipient.value);
+    if (!contact) {
+      showToast?.(`Заповніть контакт для ${channel}.`, "warning");
+      return;
+    }
+    const message = form.elements.message.value.trim() || documentSendMessage(doc, item, contact, channel);
+    const campaign = {
+      title: `Документ: ${doc.name}`,
+      status: "Готова к отправке",
+      meta: `${channel} · ${mode === "client" ? client?.name || "клієнт" : mode === "bureau" ? "організація" : contact}`,
+      createdAt: new Date().toLocaleString("uk-UA"),
+      text: message,
+      channels: { Telegram: channel === "Telegram", SMS: channel === "SMS", Email: channel === "Email" },
+      sendMode: "now",
+      recipientMode: mode === "client" ? "manual" : "external",
+      manualClientIds: mode === "client" && client?.id ? [client.id] : [],
+      filters: [],
+      recipientCount: 1,
+      documentId: doc.documentId || doc.id || "",
+      documentName: doc.name,
+      documentUrl: doc.fileUrl || doc.url || "",
+      externalRecipient: mode === "client" ? "" : contact
+    };
+    try {
+      let saved = shouldUseApi(state) && mode === "client"
+        ? await saveMailingCampaignToApi(campaign)
+        : { ...campaign, id: `document-send-${Date.now()}`, status: "Відправлено" };
+      if (shouldUseApi(state) && mode === "client" && saved?.id) {
+        const response = await sendMailingCampaignInApi(saved.id);
+        saved = response?.campaign || saved;
+      }
+      state.mailingCampaigns.unshift(saved);
+      state.mailingMainTab = "campaigns";
+      dialog.close();
+      showToast?.(`Документ відправлено через ${channel}.`);
+    } catch (_error) {
+      showToast?.("Не вдалося відправити документ.", "danger");
+    }
+  };
+  document.querySelector("#document-send-close").onclick = () => dialog.close();
+  document.querySelector("#document-send-cancel").onclick = () => dialog.close();
+  form.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      dialog.close();
+    }
+  }, { once: true });
+  sync();
+  dialog.showModal();
+}
+
 function flattenStorageArchiveRows(folders = [], rows = []) {
   const byKey = new Map(rows.map((doc) => [doc.key, doc]));
   const byDocumentId = new Map(rows.filter((doc) => doc.documentId).map((doc) => [String(doc.documentId), doc]));
@@ -784,6 +902,7 @@ export function renderDocumentsScreen(ctx) {
                         { label: "Відкрити", icon: "eye", attrs: { "data-view-global-document": doc.key, "aria-label": "Відкрити документ" } },
                         { label: "Редагувати", icon: "edit", attrs: { "data-edit-global-document": doc.key, "aria-label": "Редагувати документ" } },
                         { label: "Копіювати документ", icon: "file", attrs: { "data-copy-global-document": doc.key, "aria-label": "Копіювати документ" } },
+                        { label: "Відправити", icon: "telegram", attrs: { "data-send-global-document": doc.key, "aria-label": "Відправити документ" } },
                         { label: E_SIGN_STATUSES.has(doc.status) ? "Перевірити підпис" : "На е-підпис", icon: "signature", attrs: { "data-esign-global-document": doc.key, "aria-label": "Електронний підпис" } },
                         { label: "ONLYOFFICE", icon: "file", attrs: { "data-office-global-document": doc.key, "aria-label": "Відкрити в ONLYOFFICE" } },
                         { label: "Експорт", icon: "fileUp", attrs: { "data-export-global-document": doc.key, "aria-label": "Експортувати документ" } },
@@ -856,6 +975,7 @@ export function renderDocumentsScreen(ctx) {
               <button class="primary" type="button" data-view-global-document="${selected.key}">${icon("eye")} Відкрити</button>
               <button class="secondary" type="button" data-edit-global-document="${selected.key}">${icon("edit")} Редагувати</button>
               <button class="secondary" type="button" data-copy-global-document="${selected.key}">${icon("file")} Копіювати</button>
+              <button class="secondary" type="button" data-send-global-document="${selected.key}">${icon("telegram")} Відправити</button>
               <button class="secondary" type="button" data-esign-global-document="${selected.key}">${icon("signature")} ${E_SIGN_STATUSES.has(selected.status) ? "Статус КЕП" : "На підпис"}</button>
               <button class="secondary" type="button" data-office-global-document="${selected.key}">${icon("file")} ONLYOFFICE</button>
               <button class="secondary" type="button" data-export-global-document="${selected.key}">${icon("fileUp")} Експорт</button>
@@ -1651,6 +1771,12 @@ export function renderDocumentsScreen(ctx) {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
       copyDocumentInCase(ctx, button.dataset.copyGlobalDocument);
+    });
+  });
+  documentsNode.querySelectorAll("[data-send-global-document]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openDocumentSendDialog(ctx, button.dataset.sendGlobalDocument);
     });
   });
   documentsNode.querySelectorAll("[data-delete-global-document]").forEach((button) => {
