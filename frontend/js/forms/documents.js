@@ -511,7 +511,8 @@ export function setupDocumentForm({
     const content = form.get("content") || "";
     const documentSourceMode = form.get("documentSourceMode") || (fileName ? "upload" : url ? "google" : "onlyoffice");
     const onlyOfficeCreateFormat = form.get("onlyOfficeCreateFormat") || "docx";
-    const folderValue = event.currentTarget.elements.folder?.value || "";
+    const folderSelectElement = event.currentTarget.elements.folder;
+    const folderValue = folderSelectElement?.value || "";
     if (documentSourceMode === "upload" && !fileName && !form.get("editSource")) {
       showToast("Оберіть файл з комп'ютера або змініть спосіб додавання документа.", "warning");
       return;

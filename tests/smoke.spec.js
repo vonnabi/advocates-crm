@@ -165,6 +165,9 @@ test("document creation uses selected existing case folder", async ({ page }) =>
   await expect(page.locator('[data-document-procedural-note]')).toBeVisible();
   await expect(page.locator('[data-document-procedural-note]')).toContainText("Процесуальний документ");
   await expect(page.locator('[data-document-new-folder-label]')).toBeHidden();
+  await expect(page.locator('[data-document-type-field]')).toHaveClass(/is-procedural-type/);
+  await expect(page.locator('[data-document-fixed-folder]')).toContainText("Клопотання");
+  await expect(page.locator("#document-folder + .document-custom-select")).toBeHidden();
   await page.locator('#document-form input[name="name"]').fill("Документ у клопотання.docx");
   await page.locator("#document-submit-button").click();
   await expect(page.locator("#office-editor-dialog")).toHaveJSProperty("open", true);

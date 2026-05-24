@@ -20714,6 +20714,46 @@ dialog::backdrop {
   background: #eef6ff;
 }
 
+.document-editor-field.is-procedural-type {
+  color: #1f5d92;
+}
+
+.document-editor-field.is-procedural-type .document-custom-select-button {
+  border-color: #9bcaff;
+  background: #eef6ff;
+  color: #174f80;
+}
+
+.document-editor-field.is-procedural-type .document-custom-select-button::before {
+  content: "§";
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  background: #d9ecff;
+  color: #1f5d92;
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.document-fixed-folder {
+  display: grid;
+  min-height: 44px;
+  align-items: center;
+  border: 1px solid #9bcaff;
+  border-radius: 10px;
+  background: #eef6ff;
+  color: #174f80;
+  font-size: 14px;
+  font-weight: 900;
+  padding: 0 13px;
+}
+
+.document-fixed-folder[hidden] {
+  display: none;
+}
+
 .document-procedural-note {
   display: block;
   color: #1f5d92;
@@ -20956,6 +20996,10 @@ dialog::backdrop {
   min-width: 0;
 }
 
+.document-custom-select[hidden] {
+  display: none;
+}
+
 .document-custom-select-button {
   display: flex;
   align-items: center;
@@ -21076,6 +21120,11 @@ dialog::backdrop {
 .document-custom-select-option.is-selected span {
   background: var(--action);
   color: #fff;
+}
+
+.document-custom-select-option.is-disabled {
+  opacity: .45;
+  cursor: not-allowed;
 }
 
 .document-editor-wide {

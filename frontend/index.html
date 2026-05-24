@@ -495,7 +495,7 @@
         </fieldset>
         <div class="document-editor-grid">
           <label class="document-editor-field document-editor-wide">Назва документа<input name="name" required placeholder="Наприклад: Адвокатський запит.docx" /></label>
-          <label class="document-editor-field">Тип документа
+          <label class="document-editor-field" data-document-type-field>Тип документа
             <select name="type">
               <option>Позов</option>
               <option>Клопотання</option>
@@ -527,6 +527,7 @@
           </label>
           <label class="document-editor-field" data-document-case-destination>Папка документа
             <select name="folder" id="document-folder"></select>
+            <span class="document-fixed-folder" data-document-fixed-folder hidden></span>
           </label>
           <label class="document-editor-field" data-document-case-destination>
             <span data-document-new-folder-label>Нова папка</span>

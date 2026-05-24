@@ -87,7 +87,7 @@ export function createDialogOpeners({
     if (buttonText) buttonText.textContent = selected?.textContent || "";
     if (!menu) return;
     menu.innerHTML = [...select.options].map((option) => `
-      <button class="document-custom-select-option ${option.value === select.value ? "is-selected" : ""}" type="button" role="option" data-value="${escapeHtml(option.value)}" aria-selected="${option.value === select.value ? "true" : "false"}">
+      <button class="document-custom-select-option ${option.value === select.value ? "is-selected" : ""} ${option.disabled ? "is-disabled" : ""}" type="button" role="option" data-value="${escapeHtml(option.value)}" aria-selected="${option.value === select.value ? "true" : "false"}" ${option.disabled ? "disabled" : ""}>
         <span aria-hidden="true">✓</span>
         <strong>${escapeHtml(option.textContent || "")}</strong>
       </button>
@@ -963,17 +963,31 @@ export function createDialogOpeners({
       const newFolderInput = form.elements.newFolderName;
       const proceduralNote = form.querySelector("[data-document-procedural-note]");
       const newFolderLabel = form.querySelector("[data-document-new-folder-label]");
+      const fixedFolder = form.querySelector("[data-document-fixed-folder]");
+      const typeField = form.querySelector("[data-document-type-field]");
+      const folderSelectShell = folderSelect.nextElementSibling?.classList?.contains("document-custom-select")
+        ? folderSelect.nextElementSibling
+        : null;
       if (!folderSelect || !newFolderInput) return;
       const procedural = isProceduralType();
+      typeField?.classList.toggle("is-procedural-type", procedural);
       if (procedural) {
         const targetFolderName = proceduralTypeFolders.get(form.elements.type.value);
         const targetFolderValue = ensureFolderOptionByName(targetFolderName);
         if (targetFolderValue !== "") folderSelect.value = targetFolderValue;
-        folderSelect.disabled = true;
+        [...folderSelect.options].forEach((option) => {
+          option.disabled = option.value !== targetFolderValue;
+        });
         newFolderInput.value = "";
         newFolderInput.required = false;
         newFolderInput.hidden = true;
         if (newFolderLabel) newFolderLabel.hidden = true;
+        if (fixedFolder) {
+          fixedFolder.hidden = false;
+          fixedFolder.textContent = targetFolderName;
+        }
+        if (folderSelectShell) folderSelectShell.hidden = true;
+        syncDocumentCustomSelect(folderSelect);
         newFolderInput.closest(".document-editor-field")?.classList.add("is-procedural-document");
         if (proceduralNote) {
           proceduralNote.hidden = false;
@@ -981,10 +995,15 @@ export function createDialogOpeners({
         }
         return;
       }
-      folderSelect.disabled = false;
+      [...folderSelect.options].forEach((option) => {
+        option.disabled = false;
+      });
       newFolderInput.hidden = false;
       if (newFolderLabel) newFolderLabel.hidden = false;
+      if (fixedFolder) fixedFolder.hidden = true;
+      if (folderSelectShell) folderSelectShell.hidden = false;
       if (proceduralNote) proceduralNote.hidden = true;
+      syncDocumentCustomSelect(folderSelect);
       newFolderInput.closest(".document-editor-field")?.classList.remove("is-procedural-document");
       const isCreatingFolder = folderSelect.value === "__new__";
       newFolderInput.required = isCreatingFolder;
@@ -1179,6 +1198,7 @@ export function createDialogOpeners({
     }
     syncNewFolderField();
     setupDocumentCustomSelects(form);
+    syncNewFolderField();
     syncDocumentTargetMode();
     syncDocumentSourceMode();
     $("#document-dialog").showModal();
