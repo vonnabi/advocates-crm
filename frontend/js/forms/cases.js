@@ -56,6 +56,7 @@ export function setupCaseForm({ state, $, caseById, formatDate, renderAll, switc
       authorityType: "",
       authorityAddress: "",
       authorityContact: "",
+      authorityEmail: "",
       opened: new Date().toLocaleDateString("uk-UA"),
       deadline: deadline ? formatDate(deadline) : "Не вказано",
       debt: 0,

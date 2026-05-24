@@ -199,6 +199,7 @@ export function createDialogOpeners({
     form.elements.authorityType.value = item.authorityType || "";
     form.elements.authorityAddress.value = item.authorityAddress || "";
     form.elements.authorityContact.value = item.authorityContact || "";
+    form.elements.authorityEmail.value = item.authorityEmail || "";
     $("#authority-dialog").showModal();
   }
 

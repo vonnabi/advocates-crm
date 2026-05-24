@@ -406,13 +406,33 @@ async function copyDocumentInCase(ctx, key) {
   showToast?.("Копію документа створено.");
 }
 
-function documentSendContact(state, client, channel, mode, manual = "") {
+function documentSendAuthorities(state) {
+  const rows = new Map();
+  (state.cases || []).forEach((item) => {
+    const name = String(item.court || "").trim();
+    if (!name || name === "Не вказано") return;
+    const entry = {
+      name,
+      type: String(item.authorityType || "").trim(),
+      address: String(item.authorityAddress || "").trim(),
+      contact: String(item.authorityContact || "").trim(),
+      phone: String(item.authorityContact || "").trim(),
+      email: String(item.authorityEmail || "").trim(),
+      caseId: item.id
+    };
+    const key = [entry.name, entry.type, entry.address, entry.contact, entry.email].join("|").toLowerCase();
+    if (!rows.has(key)) rows.set(key, entry);
+  });
+  return [...rows.values()].sort((a, b) => a.name.localeCompare(b.name, "uk"));
+}
+
+function documentSendContact(state, client, authority, channel, mode, manual = "") {
   if (mode === "manual") return manual.trim();
   const bureau = state.bureauSettings || {};
-  const source = mode === "bureau" ? bureau : client || {};
+  const source = mode === "bureau" ? bureau : mode === "authority" ? authority || {} : client || {};
   if (channel === "Telegram") return source.telegramUsername || source.telegram || "";
   if (channel === "Email") return source.email || "";
-  if (channel === "SMS") return source.phone || source.whatsapp || "";
+  if (channel === "SMS") return source.phone || source.contact || source.whatsapp || "";
   return "";
 }
 
@@ -451,21 +471,42 @@ function openDocumentSendDialog(ctx, key) {
   const doc = payload.file || payload.doc;
   if (!doc || !item) return;
   const client = clientById(item.clientId);
+  const authorities = documentSendAuthorities(state);
   form.reset();
   form.elements.documentKey.value = key;
   form.elements.channel.value = "Telegram";
   form.elements.recipientMode.value = "client";
   document.querySelector("#document-send-name").textContent = doc.name || "Документ";
   const manualField = form.querySelector("[data-document-send-manual]");
+  const authorityField = form.querySelector("[data-document-send-authority]");
+  const authoritySelect = form.elements.authorityRecipient;
   const preview = document.querySelector("#document-send-recipient-preview");
+  if (authoritySelect) {
+    authoritySelect.innerHTML = authorities.length
+      ? authorities.map((authority, index) => {
+        const meta = [authority.type, authority.email || authority.contact].filter(Boolean).join(" · ");
+        return `<option value="${index}">${escapeHtml(authority.name)}${meta ? ` — ${escapeHtml(meta)}` : ""}</option>`;
+      }).join("")
+      : `<option value="">Органів ще немає</option>`;
+    const currentIndex = authorities.findIndex((authority) => authority.caseId === item.id || authority.name === item.court);
+    authoritySelect.value = String(Math.max(currentIndex, 0));
+  }
   const sync = () => {
     const channel = form.elements.channel.value;
     const mode = form.elements.recipientMode.value;
     const manual = form.elements.manualRecipient.value;
-    const contact = documentSendContact(state, client, channel, mode, manual);
+    const authority = authorities[Number(form.elements.authorityRecipient?.value || 0)];
+    const contact = documentSendContact(state, client, authority, channel, mode, manual);
     if (manualField) manualField.hidden = mode !== "manual";
+    if (authorityField) authorityField.hidden = mode !== "authority";
     if (preview) {
-      const label = mode === "client" ? client?.name || "Клієнт" : mode === "bureau" ? state.bureauSettings?.name || "Організація" : "Ручний отримувач";
+      const label = mode === "client"
+        ? client?.name || "Клієнт"
+        : mode === "bureau"
+          ? state.bureauSettings?.name || "Організація"
+          : mode === "authority"
+            ? authority?.name || "Орган"
+            : "Ручний отримувач";
       preview.textContent = contact ? `${label}: ${contact}` : `${label}: контакт для ${channel} не заповнений`;
     }
     if (!form.elements.message.value.trim()) {
@@ -480,12 +521,19 @@ function openDocumentSendDialog(ctx, key) {
     form.elements.message.value = "";
     sync();
   };
+  if (authoritySelect) {
+    authoritySelect.onchange = () => {
+      form.elements.message.value = "";
+      sync();
+    };
+  }
   form.elements.manualRecipient.oninput = sync;
   form.onsubmit = async (event) => {
     event.preventDefault();
     const channel = form.elements.channel.value;
     const mode = form.elements.recipientMode.value;
-    const contact = documentSendContact(state, client, channel, mode, form.elements.manualRecipient.value);
+    const authority = authorities[Number(form.elements.authorityRecipient?.value || 0)];
+    const contact = documentSendContact(state, client, authority, channel, mode, form.elements.manualRecipient.value);
     if (!contact) {
       showToast?.(`Заповніть контакт для ${channel}.`, "warning");
       return;
@@ -494,7 +542,7 @@ function openDocumentSendDialog(ctx, key) {
     const campaign = {
       title: `Документ: ${doc.name}`,
       status: "Готова к отправке",
-      meta: `${channel} · ${mode === "client" ? client?.name || "клієнт" : mode === "bureau" ? "організація" : contact}`,
+      meta: `${channel} · ${mode === "client" ? client?.name || "клієнт" : mode === "bureau" ? "організація" : mode === "authority" ? authority?.name || "орган" : contact}`,
       createdAt: new Date().toLocaleString("uk-UA"),
       text: message,
       channels: { Telegram: channel === "Telegram", SMS: channel === "SMS", Email: channel === "Email" },
@@ -506,7 +554,8 @@ function openDocumentSendDialog(ctx, key) {
       documentId: doc.documentId || doc.id || "",
       documentName: doc.name,
       documentUrl: absoluteDocumentUrl(doc.fileUrl || doc.url),
-      externalRecipient: mode === "client" ? "" : contact
+      externalRecipient: mode === "client" ? "" : contact,
+      externalRecipientName: mode === "authority" ? authority?.name || "" : ""
     };
     try {
       let saved = shouldUseApi(state) && mode === "client"

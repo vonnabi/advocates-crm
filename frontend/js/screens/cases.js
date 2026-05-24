@@ -1401,6 +1401,7 @@ function renderCaseProfile(id) {
           <p class="muted">Тип органу: ${item.authorityType || "Не вказано"}</p>
           <p class="muted">Адреса: ${item.authorityAddress || "Не вказано"}</p>
           <p class="muted">Контакт: ${item.authorityContact || "Не вказано"}</p>
+          <p class="muted">Email: ${item.authorityEmail || "Не вказано"}</p>
         </article>
       </section>
       <section class="case-main-column">

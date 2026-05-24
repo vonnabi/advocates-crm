@@ -387,6 +387,7 @@ class Command(BaseCommand):
             item.authority_type = row.get("authorityType", "")
             item.authority_address = row.get("authorityAddress", "")
             item.authority_contact = row.get("authorityContact", "")
+            item.authority_email = row.get("authorityEmail", "")
             item.description = row.get("description", "")
             item.opened_at = parse_date(row.get("opened"))
             item.deadline_at = parse_date(row.get("deadline"))

@@ -411,6 +411,7 @@ def upsert_case(data, case=None):
     case.authority_type = data.get("authorityType", case.authority_type or "")
     case.authority_address = data.get("authorityAddress", case.authority_address or "")
     case.authority_contact = data.get("authorityContact", case.authority_contact or "")
+    case.authority_email = data.get("authorityEmail", case.authority_email or "")
     case.description = data.get("description", case.description or "")
     case.opened_at = parse_date(data.get("opened")) or case.opened_at or timezone.localdate()
     case.deadline_at = parse_date(data.get("deadline")) or case.deadline_at
@@ -989,6 +990,7 @@ def serialize_case(item, include_finance=True):
         "authorityType": item.authority_type,
         "authorityAddress": item.authority_address,
         "authorityContact": item.authority_contact,
+        "authorityEmail": item.authority_email,
         "opened": date_value(item.opened_at),
         "deadline": date_value(item.deadline_at),
         **finance_payload,

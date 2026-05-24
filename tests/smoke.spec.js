@@ -27,6 +27,12 @@ async function openApp(page) {
   await expect(page.locator("#dashboard")).toContainText("Активних справ");
 }
 
+async function openMenuAction(page, scopeSelector, actionSelector) {
+  const wrapper = page.locator(`${scopeSelector} .row-action-menu-wrap`, { has: page.locator(actionSelector) }).first();
+  await wrapper.locator("[data-action-menu-trigger]").click();
+  await page.locator(".row-action-menu:not([hidden])").locator(actionSelector).click();
+}
+
 test("main menu screens render content", async ({ page }) => {
   await openApp(page);
   for (const [view, expectedText] of views) {
@@ -255,6 +261,15 @@ test("document menu can copy a document and open the copy for editing", async ({
 test("document menu can open send dialog and prepare Telegram send", async ({ page }) => {
   await openApp(page);
 
+  await page.locator('.nav-item[data-view="cases"]').click();
+  await page.locator("[data-open-case]").first().click();
+  await openMenuAction(page, "#case-detail", "[data-edit-authority]");
+  await expect(page.locator("#authority-dialog")).toHaveJSProperty("open", true);
+  await page.locator('#authority-form input[name="court"]').fill("Оболонський районний ТЦК та СП");
+  await page.locator('#authority-form input[name="authorityEmail"]').fill("office.tck@example.com");
+  await page.locator('#authority-form button[type="submit"]').click();
+  await expect(page.locator("#authority-dialog")).toHaveJSProperty("open", false);
+
   await page.locator('.nav-item[data-view="documents"]').click();
   await expect(page.locator("#documents")).toHaveClass(/active/);
   const row = page.locator("#documents [data-document-row]").filter({ hasText: "Запит документів до ТЦК" }).first();
@@ -267,6 +282,10 @@ test("document menu can open send dialog and prepare Telegram send", async ({ pa
   await expect(page.locator('#document-send-form select[name="channel"]')).toHaveValue("Telegram");
   await expect(page.locator("#document-send-recipient-preview")).toContainText("@test_documents");
   await expect(page.locator('#document-send-form textarea[name="message"]')).toHaveValue(/Надсилаємо документ/);
+  await page.locator('#document-send-form select[name="channel"]').selectOption("Email");
+  await page.locator('#document-send-form select[name="recipientMode"]').selectOption("authority");
+  await expect(page.locator("[data-document-send-authority]")).toBeVisible();
+  await expect(page.locator("#document-send-recipient-preview")).toContainText("office.tck@example.com");
   await page.locator('#document-send-form select[name="recipientMode"]').selectOption("manual");
   await page.locator('#document-send-form input[name="manualRecipient"]').fill("@manual_client");
   await page.locator("#document-send-submit").click();

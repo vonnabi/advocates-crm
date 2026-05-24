@@ -1,3 +1,6 @@
+import { saveCaseToApi, shouldUseApi } from "../api.js";
+import { normalizeCase } from "../state.js";
+
 function moneyValue(value) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? number : 0;
@@ -23,7 +26,7 @@ export function setupCaseDetailForms({ state, $, caseById, formatDate, currency,
     showToast("Суть справи збережено.");
   });
 
-  $("#authority-form").addEventListener("submit", (event) => {
+  $("#authority-form").addEventListener("submit", async (event) => {
     if (event.submitter?.value === "cancel") return;
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -33,10 +36,19 @@ export function setupCaseDetailForms({ state, $, caseById, formatDate, currency,
     item.authorityType = form.get("authorityType") || "";
     item.authorityAddress = form.get("authorityAddress") || "";
     item.authorityContact = form.get("authorityContact") || "";
+    item.authorityEmail = form.get("authorityEmail") || "";
     item.history.unshift({
       date: new Date().toLocaleDateString("uk-UA"),
       text: "Оновлено орган звернення по справі."
     });
+    if (shouldUseApi(state)) {
+      try {
+        Object.assign(item, normalizeCase(await saveCaseToApi(item)));
+      } catch (_error) {
+        showToast("Не вдалося зберегти орган звернення в базі.", "danger");
+        return;
+      }
+    }
     state.selectedCaseId = item.id;
     state.caseScreen = "detail";
     $("#authority-dialog").close();
