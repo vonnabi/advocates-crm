@@ -37,6 +37,7 @@ export function createDialogOpeners({
     if (clientId !== null && clientId !== undefined) {
       const client = clientById(clientId);
       if (!client) {
+        setupClientCustomSelects(form);
         $("#client-dialog").showModal();
         return;
       }
@@ -55,6 +56,7 @@ export function createDialogOpeners({
       $("#client-dialog-title").textContent = "Редагувати клієнта";
     }
 
+    setupClientCustomSelects(form);
     $("#client-dialog").showModal();
   }
 
@@ -192,6 +194,60 @@ export function createDialogOpeners({
     });
     if (!form.dataset.caseCustomSelectsBound) {
       form.dataset.caseCustomSelectsBound = "true";
+      form.addEventListener("click", (event) => {
+        if (event.target.closest(".document-custom-select")) return;
+        closeDocumentSelectMenus(form);
+      });
+      form.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") closeDocumentSelectMenus(form);
+      });
+    }
+  }
+
+  function setupClientCustomSelects(form) {
+    form.querySelectorAll("label > select").forEach((select) => {
+      select.classList.add("document-native-select");
+      select.tabIndex = -1;
+      select.setAttribute("aria-hidden", "true");
+      let shell = select.nextElementSibling?.classList?.contains("document-custom-select")
+        ? select.nextElementSibling
+        : null;
+      if (!shell) {
+        shell = document.createElement("div");
+        shell.className = "document-custom-select client-custom-select";
+        shell.innerHTML = `
+          <button class="document-custom-select-button" type="button" aria-haspopup="listbox" aria-expanded="false">
+            <span data-document-select-value></span>
+            <span class="document-custom-select-chevron" aria-hidden="true"></span>
+          </button>
+          <div class="document-custom-select-menu" role="listbox" hidden></div>
+        `;
+        select.insertAdjacentElement("afterend", shell);
+        shell.querySelector(".document-custom-select-button")?.addEventListener("click", () => {
+          const isOpen = shell.classList.contains("is-open");
+          closeDocumentSelectMenus(form, isOpen ? null : shell);
+          shell.classList.toggle("is-open", !isOpen);
+          shell.querySelector(".document-custom-select-button")?.setAttribute("aria-expanded", String(!isOpen));
+          const menu = shell.querySelector(".document-custom-select-menu");
+          if (menu) menu.hidden = isOpen;
+        });
+        shell.querySelector(".document-custom-select-menu")?.addEventListener("click", (event) => {
+          const optionButton = event.target.closest(".document-custom-select-option");
+          if (!optionButton) return;
+          select.value = optionButton.dataset.value || "";
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+          syncDocumentCustomSelect(select);
+          closeDocumentSelectMenus(form);
+        });
+      }
+      if (!select.dataset.clientSelectSyncBound) {
+        select.dataset.clientSelectSyncBound = "true";
+        select.addEventListener("change", () => syncDocumentCustomSelect(select));
+      }
+      syncDocumentCustomSelect(select);
+    });
+    if (!form.dataset.clientCustomSelectsBound) {
+      form.dataset.clientCustomSelectsBound = "true";
       form.addEventListener("click", (event) => {
         if (event.target.closest(".document-custom-select")) return;
         closeDocumentSelectMenus(form);

@@ -4,6 +4,7 @@ import { normalizeClient, normalizeClientCommunication } from "../state.js";
 export function renderClientsScreen(ctx) {
   const { state, $, icon, openClientDialog } = ctx;
   const selected = clientById(ctx, state.selectedClientId) || state.clients[0];
+  const totalClients = state.clients.length;
   $("#clients").innerHTML = `
     <div class="toolbar clients-toolbar">
       <div class="left">
@@ -21,7 +22,7 @@ export function renderClientsScreen(ctx) {
     <div class="clients-layout">
       <div class="clients-left">
         <div class="panel table-wrap clients-table-card">
-          <h2>Клієнти (124)</h2>
+          <h2 data-clients-count>Клієнти (${totalClients})</h2>
           <table class="clients-table">
             <thead>
               <tr><th><input type="checkbox" data-select-client-page aria-label="Обрати всіх клієнтів" /></th><th><span class="client-title-head"><span class="client-title-label">ПІБ клієнта</span><span class="tasks-bulk-bar clients-bulk-bar" data-client-bulk-bar aria-label="Масові дії клієнтів"></span></span></th><th>Телефон</th><th>Email</th><th>Суть звернення</th><th>Дата додавання</th><th>Telegram</th><th>Дії</th></tr>
@@ -29,8 +30,8 @@ export function renderClientsScreen(ctx) {
             <tbody id="clients-table"></tbody>
           </table>
           <div class="table-footer">
-            <span>Показано 1 - ${state.clients.length} з 124 клієнтів</span>
-            <div class="pagination"><button class="ghost">‹</button><button class="page active">1</button><button class="page">2</button><button class="page">3</button><span>...</span><button class="page">16</button><button class="ghost">›</button></div>
+            <span data-clients-footer-range>Показано 0 - 0 з 0 клієнтів</span>
+            <div class="pagination" data-clients-pagination></div>
           </div>
         </div>
         <div class="panel client-profile-card" id="client-profile"></div>
@@ -47,8 +48,15 @@ export function renderClientsScreen(ctx) {
         <div class="panel side-card" data-client-mailing-panel>
           <h2>Інформаційна розсилка</h2>
           <div class="mailing-grid">
-            <div><span class="muted">Одержувачі</span><strong>124 клієнти</strong></div>
-            <label><span class="muted">Тип розсилки</span><select><option>Інформаційна</option><option>Юридичне повідомлення</option><option>Нагадування</option></select></label>
+            <div><span class="muted">Одержувачі</span><strong data-client-mailing-recipient-count>${clientCountLabel(totalClients)}</strong></div>
+            <label class="client-select-field">
+              <span class="muted">Тип розсилки</span>
+              <select>
+                <option>Інформаційна</option>
+                <option>Юридичне повідомлення</option>
+                <option>Нагадування</option>
+              </select>
+            </label>
           </div>
           <label class="message-label"><span class="muted">Повідомлення</span><textarea id="client-mailing-text" rows="8">${state.mailingText}</textarea></label>
           <p class="muted">Кількість символів: <span id="client-mailing-count">0</span></p>
@@ -67,9 +75,13 @@ export function renderClientsScreen(ctx) {
   }
   bindClientMailingPreview(ctx);
   $("#add-client").addEventListener("click", () => openClientDialog());
-  $("#client-filter").addEventListener("input", () => renderClientRows(ctx));
+  $("#client-filter").addEventListener("input", () => {
+    state.clientPage = 1;
+    renderClientRows(ctx);
+  });
   $("#client-reset-filter").addEventListener("click", () => {
     $("#client-filter").value = "";
+    state.clientPage = 1;
     renderClientRows(ctx);
   });
 }
@@ -80,7 +92,12 @@ export function renderClientRows(ctx) {
   const selectedClientSet = new Set((state.selectedClientKeys || []).map(String));
   const filteredClients = state.clients
     .filter((client) => !query || `${client.name} ${client.phone} ${client.email} ${client.request} ${client.telegramUsername} ${client.manager}`.toLowerCase().includes(query));
-  const rows = filteredClients
+  const pageSize = Number(state.clientPageSize || 10);
+  const pageCount = Math.max(1, Math.ceil(filteredClients.length / pageSize));
+  state.clientPage = Math.min(Math.max(1, Number(state.clientPage || 1)), pageCount);
+  const pageStart = (state.clientPage - 1) * pageSize;
+  const visibleClients = filteredClients.slice(pageStart, pageStart + pageSize);
+  const rows = visibleClients
     .map((client) => `
       <tr>
         <td><input type="checkbox" data-select-client-row="${client.id}" ${selectedClientSet.has(String(client.id)) ? "checked" : ""} aria-label="Обрати ${client.name}" /></td>
@@ -105,13 +122,14 @@ export function renderClientRows(ctx) {
     `)
     .join("");
   $("#clients-table").innerHTML = rows || `<tr><td colspan="8">Клієнтів не знайдено</td></tr>`;
-  updateClientBulkHeader(ctx, filteredClients);
+  updateClientFooter(ctx, filteredClients, pageStart, pageSize, pageCount);
+  updateClientBulkHeader(ctx, visibleClients);
   bindActionMenus?.($("#clients-table"));
   const pageCheckbox = document.querySelector("[data-select-client-page]");
   if (pageCheckbox) {
     pageCheckbox.onclick = (event) => event.stopPropagation();
     pageCheckbox.onchange = (event) => {
-      const visibleIds = filteredClients.map((client) => String(client.id));
+      const visibleIds = visibleClients.map((client) => String(client.id));
       const next = new Set((state.selectedClientKeys || []).map(String));
       visibleIds.forEach((id) => {
         if (event.currentTarget.checked) next.add(id);
@@ -121,6 +139,12 @@ export function renderClientRows(ctx) {
       renderClientRows(ctx);
     };
   }
+  document.querySelectorAll("[data-client-page]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.clientPage = Number(button.dataset.clientPage || 1);
+      renderClientRows(ctx);
+    });
+  });
   document.querySelectorAll("[data-select-client-row]").forEach((input) => {
     input.addEventListener("click", (event) => event.stopPropagation());
     input.addEventListener("change", () => {
@@ -151,6 +175,53 @@ export function renderClientRows(ctx) {
       openDeleteDocumentConfirm({ type: "client", clientId: Number(button.dataset.deleteClient), returnView: "clients" });
     });
   });
+}
+
+function clientCountLabel(count) {
+  const value = Number(count || 0);
+  if (value === 1) return "1 клієнт";
+  const mod10 = value % 10;
+  const mod100 = value % 100;
+  if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)) return `${value} клієнти`;
+  return `${value} клієнтів`;
+}
+
+function updateClientFooter(ctx, filteredClients, pageStart, pageSize, pageCount) {
+  const { state } = ctx;
+  const totalClients = state.clients.length;
+  const filteredTotal = filteredClients.length;
+  const from = filteredTotal ? pageStart + 1 : 0;
+  const to = filteredTotal ? Math.min(pageStart + pageSize, filteredTotal) : 0;
+  const countNode = document.querySelector("[data-clients-count]");
+  if (countNode) countNode.textContent = `Клієнти (${totalClients})`;
+  const recipientNode = document.querySelector("[data-client-mailing-recipient-count]");
+  if (recipientNode) recipientNode.textContent = clientCountLabel(totalClients);
+  const rangeNode = document.querySelector("[data-clients-footer-range]");
+  if (rangeNode) {
+    const filterSuffix = filteredTotal === totalClients ? "" : `, знайдено ${filteredTotal}`;
+    rangeNode.textContent = `Показано ${from} - ${to} з ${clientCountLabel(totalClients)}${filterSuffix}`;
+  }
+  const pagination = document.querySelector("[data-clients-pagination]");
+  if (!pagination) return;
+  if (pageCount <= 1 || !filteredTotal) {
+    pagination.innerHTML = "";
+    return;
+  }
+  const current = Number(state.clientPage || 1);
+  const pages = new Set([1, pageCount, current, current - 1, current + 1].filter((page) => page >= 1 && page <= pageCount));
+  const pageItems = [...pages].sort((a, b) => a - b);
+  const buttons = [];
+  let previous = 0;
+  pageItems.forEach((page) => {
+    if (previous && page - previous > 1) buttons.push(`<span>...</span>`);
+    buttons.push(`<button class="page ${page === current ? "active" : ""}" type="button" data-client-page="${page}">${page}</button>`);
+    previous = page;
+  });
+  pagination.innerHTML = `
+    <button class="ghost" type="button" data-client-page="${Math.max(1, current - 1)}" ${current === 1 ? "disabled" : ""}>‹</button>
+    ${buttons.join("")}
+    <button class="ghost" type="button" data-client-page="${Math.min(pageCount, current + 1)}" ${current === pageCount ? "disabled" : ""}>›</button>
+  `;
 }
 
 function updateClientBulkHeader(ctx, filteredClients) {

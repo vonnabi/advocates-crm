@@ -11035,9 +11035,15 @@ button {
 
 .mailing-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(76px, .85fr) minmax(0, 1.25fr);
+  align-items: end;
   gap: 14px;
   margin-bottom: 14px;
+}
+
+.mailing-grid > *,
+.client-select-field {
+  min-width: 0;
 }
 
 .mailing-grid strong,
@@ -11045,6 +11051,41 @@ button {
 .message-label span {
   display: block;
   margin-bottom: 6px;
+}
+
+.mailing-grid strong {
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+
+.client-select-field {
+  position: relative;
+  display: block;
+}
+
+.client-select-field select {
+  width: 100%;
+  max-width: 100%;
+  min-height: 44px;
+  appearance: none;
+  border: 1px solid #d7e4f3;
+  border-radius: 8px;
+  background:
+    linear-gradient(45deg, transparent 50%, var(--action-dark) 50%) right 18px center / 8px 8px no-repeat,
+    linear-gradient(135deg, var(--action-dark) 50%, transparent 50%) right 12px center / 8px 8px no-repeat,
+    #fbfdff;
+  box-shadow: 0 8px 18px rgba(37, 85, 128, .05);
+  color: var(--text);
+  font-weight: 750;
+  padding: 10px 34px 10px 12px;
+}
+
+.client-select-field select:hover,
+.client-select-field select:focus {
+  border-color: #9ec9f7;
+  background-color: #f3f8ff;
+  box-shadow: 0 0 0 3px rgba(39, 122, 214, .12);
+  outline: none;
 }
 
 .message-label {
@@ -20936,6 +20977,7 @@ dialog::backdrop {
 
 .document-editor-field > select.document-native-select,
 .documents-filter-field > select.document-native-select,
+#client-form label > select.document-native-select,
 #case-form label > select.document-native-select {
   position: absolute;
   width: 1px;

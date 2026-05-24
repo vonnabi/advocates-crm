@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 const views = [
   ["cases", "Усього справ"],
-  ["clients", "Клієнти (124)"],
+  ["clients", "Клієнти (5)"],
   ["calendar", "Найближчі події"],
   ["tasks", "Всі задачі"],
   ["documents", "Документи"],

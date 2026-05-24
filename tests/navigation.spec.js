@@ -423,6 +423,11 @@ test("API empty demo mode still renders the workspace and AI empty state", async
   await expect(page.locator("#admin-profile-toggle")).not.toContainText("Іваненко");
   await expect(page.locator('.nav-item[data-view="tasks"] .nav-badge')).toBeHidden();
   await expect(page.locator('.nav-item[data-view="ai"] .nav-new')).toHaveCount(0);
+  await page.locator('.nav-item[data-view="clients"]').click();
+  await expect(page.locator("[data-clients-count]")).toHaveText("Клієнти (0)");
+  await expect(page.locator("[data-clients-footer-range]")).toHaveText("Показано 0 - 0 з 0 клієнтів");
+  await expect(page.locator("[data-clients-pagination] button")).toHaveCount(0);
+  await expect(page.locator("[data-client-mailing-recipient-count]")).toHaveText("0 клієнтів");
   await expect(page.locator("[data-demo-data-toggle]")).toBeVisible();
   await expect(page.locator("[data-demo-data-summary]")).toHaveText("Вимкнено");
   await page.locator("[data-demo-data-toggle]").click();

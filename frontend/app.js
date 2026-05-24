@@ -5,7 +5,7 @@ import {
   setupTopbarControls,
   syncTopbarNotifications
 } from "./js/chrome.js?v=demo-empty-state-1";
-import { createDialogOpeners } from "./js/dialog-openers.js?v=document-archive-books-1";
+import { createDialogOpeners } from "./js/dialog-openers.js?v=clients-clean-1";
 import { setupDialogControls } from "./js/dialogs.js?v=document-export-modal-1";
 import { setupCaseDetailForms } from "./js/forms/case-details.js";
 import { setupCaseItemForms } from "./js/forms/case-items.js";
@@ -38,7 +38,7 @@ import {
   renderClientProfile as renderClientProfileScreen,
   renderClientRows as renderClientRowsScreen,
   renderClientsScreen
-} from "./js/screens/clients.js?v=role-ui-1";
+} from "./js/screens/clients.js?v=clients-clean-1";
 import { renderDashboardScreen } from "./js/screens/dashboard.js?v=live-demo-1";
 import { renderDocumentsScreen } from "./js/screens/documents.js?v=document-archive-books-1";
 import {

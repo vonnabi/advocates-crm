@@ -424,6 +424,8 @@ export async function createInitialState() {
     demoDataStatus,
     selectedClientId: 1,
     selectedClientKeys: [],
+    clientPage: 1,
+    clientPageSize: 10,
     selectedCaseId: demoCaseId("2024/12345"),
     caseScreen: "list",
     casePage: 1,
