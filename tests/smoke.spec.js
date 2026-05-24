@@ -413,7 +413,7 @@ test("case procedural action edit opens dialog", async ({ page }) => {
 
 test("case procedural document menu exposes full document actions", async ({ page }) => {
   await openApp(page);
-  const demoCaseId = `${new Date().getFullYear()}/0001`;
+  const demoCaseId = `${new Date().getFullYear()}/12345`;
 
   await page.locator('.nav-item[data-view="cases"]').click();
   await page.locator(`[data-open-case="${demoCaseId}"]`).first().click();
@@ -440,6 +440,22 @@ test("case procedural document menu exposes full document actions", async ({ pag
   await menu.locator("[data-send-case-document]").click();
   await expect(page.locator("#document-send-dialog")).toHaveJSProperty("open", true);
   await expect(page.locator("#document-send-dialog")).toContainText("Відправити документ");
+});
+
+test("case detail separates procedural registry from case file tree", async ({ page }) => {
+  await openApp(page);
+  const demoCaseId = `${new Date().getFullYear()}/0001`;
+
+  await page.locator('.nav-item[data-view="cases"]').click();
+  await page.locator(`[data-open-case="${demoCaseId}"]`).first().click();
+
+  await expect(page.locator(".case-documents-card")).toContainText("Процесуальних документів поки немає");
+  await expect(page.locator(".case-documents-card")).not.toContainText("01 DOCX з комп'ютера.docx");
+
+  await page.locator(".case-folders-card .folder-row", { hasText: "Інші документи" }).locator("[data-toggle-folder]").click();
+  await expect(page.locator(".case-folders-card")).toContainText("01 DOCX з комп'ютера.docx");
+  await expect(page.locator(".case-folders-card")).toContainText("02 Google Docs посилання");
+  await expect(page.locator(".case-folders-card")).toContainText("03 PDF у CRM.pdf");
 });
 
 test("case folder document menu exposes full document actions", async ({ page }) => {

@@ -2,6 +2,8 @@ import { saveDocumentToApi, shouldUseApi, uploadDocumentFileToApi } from "../api
 import { normalizeDocument } from "../state.js";
 
 const CASE_DOCUMENT_FOLDER_NAMES = ["Позови", "Клопотання", "Запити", "Відповіді та ухвали", "Інші документи"];
+const PROCEDURAL_DOCUMENT_FOLDERS = new Set(["Позови", "Клопотання", "Запити", "Відповіді та ухвали"]);
+const TECHNICAL_DOCUMENT_TYPES = new Set(["doc", "docx", "pdf", "txt", "rtf", "odt", "google docs", "google drive", "crm файл"]);
 
 function inferCaseDocumentFolder(doc = {}, fallback = "Інші документи") {
   if (fallback && !CASE_DOCUMENT_FOLDER_NAMES.includes(fallback)) return fallback;
@@ -11,6 +13,15 @@ function inferCaseDocumentFolder(doc = {}, fallback = "Інші документ
   if (/ухвал|відповід|рішенн|постанова/.test(haystack)) return "Відповіді та ухвали";
   if (/позов|позовн|заява/.test(haystack)) return "Позови";
   return CASE_DOCUMENT_FOLDER_NAMES.includes(fallback) ? "Інші документи" : fallback || "Інші документи";
+}
+
+function isProceduralCaseDocument(doc = {}, folderName = "") {
+  const type = String(doc.type || "").trim().toLowerCase();
+  if (TECHNICAL_DOCUMENT_TYPES.has(type)) return false;
+  const folder = folderName || doc.folder || doc.folderName || "";
+  if (PROCEDURAL_DOCUMENT_FOLDERS.has(folder)) return true;
+  const haystack = [doc.type, doc.name, folder].map((value) => String(value || "").toLowerCase()).join(" ");
+  return /позов|позовн|клопотан|адвокатськ.*запит|запит|ухвал|відповід|рішенн|постанова|пояснен|скарг|заява/.test(haystack);
 }
 
 function findOrCreateCaseFolder(folders = [], name = "Інші документи", today = "") {
@@ -186,8 +197,11 @@ export function setupDocumentForm({
     const existingDoc = documentId
       ? caseItem.documents.find((itemDoc) => String(itemDoc.documentId || itemDoc.id || "") === String(documentId))
       : null;
-    if (existingDoc) Object.assign(existingDoc, doc);
-    else caseItem.documents.unshift(doc);
+    const shouldTrackProcedural = isProceduralCaseDocument(doc, folder.name);
+    if (existingDoc && shouldTrackProcedural) Object.assign(existingDoc, doc);
+    else if (existingDoc && !shouldTrackProcedural) {
+      caseItem.documents = caseItem.documents.filter((itemDoc) => itemDoc !== existingDoc);
+    } else if (shouldTrackProcedural) caseItem.documents.unshift(doc);
     const existingFile = documentId
       ? folder.files.find((file) => String(file.documentId || file.id || "") === String(documentId))
       : null;
@@ -798,7 +812,8 @@ export function setupDocumentForm({
       source,
       added: today
     };
-    item.documents.unshift(createdDocument);
+    const shouldTrackProcedural = isProceduralCaseDocument(createdDocument, targetFolder.name);
+    if (shouldTrackProcedural) item.documents.unshift(createdDocument);
     const createdFolderFile = {
       id: savedDocument?.id,
       documentId,
@@ -829,7 +844,10 @@ export function setupDocumentForm({
     state.documentArchiveClientId = String(item.clientId || "all");
     state.documentArchiveCaseId = item.id;
     state.documentArchiveFolder = targetFolder.name;
-    state.selectedDocumentKey = `${item.id}|procedural:0`;
+    const folderIndex = folders.findIndex((folder) => folder === targetFolder);
+    state.selectedDocumentKey = shouldTrackProcedural
+      ? `${item.id}|procedural:0`
+      : `${item.id}|folder:${Math.max(folderIndex, 0)}:0`;
     $("#document-dialog").close();
     renderAll();
     switchView(state.documentDialogReturnView || "cases");

@@ -40,6 +40,8 @@ let showToast;
 
 const completedCaseStatuses = new Set(["Завершено", "Закрито", "Архів"]);
 const caseESignStatuses = new Set(["Очікує е-підпис", "Підписано КЕП", "Відхилено підпис", "Підпис прострочено"]);
+const proceduralDocumentFolders = new Set(["Позови", "Клопотання", "Запити", "Відповіді та ухвали"]);
+const technicalDocumentTypes = new Set(["doc", "docx", "pdf", "txt", "rtf", "odt", "google docs", "google drive", "crm файл"]);
 const demoCaseYear = new Date().getFullYear();
 
 function isDemoCaseNumber(value) {
@@ -53,6 +55,25 @@ function demoDisplayDate(dayMonth) {
 
 function isCaseCompleted(item) {
   return completedCaseStatuses.has(item?.status);
+}
+
+function inferCaseDocumentFolderName(doc = {}, fallback = "Інші документи") {
+  if (fallback && !["Позови", "Клопотання", "Запити", "Відповіді та ухвали", "Інші документи"].includes(fallback)) return fallback;
+  const haystack = [doc.type, doc.name, doc.folder, fallback].map((value) => String(value || "").toLowerCase()).join(" ");
+  if (/клопотан|клопа/.test(haystack)) return "Клопотання";
+  if (/адвокатськ.*запит|запит|витребуван/.test(haystack)) return "Запити";
+  if (/ухвал|відповід|рішенн|постанова/.test(haystack)) return "Відповіді та ухвали";
+  if (/позов|позовн|заява/.test(haystack)) return "Позови";
+  return fallback || "Інші документи";
+}
+
+function isProceduralCaseDocument(doc = {}, folderName = "") {
+  const type = String(doc.type || "").trim().toLowerCase();
+  if (technicalDocumentTypes.has(type)) return false;
+  const folder = folderName || doc.folder || doc.folderName || "";
+  if (proceduralDocumentFolders.has(folder)) return true;
+  const haystack = [doc.type, doc.name, folder].map((value) => String(value || "").toLowerCase()).join(" ");
+  return /позов|позовн|клопотан|адвокатськ.*запит|запит|ухвал|відповід|рішенн|постанова|пояснен|скарг|заява/.test(haystack);
 }
 
 function applyContext(ctx) {
@@ -1244,10 +1265,13 @@ function caseProceduralRows(item) {
 }
 
 function caseDocumentRows(item) {
-  if (!item.documents.length) {
+  const proceduralDocuments = item.documents
+    .map((doc, docIndex) => ({ doc, docIndex }))
+    .filter(({ doc }) => isProceduralCaseDocument(doc, doc.folder || doc.folderName));
+  if (!proceduralDocuments.length) {
     return `<tr><td colspan="4" class="empty-cell">Процесуальних документів поки немає</td></tr>`;
   }
-  return item.documents.map((doc, docIndex) => {
+  return proceduralDocuments.map(({ doc, docIndex }) => {
     const encoded = `procedural:${docIndex}`;
     const key = `${item.id}|${encoded}`;
     return `<tr class="procedural-doc-row">
@@ -1360,6 +1384,51 @@ export function caseFolders(item) {
       }
     ];
   }
+  const folders = item.folders;
+  const comparableName = (value = "") => String(value || "").trim().toLowerCase().replace(/\.(docx?|pdf|txt|rtf|odt)$/i, "");
+  const hasFileForDocument = (doc, list = folders) => list.some((folder) =>
+    (folder.files || []).some((file) =>
+      doc.documentId && String(file.documentId || file.id || "") === String(doc.documentId) || comparableName(file.name) === comparableName(doc.name)
+    ) || hasFileForDocument(doc, folder.children || [])
+  );
+  const findFolderByName = (name, list = folders) => {
+    for (const folder of list) {
+      if (folder.name === name) return folder;
+      const nested = findFolderByName(name, folder.children || []);
+      if (nested) return nested;
+    }
+    return null;
+  };
+  (item.documents || []).forEach((doc) => {
+    if (hasFileForDocument(doc)) return;
+    const folderName = inferCaseDocumentFolderName(doc, doc.folder || doc.folderName || "Інші документи");
+    let folder = findFolderByName(folderName);
+    if (!folder) {
+      folder = { name: folderName, updated: doc.updated || doc.submitted || demoDisplayDate("15.05"), files: [], children: [] };
+      folders.push(folder);
+    }
+    if (!Array.isArray(folder.files)) folder.files = [];
+    if (!Array.isArray(folder.children)) folder.children = [];
+    folder.files.unshift({
+      id: doc.id,
+      documentId: doc.documentId || doc.id || "",
+      name: doc.name,
+      type: doc.type,
+      folder: folder.name,
+      status: doc.status,
+      submitted: doc.submitted,
+      responseDue: doc.responseDue,
+      comment: doc.comment,
+      content: doc.content,
+      updated: doc.updated || doc.submitted || doc.added || "-",
+      fileName: doc.fileName || "",
+      fileObject: doc.fileObject || null,
+      fileUrl: doc.fileUrl || "",
+      onlyOfficeCallbackUrl: doc.onlyOfficeCallbackUrl || "",
+      url: doc.url || "",
+      source: doc.source || "CRM"
+    });
+  });
   return item.folders;
 }
 

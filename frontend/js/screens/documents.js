@@ -2,6 +2,7 @@ import { deleteDocumentFromApi, saveDocumentToApi, saveMailingCampaignToApi, sen
 import { normalizeDocument } from "../state.js";
 
 const CASE_DOCUMENT_FOLDER_NAMES = ["Позови", "Клопотання", "Запити", "Відповіді та ухвали", "Інші документи"];
+const PROCEDURAL_DOCUMENT_FOLDERS = new Set(["Позови", "Клопотання", "Запити", "Відповіді та ухвали"]);
 const TECHNICAL_DOCUMENT_TYPES = new Set(["doc", "docx", "pdf", "txt", "rtf", "odt", "google docs", "google drive", "crm файл"]);
 
 function inferCaseDocumentFolder(doc = {}, fallback = "Інші документи") {
@@ -27,6 +28,15 @@ function inferCaseDocumentType(doc = {}, folderName = "") {
   }
   if (rawType && rawType !== "Документ" && !TECHNICAL_DOCUMENT_TYPES.has(normalizedType)) return rawType;
   return "Інший документ";
+}
+
+function isProceduralCaseDocument(doc = {}, folderName = "") {
+  const type = String(doc.type || "").trim().toLowerCase();
+  if (TECHNICAL_DOCUMENT_TYPES.has(type)) return false;
+  const folder = folderName || doc.folder || doc.folderName || "";
+  if (PROCEDURAL_DOCUMENT_FOLDERS.has(folder)) return true;
+  const haystack = [doc.type, doc.name, folder].map((value) => String(value || "").toLowerCase()).join(" ");
+  return /позов|позовн|клопотан|адвокатськ.*запит|запит|ухвал|відповід|рішенн|постанова|пояснен|скарг|заява/.test(haystack);
 }
 
 function documentRows(ctx) {
@@ -618,7 +628,7 @@ export async function copyDocumentInCase(ctx, key) {
     updated: today,
     history: saved?.history || [{ date: today, text: `Створено копію документа: ${source.name}.` }]
   };
-  item.documents.unshift(copyDoc);
+  if (isProceduralCaseDocument(copyDoc, targetFolder.name)) item.documents.unshift(copyDoc);
   targetFolder.files.unshift({
     id: copyDoc.id,
     documentId,
@@ -645,9 +655,13 @@ export async function copyDocumentInCase(ctx, key) {
   state.documentArchiveClientId = String(item.clientId || "all");
   state.documentArchiveCaseId = item.id;
   state.documentArchiveFolder = targetFolder.name;
-  state.selectedDocumentKey = `${item.id}|procedural:0`;
+  const targetFolderIndex = folders.findIndex((folder) => folder === targetFolder);
+  const selectedCopyEncoded = isProceduralCaseDocument(copyDoc, targetFolder.name)
+    ? "procedural:0"
+    : `folder:${Math.max(targetFolderIndex, 0)}:0`;
+  state.selectedDocumentKey = `${item.id}|${selectedCopyEncoded}`;
   renderAll?.();
-  openDocumentDialog?.(item.id, getDocumentPayload(item.id, "procedural:0"), "documents");
+  openDocumentDialog?.(item.id, getDocumentPayload(item.id, selectedCopyEncoded), "documents");
   showToast?.("Копію документа створено.");
 }
 
