@@ -406,3 +406,27 @@ test("case procedural action edit opens dialog", async ({ page }) => {
   await expect(page.locator("#event-dialog")).toHaveJSProperty("open", true);
   await expect(page.locator('#event-dialog input[name="title"]')).toHaveValue("Клопотання про забезпечення позову");
 });
+
+test("case procedural document menu exposes full document actions", async ({ page }) => {
+  await openApp(page);
+  const demoCaseId = `${new Date().getFullYear()}/0001`;
+
+  await page.locator('.nav-item[data-view="cases"]').click();
+  await page.locator(`[data-open-case="${demoCaseId}"]`).first().click();
+  await expect(page.locator(".case-documents-card")).toContainText("6. ПРОЦЕСУАЛЬНІ ДОКУМЕНТИ");
+
+  await page.locator(".case-documents-card .procedural-doc-row [data-action-menu-trigger]").first().click();
+  const menu = page.locator(".row-action-menu:not([hidden])");
+  await expect(menu).toContainText("Відкрити");
+  await expect(menu).toContainText("Копіювати документ");
+  await expect(menu).toContainText("Відправити");
+  await expect(menu).toContainText("На е-підпис");
+  await expect(menu).toContainText("ONLYOFFICE");
+  await expect(menu).toContainText("Експорт");
+  await expect(menu).toContainText("Додати в архів");
+  await expect(menu).toContainText("Видалити");
+
+  await menu.locator("[data-send-case-document]").click();
+  await expect(page.locator("#document-send-dialog")).toHaveJSProperty("open", true);
+  await expect(page.locator("#document-send-dialog")).toContainText("Відправити документ");
+});

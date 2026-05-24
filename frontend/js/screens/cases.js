@@ -1,6 +1,8 @@
 import { deleteCaseFromApi, saveCaseToApi, saveTaskToApi, shouldUseApi } from "../api.js";
 import { normalizeCase, normalizeTask } from "../state.js";
+import { archiveDocumentInStorage, copyDocumentInCase, openDocumentSendDialog } from "./documents.js";
 
+let currentContext;
 let state;
 let $;
 let icon;
@@ -30,10 +32,14 @@ let openFolderDialog;
 let openDeleteDocumentConfirm;
 let getDocumentPayload;
 let openStoredDocument;
+let exportStoredDocument;
+let openOfficeEditor;
+let renderAll;
 let syncNavigationState;
 let showToast;
 
 const completedCaseStatuses = new Set(["Завершено", "Закрито", "Архів"]);
+const caseESignStatuses = new Set(["Очікує е-підпис", "Підписано КЕП", "Відхилено підпис", "Підпис прострочено"]);
 const demoCaseYear = new Date().getFullYear();
 
 function isDemoCaseNumber(value) {
@@ -50,6 +56,7 @@ function isCaseCompleted(item) {
 }
 
 function applyContext(ctx) {
+  currentContext = ctx;
   ({
     state,
     $,
@@ -80,6 +87,9 @@ function applyContext(ctx) {
     openDeleteDocumentConfirm,
     getDocumentPayload,
     openStoredDocument,
+    exportStoredDocument,
+    openOfficeEditor,
+    renderAll,
     syncNavigationState,
     showToast
   } = ctx);
@@ -1237,22 +1247,72 @@ function caseDocumentRows(item) {
   if (!item.documents.length) {
     return `<tr><td colspan="4" class="empty-cell">Процесуальних документів поки немає</td></tr>`;
   }
-  return item.documents.map((doc, docIndex) => `<tr class="procedural-doc-row">
-    <td>
-      <span class="procedural-doc-name">
-        <span class="procedural-doc-title">${doc.name}</span>
-        <span class="procedural-actions">
-          ${documentMenu([
-            { label: "Редагувати", icon: "edit", attrs: { "data-edit-document": `procedural:${docIndex}` } },
-            { label: "Видалити", icon: "trash", danger: true, attrs: { "data-delete-procedural-doc": docIndex } }
-          ])}
+  return item.documents.map((doc, docIndex) => {
+    const encoded = `procedural:${docIndex}`;
+    const key = `${item.id}|${encoded}`;
+    return `<tr class="procedural-doc-row">
+      <td>
+        <span class="procedural-doc-name">
+          <span class="procedural-doc-title">${doc.name}</span>
+          <span class="procedural-actions">
+            ${documentMenu([
+              { label: "Відкрити", icon: "eye", attrs: { "data-view-document": encoded } },
+              { label: "Редагувати", icon: "edit", attrs: { "data-edit-document": encoded } },
+              { label: "Копіювати документ", icon: "file", attrs: { "data-copy-case-document": key } },
+              { label: "Відправити", icon: "telegram", attrs: { "data-send-case-document": key } },
+              { label: caseESignStatuses.has(doc.status) ? "Перевірити підпис" : "На е-підпис", icon: "signature", attrs: { "data-esign-case-document": encoded } },
+              { label: "ONLYOFFICE", icon: "file", attrs: { "data-office-case-document": encoded } },
+              { label: "Експорт", icon: "fileUp", attrs: { "data-export-case-document": encoded } },
+              { label: "Додати в архів", icon: "archive", attrs: { "data-archive-case-document": key } },
+              { label: "Видалити", icon: "trash", danger: true, attrs: { "data-delete-procedural-doc": docIndex } }
+            ])}
+          </span>
         </span>
-      </span>
-    </td>
-    <td>${doc.submitted || "-"}</td>
-    <td>${doc.responseDue || "-"}</td>
-    <td>${badge(doc.status, documentStatusTone(doc.status))}</td>
-  </tr>`).join("");
+      </td>
+      <td>${doc.submitted || "-"}</td>
+      <td>${doc.responseDue || "-"}</td>
+      <td>${badge(doc.status, documentStatusTone(doc.status))}</td>
+    </tr>`;
+  }).join("");
+}
+
+async function runCaseDocumentESignAction(item, encoded) {
+  const payload = getDocumentPayload(item.id, encoded);
+  const doc = payload.doc || payload.file;
+  if (!doc) return;
+  const currentStatus = doc.status || "";
+  let nextStatus = "Очікує е-підпис";
+  let message = "Документ поставлено в чергу е-підпису.";
+  if (currentStatus === "Очікує е-підпис") {
+    nextStatus = "Підписано КЕП";
+    message = "Демо: провайдер повернув підписаний документ.";
+  } else if (currentStatus === "Підписано КЕП") {
+    showToast?.("Підпис уже отримано. Після API тут буде завантаження підписаного файлу.", "info");
+    return;
+  } else if (["Відхилено підпис", "Підпис прострочено"].includes(currentStatus)) {
+    nextStatus = "Очікує е-підпис";
+    message = "Документ повторно поставлено в чергу е-підпису.";
+  }
+  const update = (target) => {
+    if (target) target.status = nextStatus;
+  };
+  update(payload.doc);
+  update(payload.file);
+  update(payload.linked?.file);
+  item.history = [
+    { date: new Date().toLocaleDateString("uk-UA"), text: `Статус документа «${doc.name || "Документ"}» змінено на «${nextStatus}».` },
+    ...(item.history || [])
+  ];
+  if (shouldUseApi(state)) {
+    try {
+      Object.assign(item, normalizeCase(await saveCaseToApi(item)));
+    } catch (_error) {
+      showToast?.("Не вдалося зберегти статус документа в базі.", "danger");
+      return;
+    }
+  }
+  renderCaseProfile(item.id);
+  showToast?.(message, "info");
 }
 
 export function caseFolders(item) {
@@ -1584,9 +1644,45 @@ function renderCaseProfile(id) {
       returnView: "cases"
     });
   }));
+  document.querySelectorAll("[data-export-case-document]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const payload = getDocumentPayload(item.id, button.dataset.exportCaseDocument);
+    exportStoredDocument?.(payload.file || payload.doc, {
+      caseId: item.id,
+      editContext: payload,
+      folderName: payload.folder?.name || payload.linked?.folder?.name,
+      returnView: "cases"
+    });
+  }));
+  document.querySelectorAll("[data-office-case-document]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const payload = getDocumentPayload(item.id, button.dataset.officeCaseDocument);
+    openOfficeEditor?.(payload.file || payload.doc, {
+      caseId: item.id,
+      editContext: payload,
+      folderName: payload.folder?.name || payload.linked?.folder?.name,
+      returnView: "cases"
+    });
+  }));
   document.querySelectorAll("[data-edit-document]").forEach((button) => button.addEventListener("click", (event) => {
     event.stopPropagation();
     openDocumentDialog(item.id, getDocumentPayload(item.id, button.dataset.editDocument));
+  }));
+  document.querySelectorAll("[data-copy-case-document]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    copyDocumentInCase(currentContext, button.dataset.copyCaseDocument);
+  }));
+  document.querySelectorAll("[data-send-case-document]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openDocumentSendDialog(currentContext, button.dataset.sendCaseDocument);
+  }));
+  document.querySelectorAll("[data-esign-case-document]").forEach((button) => button.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    await runCaseDocumentESignAction(item, button.dataset.esignCaseDocument);
+  }));
+  document.querySelectorAll("[data-archive-case-document]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    archiveDocumentInStorage(currentContext, button.dataset.archiveCaseDocument);
   }));
   document.querySelector(`[data-edit-finance="${item.id}"]`)?.addEventListener("click", () => openFinanceDialog(item.id));
   document.querySelectorAll(`[data-edit-case-section="${item.id}"]`).forEach((button) => button.addEventListener("click", () => openEssenceDialog(item.id)));

@@ -418,6 +418,48 @@ function archiveFolderExists(folders = [], id) {
   return Boolean(findArchiveFolder(folders, id));
 }
 
+export function archiveDocumentInStorage(ctx, key) {
+  const { state, caseById, clientById, getDocumentPayload, renderAll, showToast } = ctx;
+  const { caseId, encoded } = payloadFromKey(key);
+  const payload = getDocumentPayload(caseId, encoded);
+  const item = caseById(caseId);
+  const source = payload.file || payload.doc;
+  if (!item || !source) return false;
+  const folders = ensureDocumentStorageArchive(state);
+  let folder = findArchiveFolder(folders, "saved")?.folder || folders[0];
+  if (!folder) {
+    folder = { id: "saved", name: "На зберіганні", documents: [], children: [] };
+    folders.unshift(folder);
+  }
+  if (!Array.isArray(folder.documents)) folder.documents = [];
+  const archivedAt = new Date().toLocaleDateString("uk-UA");
+  const client = clientById?.(item.clientId);
+  const folderName = payload.folder?.name || payload.linked?.folder?.name || source.folder || source.folderName || "Процесуальні документи";
+  const archivePayload = {
+    sourceKey: key,
+    documentId: source.documentId || source.id || "",
+    name: source.name,
+    type: source.type,
+    caseId: item.id,
+    caseTitle: item.title,
+    client: client?.name || "",
+    folderName,
+    archivedAt,
+    comment: source.comment || ""
+  };
+  const existing = folder.documents.find((archiveDoc) =>
+    archiveDoc.sourceKey === key || archivePayload.documentId && archiveDoc.documentId === archivePayload.documentId
+  );
+  if (existing) Object.assign(existing, archivePayload);
+  else folder.documents.unshift(archivePayload);
+  state.documentArchiveScope = "storage";
+  state.documentStorageArchiveFolderId = folder.id;
+  state.selectedDocumentKey = key;
+  renderAll?.();
+  showToast?.("Документ додано в архів.");
+  return true;
+}
+
 function renderArchivePickerTree(folders = [], selectedId = "", escapeHtml, depth = 0) {
   return folders.map((folder) => `
     <button class="document-archive-picker-node ${selectedId === folder.id ? "active" : ""}" type="button" data-document-archive-pick="${escapeHtml(folder.id)}" style="--level:${depth}">
@@ -430,7 +472,7 @@ function renderArchivePickerTree(folders = [], selectedId = "", escapeHtml, dept
   `).join("");
 }
 
-async function copyDocumentInCase(ctx, key) {
+export async function copyDocumentInCase(ctx, key) {
   const {
     state,
     caseById,
@@ -671,7 +713,7 @@ function documentSendMessage(doc, item, contact, channel) {
   ].filter(Boolean).join("\n");
 }
 
-function openDocumentSendDialog(ctx, key) {
+export function openDocumentSendDialog(ctx, key) {
   const { state, caseById, clientById, getDocumentPayload, showToast } = ctx;
   const dialog = document.querySelector("#document-send-dialog");
   const form = document.querySelector("#document-send-form");
