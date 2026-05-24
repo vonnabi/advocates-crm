@@ -130,8 +130,12 @@ test("documents filters use CRM dropdowns and search across case metadata", asyn
   await expect(page.locator(".documents-filters .document-custom-select")).toHaveCount(4);
 
   await page.locator('[data-document-type] + .document-custom-select .document-custom-select-button').click();
-  await expect(page.locator('[data-document-type] + .document-custom-select .document-custom-select-menu')).toBeVisible();
-  await expect(page.locator('[data-document-type] + .document-custom-select .document-custom-select-menu')).toContainText("Запит");
+  const typeMenu = page.locator('[data-document-type] + .document-custom-select .document-custom-select-menu');
+  await expect(typeMenu).toBeVisible();
+  await expect(typeMenu).toContainText("Запит");
+  await expect(typeMenu).not.toContainText("DOCX");
+  await expect(typeMenu).not.toContainText("Google Docs");
+  await expect(typeMenu).not.toContainText("PDF");
 
   await page.locator("[data-document-query]").fill("Дарницький");
   await expect(page.locator("#documents [data-document-row]").first()).toBeVisible();

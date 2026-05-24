@@ -2,6 +2,7 @@ import { deleteDocumentFromApi, saveDocumentToApi, saveMailingCampaignToApi, sen
 import { normalizeDocument } from "../state.js";
 
 const CASE_DOCUMENT_FOLDER_NAMES = ["Позови", "Клопотання", "Запити", "Відповіді та ухвали", "Інші документи"];
+const TECHNICAL_DOCUMENT_TYPES = new Set(["doc", "docx", "pdf", "txt", "rtf", "odt", "google docs", "google drive", "crm файл"]);
 
 function inferCaseDocumentFolder(doc = {}, fallback = "Інші документи") {
   if (fallback && !CASE_DOCUMENT_FOLDER_NAMES.includes(fallback)) return fallback;
@@ -16,6 +17,7 @@ function inferCaseDocumentFolder(doc = {}, fallback = "Інші документ
 function inferCaseDocumentType(doc = {}, folderName = "") {
   const folder = inferCaseDocumentFolder(doc, folderName);
   const rawType = String(doc.type || "").trim();
+  const normalizedType = rawType.toLowerCase();
   if (folder === "Позови") return "Позов";
   if (folder === "Клопотання") return "Клопотання";
   if (folder === "Запити") return "Запит";
@@ -23,7 +25,7 @@ function inferCaseDocumentType(doc = {}, folderName = "") {
     const haystack = [rawType, doc.name, doc.folder, folderName].map((value) => String(value || "").toLowerCase()).join(" ");
     return /ухвал/.test(haystack) ? "Ухвала" : "Відповідь";
   }
-  if (rawType && rawType !== "Документ") return rawType;
+  if (rawType && rawType !== "Документ" && !TECHNICAL_DOCUMENT_TYPES.has(normalizedType)) return rawType;
   return "Інший документ";
 }
 
