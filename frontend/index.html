@@ -496,7 +496,9 @@
           <label class="document-editor-field">Тип документа
             <select name="type">
               <option>Позов</option>
+              <option>Клопотання</option>
               <option>Адвокатський запит</option>
+              <option>Ухвала / відповідь</option>
               <option>Доказ</option>
               <option>Договір</option>
               <option>Рахунок</option>
@@ -535,7 +537,7 @@
           <button class="secondary document-draft-button" type="button" data-document-fill-draft>Заповнити чернетку</button>
         </div>
         <div class="document-editor-actions">
-          <button class="secondary" value="cancel" type="submit">Скасувати</button>
+          <button class="secondary" id="document-cancel-button" value="cancel" type="button">Скасувати</button>
           <button class="primary" id="document-submit-button" value="default" type="submit">Додати документ</button>
         </div>
       </form>
@@ -588,7 +590,7 @@
           <label class="document-editor-field document-editor-wide">Коментар<textarea name="archiveComment" rows="3" placeholder="Чому документ додано в архів або що з ним робити далі"></textarea></label>
         </div>
         <div class="document-editor-actions">
-          <button class="secondary" value="cancel" type="submit">Скасувати</button>
+          <button class="secondary" id="document-archive-cancel" value="cancel" type="button">Скасувати</button>
           <button class="primary" value="default" type="submit">Додати в архів</button>
         </div>
       </form>
@@ -613,8 +615,8 @@
           <input name="name" required placeholder="Наприклад: Завершені документи" />
         </label>
         <div class="document-editor-actions">
-          <button class="secondary" value="cancel" type="submit">Скасувати</button>
-          <button class="primary" value="default" type="submit">Зберегти</button>
+          <button class="secondary" id="document-archive-folder-cancel" value="cancel" type="button">Скасувати</button>
+          <button class="primary" id="document-archive-folder-submit" value="default" type="submit">Зберегти</button>
         </div>
       </form>
     </dialog>

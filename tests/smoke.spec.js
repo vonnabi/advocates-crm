@@ -92,6 +92,199 @@ test("global documents screen exposes document actions", async ({ page }) => {
   await expect(page.locator("#document-dialog")).toHaveJSProperty("open", true);
 });
 
+test("documents archive groups cases under clients", async ({ page }) => {
+  await openApp(page);
+
+  await page.locator('.nav-item[data-view="documents"]').click();
+  await expect(page.locator("#documents")).toHaveClass(/active/);
+
+  const clientNode = page.locator("#documents [data-document-client-node]").filter({ hasText: "Андрієнко Тест Документів" });
+  await expect(clientNode).toBeVisible();
+  await clientNode.click();
+  await expect(clientNode).toHaveClass(/active/);
+  await expect(page.locator(".documents-folder-head")).toContainText("Андрієнко Тест Документів");
+  await expect(page.locator(".documents-folder-head")).toContainText("Клієнт");
+  const caseNode = page.locator("#documents [data-document-case-node]").filter({ hasText: "0001" });
+  await expect(caseNode).toBeVisible();
+
+  await caseNode.click();
+  await expect(page.locator(".documents-folder-head")).toContainText("Усі документи справи");
+  await expect(page.locator(".documents-folder-head")).toContainText(/№20\d{2}\/0001/);
+  await expect(page.locator("#documents [data-document-row]").first()).toContainText(/№20\d{2}\/0001/);
+  await expect(page.locator("#documents .documents-tree-case.open [data-document-folder-node]").filter({ hasText: "Клопотання" })).toBeVisible();
+});
+
+test("document creation uses selected existing case folder", async ({ page }) => {
+  await openApp(page);
+
+  await page.locator('.nav-item[data-view="documents"]').click();
+  await expect(page.locator("#documents")).toHaveClass(/active/);
+
+  await page.locator("#documents [data-document-client-node]").filter({ hasText: "Андрієнко Тест Документів" }).click();
+  await page.locator("#documents [data-document-case-node]").filter({ hasText: "0001" }).click();
+  await page.locator("#documents .documents-tree-case.open [data-document-folder-node]").filter({ hasText: "Клопотання" }).click();
+  await expect(page.locator(".documents-folder-head")).toContainText("Клопотання");
+
+  await page.locator("#documents [data-documents-add-current]").click();
+  await expect(page.locator("#document-dialog")).toHaveJSProperty("open", true);
+  await expect(page.locator("#document-folder")).toHaveValue("1");
+  await expect(page.locator('#document-form input[name="newFolderName"]')).toBeEnabled();
+  await page.locator('#document-form select[name="type"]').selectOption("Клопотання", { force: true });
+  await page.locator('#document-form input[name="name"]').fill("Документ у клопотання.docx");
+  await page.locator("#document-submit-button").click();
+  await expect(page.locator("#office-editor-dialog")).toHaveJSProperty("open", true);
+  await page.locator("#office-editor-close").click();
+
+  await expect(page.locator(".documents-folder-head")).toContainText("Клопотання");
+  await expect(page.locator("#documents")).toContainText("Документ у клопотання.docx");
+  await expect(page.locator("#documents .documents-tree-case.open [data-document-folder-node]").filter({ hasText: "Нова папка" })).toHaveCount(0);
+});
+
+test("document creation sorts standard folders by document type", async ({ page }) => {
+  await openApp(page);
+
+  await page.locator('.nav-item[data-view="documents"]').click();
+  await expect(page.locator("#documents")).toHaveClass(/active/);
+  await page.locator("#documents [data-document-client-node]").filter({ hasText: "Андрієнко Тест Документів" }).click();
+  await page.locator("#documents [data-document-case-node]").filter({ hasText: "0001" }).click();
+  await page.locator("#documents .documents-tree-case.open [data-document-folder-node]").filter({ hasText: "Інші документи" }).click();
+  await expect(page.locator(".documents-folder-head")).toContainText("Інші документи");
+
+  await page.locator("#documents [data-documents-add-current]").click();
+  await expect(page.locator("#document-dialog")).toHaveJSProperty("open", true);
+  await expect(page.locator("#document-folder")).toHaveValue("4");
+  await page.locator('#document-form select[name="type"]').selectOption("Позов", { force: true });
+  await page.locator('#document-form input[name="name"]').fill("Авто позов з іншої папки.docx");
+  await page.locator("#document-submit-button").click();
+  await expect(page.locator("#office-editor-dialog")).toHaveJSProperty("open", true);
+  await page.locator("#office-editor-close").click();
+
+  await expect(page.locator(".documents-folder-head")).toContainText("Позови");
+  await expect(page.locator("#documents")).toContainText("Авто позов з іншої папки.docx");
+  await page.locator("#documents .documents-tree-case.open [data-document-folder-node]").filter({ hasText: "Інші документи" }).click();
+  await expect(page.locator(".documents-table")).not.toContainText("Авто позов з іншої папки.docx");
+});
+
+test("document dialog can create a subfolder under selected case folder", async ({ page }) => {
+  await openApp(page);
+
+  await page.locator('.nav-item[data-view="documents"]').click();
+  await expect(page.locator("#documents")).toHaveClass(/active/);
+  await page.locator("#documents [data-document-client-node]").filter({ hasText: "Андрієнко Тест Документів" }).click();
+  await page.locator("#documents [data-document-case-node]").filter({ hasText: "0001" }).click();
+  await page.locator("#documents .documents-tree-case.open [data-document-folder-node]").filter({ hasText: "Позови" }).first().click();
+
+  await page.locator("#documents [data-documents-add-current]").click();
+  await expect(page.locator("#document-dialog")).toHaveJSProperty("open", true);
+  await expect(page.locator("#document-folder")).toHaveValue("0");
+  await expect(page.locator('#document-form input[name="newFolderName"]')).toBeEnabled();
+  await page.locator('#document-form input[name="newFolderName"]').fill("Апеляція");
+  await page.locator('#document-form input[name="name"]').fill("Апеляційний позов.docx");
+  await page.locator("#document-submit-button").click();
+  await expect(page.locator("#office-editor-dialog")).toHaveJSProperty("open", true);
+  await page.locator("#office-editor-close").click();
+
+  const subfolder = page.locator("#documents .documents-tree-case.open [data-document-folder-node]").filter({ hasText: "Апеляція" });
+  await expect(subfolder).toBeVisible();
+  await subfolder.click();
+  await expect(page.locator(".documents-folder-head")).toContainText("Апеляція");
+  await expect(page.locator(".documents-table")).toContainText("Апеляційний позов.docx");
+});
+
+test("document rows show inferred type labels inside standard folders", async ({ page }) => {
+  await openApp(page);
+
+  await page.locator('.nav-item[data-view="documents"]').click();
+  await expect(page.locator("#documents")).toHaveClass(/active/);
+  await page.locator("#documents [data-document-client-node]").filter({ hasText: "Андрієнко Тест Документів" }).click();
+  await page.locator("#documents [data-document-case-node]").filter({ hasText: "0001" }).click();
+  await page.locator("#documents .documents-tree-case.open [data-document-folder-node]").filter({ hasText: "Запити" }).click();
+
+  const requestRow = page.locator("#documents [data-document-row]").filter({ hasText: "Запит документів до ТЦК" }).first();
+  await expect(requestRow).toBeVisible();
+  await expect(requestRow.locator(".document-title-button small")).toHaveText("Запит");
+  await expect(page.locator(".documents-side .documents-meta")).toContainText("Запит");
+});
+
+test("document dialog cancel, escape, and enter shortcuts work", async ({ page }) => {
+  await openApp(page);
+  await page.locator('.nav-item[data-view="documents"]').click();
+  await expect(page.locator("#documents")).toHaveClass(/active/);
+
+  await page.locator("#documents [data-documents-add]").click();
+  await expect(page.locator("#document-dialog")).toHaveJSProperty("open", true);
+  await page.locator("#document-cancel-button").click();
+  await expect(page.locator("#document-dialog")).toHaveJSProperty("open", false);
+
+  await page.locator("#documents [data-documents-add]").click();
+  await expect(page.locator("#document-dialog")).toHaveJSProperty("open", true);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#document-dialog")).toHaveJSProperty("open", false);
+
+  await page.locator("#documents [data-documents-add]").click();
+  await expect(page.locator("#document-dialog")).toHaveJSProperty("open", true);
+  await page.locator('#document-form input[name="name"]').fill("Enter створює документ.docx");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#document-dialog")).toHaveJSProperty("open", false);
+  await expect(page.locator("#office-editor-dialog")).toHaveJSProperty("open", true);
+  await page.locator("#office-editor-close").click();
+  await expect(page.locator("#documents")).toContainText("Enter створює документ.docx");
+});
+
+test("archive folder dialog enter and escape shortcuts work", async ({ page }) => {
+  await openApp(page);
+  await page.locator('.nav-item[data-view="documents"]').click();
+  await expect(page.locator("#documents")).toHaveClass(/active/);
+
+  await page.locator("[data-archive-folder-add-root]").click();
+  await expect(page.locator("#document-archive-folder-dialog")).toHaveJSProperty("open", true);
+  await page.locator('#document-archive-folder-form input[name="name"]').fill("Enter архівна папка");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#document-archive-folder-dialog")).toHaveJSProperty("open", false);
+  await expect(page.locator(".documents-storage-archive")).toContainText("Enter архівна папка");
+
+  await page.locator("[data-archive-folder-add-root]").click();
+  await expect(page.locator("#document-archive-folder-dialog")).toHaveJSProperty("open", true);
+  await page.locator('#document-archive-folder-form input[name="name"]').fill("Escape архівна папка");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#document-archive-folder-dialog")).toHaveJSProperty("open", false);
+  await expect(page.locator(".documents-storage-archive")).not.toContainText("Escape архівна папка");
+});
+
+test("new archive document selects storage folder and opens ONLYOFFICE state", async ({ page }) => {
+  const documentName = "Автотестовий архівний документ.docx";
+
+  await openApp(page);
+  await page.locator('.nav-item[data-view="documents"]').click();
+  await expect(page.locator("#documents")).toHaveClass(/active/);
+
+  await page.locator("#documents [data-documents-add]").click();
+  await expect(page.locator("#document-dialog")).toHaveJSProperty("open", true);
+  await page.locator('#document-form .document-target-mode label').filter({ hasText: "В архів" }).click();
+  await expect(page.locator("[data-document-archive-destination]")).toBeVisible();
+
+  const storageFolder = page.locator('[data-document-archive-picker="document-form"] [data-document-archive-pick]').filter({ hasText: "На зберіганні" });
+  await storageFolder.click();
+  await expect(storageFolder).toHaveClass(/active/);
+
+  await page.locator('#document-form input[name="name"]').fill(documentName);
+  await page.locator("#document-submit-button").click();
+
+  await expect(page.locator("#office-editor-dialog")).toHaveJSProperty("open", true);
+  await expect(page.locator("#office-editor-dialog")).toContainText("Потрібен URL файлу");
+  await page.locator("#office-editor-close").click();
+
+  await expect(page.locator("#documents")).toHaveClass(/active/);
+  await expect(page.locator(".documents-storage-folder-row.active")).toContainText("На зберіганні");
+  await expect(page.locator(".documents-folder-head")).toContainText("На зберіганні");
+  await expect(page.locator(".documents-folder-head")).toContainText("Папка самостійного архіву");
+  await expect(page.locator("#documents")).toContainText(documentName);
+
+  await page.locator(".documents-archive").first().locator("[data-document-all-node]").click();
+  await expect(page.locator(".documents-folder-head")).toContainText("Усі документи");
+  await expect(page.locator(".documents-folder-head")).toContainText("Архів по всіх справах");
+});
+
 test("case procedural action edit opens dialog", async ({ page }) => {
   await openApp(page);
   const demoCaseId = `${new Date().getFullYear()}/12345`;

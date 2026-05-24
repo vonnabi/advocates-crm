@@ -941,6 +941,15 @@ export function createDialogOpeners({
         `<option value="__new__">+ Створити нову папку</option>`
       ].join("");
     };
+    const syncNewFolderField = () => {
+      const folderSelect = form.elements.folder;
+      const newFolderInput = form.elements.newFolderName;
+      if (!folderSelect || !newFolderInput) return;
+      const isCreatingFolder = folderSelect.value === "__new__";
+      newFolderInput.required = isCreatingFolder;
+      newFolderInput.placeholder = isCreatingFolder ? "Наприклад: Докази" : "Підпапка у вибраній папці";
+      newFolderInput.closest(".document-editor-field")?.classList.toggle("is-subfolder-mode", !isCreatingFolder);
+    };
     const fillArchiveOptions = () => {
       const archiveSelect = form.elements.archiveFolderId;
       if (!archiveSelect) return;
@@ -965,10 +974,17 @@ export function createDialogOpeners({
       if (picker) {
         picker.innerHTML = archiveFolders.map((folder) => renderPickerFolder(folder)).join("") || `<p>Архівних папок ще немає.</p>`;
         picker.querySelectorAll("[data-document-archive-pick]").forEach((button) => {
-          button.addEventListener("click", () => {
+          button.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
             archiveSelect.value = button.dataset.documentArchivePick || "";
-            fillArchiveOptions();
+            picker.querySelectorAll("[data-document-archive-pick]").forEach((node) => {
+              const active = node.dataset.documentArchivePick === archiveSelect.value;
+              node.classList.toggle("active", active);
+              node.setAttribute("aria-pressed", String(active));
+            });
           });
+          button.setAttribute("aria-pressed", String(archiveSelect.value === button.dataset.documentArchivePick));
         });
       }
     };
@@ -982,6 +998,7 @@ export function createDialogOpeners({
       item = nextItem;
       form.elements.caseId.value = item.id;
       fillFolderOptions();
+      syncNewFolderField();
       syncDestinationSummary();
       setupDocumentCustomSelects(form);
     };
@@ -1024,6 +1041,7 @@ export function createDialogOpeners({
     syncDocumentTargetMode();
     fillClientSelect();
     fillFolderOptions();
+    syncNewFolderField();
     fillArchiveOptions();
     syncDestinationSummary();
     if (clientSelect) {
@@ -1034,6 +1052,12 @@ export function createDialogOpeners({
     }
     if (caseSelect) {
       caseSelect.onchange = () => applyDestinationCase(caseSelect.value);
+    }
+    if (form.elements.folder) {
+      form.elements.folder.onchange = () => {
+        syncNewFolderField();
+        syncDocumentCustomSelect(form.elements.folder);
+      };
     }
     setupDocumentCustomSelects(form);
     syncDocumentTargetMode();
@@ -1096,6 +1120,7 @@ export function createDialogOpeners({
       form.elements.comment.value = data?.comment || "";
       form.elements.content.value = data?.content || "";
       form.elements.folder.value = String(editContext.folderIndex ?? linked?.folderIndex ?? 0);
+      syncNewFolderField();
       if (form.elements.documentSourceMode) {
         form.elements.documentSourceMode.value = data?.url ? "google" : data?.fileName || data?.fileUrl ? "upload" : "onlyoffice";
       }

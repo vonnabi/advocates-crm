@@ -220,7 +220,91 @@ function buildProjectReadiness(state, activeIntegrations, integrationsCount, act
   return { overall, items, weakItems };
 }
 
-function renderReadinessSection(readiness, badge, focused) {
+function buildPilotChecklist(state, providerStatusByChannel, activeUsers) {
+  const demoStatus = state.demoDataStatus || {};
+  const demoCounts = demoStatus.counts || {};
+  const demoTotal = demoStatus.total ?? Object.values(demoCounts).reduce((sum, value) => sum + Number(value || 0), 0);
+  const enabledProviders = ["Telegram", "SMS", "Email"]
+    .map((channel) => providerStatusByChannel[channel])
+    .filter(Boolean);
+  const providersNeedingSetup = enabledProviders.filter((item) => item.status === "setup");
+  const integrationGaps = Object.keys(integrationConfigFields)
+    .map((channel) => {
+      const progress = integrationConfigProgress(channel, state);
+      return {
+        channel,
+        missing: Math.max(0, progress.total - progress.filled),
+        progress
+      };
+    })
+    .filter((item) => item.missing > 0);
+  const onlyOfficeProgress = integrationConfigProgress("ONLYOFFICE", state);
+  const onlyOfficeReady = onlyOfficeProgress.total > 0 && onlyOfficeProgress.filled >= onlyOfficeProgress.total;
+  const auditReady = Boolean((state.auditLogs || []).length || (state.settingsAudit || []).length);
+
+  return [
+    {
+      title: "Демо-дані",
+      done: demoStatus.enabled === false,
+      status: demoStatus.enabled === false ? "Пілотний режим" : `${demoTotal || 0} демо-записів`,
+      detail: demoStatus.enabled === false
+        ? "Стартові демо-записи вимкнені, можна заводити реальних клієнтів без змішування з макетом."
+        : "Перед реальними клієнтами відкрийте перемикач демо-даних у верхній панелі і очистіть демо-записи.",
+      action: demoStatus.enabled === false ? "Залишити резервну JSON-копію перед першим імпортом." : "Скачати копію CRM, потім натиснути «Очистити» у демо-даних."
+    },
+    {
+      title: "Канали зв'язку",
+      done: providersNeedingSetup.length === 0 && integrationGaps.every((item) => item.channel === "AI"),
+      status: providersNeedingSetup.length ? `${providersNeedingSetup.length} канали треба налаштувати` : "Канали готові",
+      detail: providersNeedingSetup.length
+        ? providersNeedingSetup.map((item) => `${item.channel}: ${item.detail}`).join(" ")
+        : "Telegram, SMS та Email не показують технічних стопперів у перевірці провайдера.",
+      action: integrationGaps.length
+        ? `Заповнити обов'язкові поля: ${integrationGaps.map((item) => `${item.channel} ${item.progress.filled}/${item.progress.total}`).join(", ")}.`
+        : "Відправити тестове повідомлення з кожного активного каналу."
+    },
+    {
+      title: "Документи",
+      done: onlyOfficeReady,
+      status: onlyOfficeReady ? "ONLYOFFICE налаштований" : `ONLYOFFICE ${onlyOfficeProgress.filled}/${onlyOfficeProgress.total}`,
+      detail: onlyOfficeReady
+        ? "CRM має URL Document Server, адресу доступу для контейнера і callback для збереження версій."
+        : "Для бойового редагування DOCX треба завершити поля ONLYOFFICE.",
+      action: onlyOfficeReady ? "Перевірити відкриття реального DOCX/PDF клієнта." : "Заповнити ONLYOFFICE і перевірити доступність сервера."
+    },
+    {
+      title: "Ролі та аудит",
+      done: activeUsers >= 4 && auditReady,
+      status: `${activeUsers} користувачів · ${auditReady ? "журнал працює" : "журнал порожній"}`,
+      detail: "Перед показом важливо пройти CRM під ролями адміністратора, адвоката, помічника і бухгалтера.",
+      action: "Провести короткий рольовий прогін: створення клієнта, справа, задача, документ, фінансова операція."
+    }
+  ];
+}
+
+function renderPilotChecklist(checklist, badge) {
+  return `
+    <div class="settings-pilot-checklist">
+      <div class="settings-pilot-head">
+        <strong>Перед пілотом</strong>
+        <span>${checklist.filter((item) => item.done).length}/${checklist.length} готово</span>
+      </div>
+      <div class="settings-pilot-grid">
+        ${checklist.map((item) => `<article class="${item.done ? "is-done" : "needs-work"}">
+          <div>
+            <strong>${item.title}</strong>
+            ${badge(item.done ? "OK" : "Дія", item.done ? "green" : "amber")}
+          </div>
+          <em>${item.status}</em>
+          <p>${item.detail}</p>
+          <small>${item.action}</small>
+        </article>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderReadinessSection(readiness, checklist, badge, focused) {
   return `
     <section class="panel settings-readiness-card ${focused ? "is-focused" : ""}" data-settings-section="readiness">
       <div class="settings-section-head">
@@ -249,6 +333,7 @@ function renderReadinessSection(readiness, badge, focused) {
         <strong>Найслабші місця зараз</strong>
         <span>${readiness.weakItems.map((item) => `${item.title} ${item.score}%`).join(" · ")}</span>
       </div>
+      ${renderPilotChecklist(checklist, badge)}
     </section>
   `;
 }
@@ -1814,6 +1899,7 @@ export function renderSettingsScreen(ctx) {
   const activeUsers = users.filter((user) => user.role !== "Видалений").length;
   state.settingsFocusedSection ||= "profile";
   const readiness = buildProjectReadiness(state, activeIntegrations, integrations.length, activeUsers);
+  const pilotChecklist = buildPilotChecklist(state, providerStatusByChannel, activeUsers);
   state.settingsAudit ||= [
     { date: settingsAuditDate(0, "09:30"), text: "Синхронізовано канали Telegram та SMS.", tone: "green" },
     { date: settingsAuditDate(1, "18:10"), text: "Оновлено профіль бюро для документів.", tone: "blue" },
@@ -1849,7 +1935,7 @@ export function renderSettingsScreen(ctx) {
         </button>
       </section>
 
-      ${renderReadinessSection(readiness, badge, state.settingsFocusedSection === "readiness")}
+      ${renderReadinessSection(readiness, pilotChecklist, badge, state.settingsFocusedSection === "readiness")}
 
       <section class="panel settings-profile-card ${state.settingsFocusedSection === "profile" ? "is-focused" : ""}" data-settings-section="profile">
         <div class="settings-section-head">

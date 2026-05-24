@@ -1,6 +1,32 @@
 import { deleteDocumentFromApi, saveDocumentToApi, shouldUseApi } from "../api.js";
 import { normalizeDocument } from "../state.js";
 
+const CASE_DOCUMENT_FOLDER_NAMES = ["Позови", "Клопотання", "Запити", "Відповіді та ухвали", "Інші документи"];
+
+function inferCaseDocumentFolder(doc = {}, fallback = "Інші документи") {
+  if (fallback && !CASE_DOCUMENT_FOLDER_NAMES.includes(fallback)) return fallback;
+  const haystack = [doc.type, doc.name, doc.folder, fallback].map((value) => String(value || "").toLowerCase()).join(" ");
+  if (/клопотан|клопа/.test(haystack)) return "Клопотання";
+  if (/адвокатськ.*запит|запит|витребуван/.test(haystack)) return "Запити";
+  if (/ухвал|відповід|рішенн|постанова/.test(haystack)) return "Відповіді та ухвали";
+  if (/позов|позовн|заява/.test(haystack)) return "Позови";
+  return CASE_DOCUMENT_FOLDER_NAMES.includes(fallback) ? "Інші документи" : fallback || "Інші документи";
+}
+
+function inferCaseDocumentType(doc = {}, folderName = "") {
+  const folder = inferCaseDocumentFolder(doc, folderName);
+  const rawType = String(doc.type || "").trim();
+  if (folder === "Позови") return "Позов";
+  if (folder === "Клопотання") return "Клопотання";
+  if (folder === "Запити") return "Запит";
+  if (folder === "Відповіді та ухвали") {
+    const haystack = [rawType, doc.name, doc.folder, folderName].map((value) => String(value || "").toLowerCase()).join(" ");
+    return /ухвал/.test(haystack) ? "Ухвала" : "Відповідь";
+  }
+  if (rawType && rawType !== "Документ") return rawType;
+  return "Інший документ";
+}
+
 function documentRows(ctx) {
   const { state, clientById, caseFolders, findFolderFileByDocument } = ctx;
   return state.cases.flatMap((item) => {
@@ -8,6 +34,7 @@ function documentRows(ctx) {
     const linkedDocumentIds = new Set(item.documents.map((doc) => doc.documentId).filter(Boolean));
     const proceduralRows = item.documents.map((doc, docIndex) => {
       const linked = findFolderFileByDocument(item, doc);
+      const folderName = inferCaseDocumentFolder(doc, linked?.folder?.name || doc.folder);
       return {
         ...doc,
         key: `${item.id}|procedural:${docIndex}`,
@@ -17,7 +44,8 @@ function documentRows(ctx) {
         client: client?.name || "Клієнт не вказаний",
         responsible: doc.responsible || item.responsible || client?.manager || "Не вказано",
         casePriority: item.priority,
-        folderName: linked?.folder?.name || "Процесуальні документи",
+        type: inferCaseDocumentType(doc, folderName),
+        folderName,
         sourceLabel: doc.source || linked?.file?.source || "CRM",
         docIndex
       };
@@ -35,11 +63,12 @@ function documentRows(ctx) {
           client: client?.name || "Клієнт не вказаний",
           responsible: file.responsible || item.responsible || client?.manager || "Не вказано",
           casePriority: item.priority,
-          folderName: folder.name,
+          folderName: inferCaseDocumentFolder(file, folder.name),
           sourceLabel: file.source || "Папка справи",
           folderIndex,
           fileIndex
         }))
+        .map((row) => ({ ...row, type: inferCaseDocumentType(row, row.folderName) }))
     );
     return [...proceduralRows, ...folderRows];
   });
@@ -170,20 +199,36 @@ function folderKey(caseId, folderName) {
   return `${caseId}|${folderName}`;
 }
 
+function folderDocumentCount(folder = {}) {
+  return (folder.files || []).length + (folder.children || []).reduce((sum, child) => sum + folderDocumentCount(child), 0);
+}
+
+function findCaseFolderByName(folders = [], name = "") {
+  for (const folder of folders) {
+    if (folder.name === name) return folder;
+    const nested = findCaseFolderByName(folder.children || [], name);
+    if (nested) return nested;
+  }
+  return null;
+}
+
 function activeArchiveSelection(ctx, rows) {
   const { state, caseFolders } = ctx;
+  const selectedClientId = state.documentArchiveClientId || "all";
   const selectedCaseId = state.documentArchiveCaseId || "all";
   const selectedCase = selectedCaseId === "all" ? null : state.cases.find((item) => item.id === selectedCaseId);
+  const selectedClient = selectedClientId === "all" ? null : state.clients.find((client) => String(client.id) === String(selectedClientId));
   const folders = selectedCase ? caseFolders(selectedCase) : [];
   const selectedFolderName = state.documentArchiveFolder || "";
-  const selectedFolder = selectedFolderName ? folders.find((folder) => folder.name === selectedFolderName) || null : null;
+  const selectedFolder = selectedFolderName ? findCaseFolderByName(folders, selectedFolderName) : null;
   const visibleRows = rows.filter((doc) => {
+    if (selectedClient && !selectedCase && doc.client !== selectedClient.name) return false;
     if (!selectedCase) return true;
     if (doc.caseId !== selectedCase.id) return false;
     if (!selectedFolder) return true;
     return doc.folderName === selectedFolder.name;
   });
-  return { selectedCase, selectedFolder, visibleRows, isAll: selectedCaseId === "all" };
+  return { selectedClient, selectedCase, selectedFolder, visibleRows, isAll: selectedClientId === "all" && selectedCaseId === "all" };
 }
 
 function archiveFolderId(name = "Архів") {
@@ -259,6 +304,43 @@ function renderArchivePickerTree(folders = [], selectedId = "", escapeHtml, dept
   `).join("");
 }
 
+function flattenStorageArchiveRows(folders = [], rows = []) {
+  const byKey = new Map(rows.map((doc) => [doc.key, doc]));
+  const byDocumentId = new Map(rows.filter((doc) => doc.documentId).map((doc) => [String(doc.documentId), doc]));
+  const walk = (items = [], depth = 0, parentNames = []) => items.flatMap((folder) => {
+    const path = [...parentNames, folder.name].filter(Boolean).join(" / ");
+    const documents = (folder.documents || []).map((archiveDoc, index) => {
+      const linked = archiveDoc.sourceKey ? byKey.get(archiveDoc.sourceKey) : null;
+      const documentId = archiveDoc.documentId ? String(archiveDoc.documentId) : "";
+      const byId = documentId ? byDocumentId.get(documentId) : null;
+      const base = linked || byId || {};
+      return {
+        ...archiveDoc,
+        ...base,
+        key: linked?.key || byId?.key || `storage:${folder.id}:${index}`,
+        caseId: archiveDoc.caseId || base.caseId || "",
+        caseTitle: archiveDoc.caseTitle || base.caseTitle || "",
+        client: archiveDoc.client || base.client || "Без справи",
+        folderName: path || folder.name || "Архів",
+        sourceLabel: base.sourceLabel || archiveDoc.source || "Архів",
+        type: archiveDoc.type || base.type || "Документ",
+        status: archiveDoc.status || base.status || "В архіві",
+        responseDue: archiveDoc.responseDue || base.responseDue || "",
+        submitted: archiveDoc.submitted || base.submitted || "",
+        dueState: base.dueState || { label: "Архів", tone: "muted", days: Infinity, overdue: false },
+        archivedAt: archiveDoc.archivedAt || "",
+        storageFolderId: folder.id,
+        storageDepth: depth
+      };
+    });
+    return [
+      ...documents,
+      ...walk(folder.children || [], depth + 1, [...parentNames, folder.name])
+    ];
+  });
+  return walk(folders);
+}
+
 export function renderDocumentsScreen(ctx) {
   const {
     state,
@@ -285,6 +367,7 @@ export function renderDocumentsScreen(ctx) {
   const storageArchiveFolders = ensureDocumentStorageArchive(state);
   const storageArchiveTotal = documentArchiveCount(storageArchiveFolders);
   const storageArchiveActive = state.documentStorageArchiveFolderId || "all";
+  const archiveScope = state.documentArchiveScope || "cases";
   const documentKeys = new Set(rows.map((doc) => doc.key));
   state.selectedDocumentKeys = (state.selectedDocumentKeys || []).filter((key) => documentKeys.has(key));
   const statuses = [...new Set(rows.map((doc) => doc.status).filter(Boolean))];
@@ -292,7 +375,23 @@ export function renderDocumentsScreen(ctx) {
   const clients = [...new Set(rows.map((doc) => doc.client).filter(Boolean))];
   const filtered = filteredDocuments(ctx, rows);
   const archive = activeArchiveSelection(ctx, filtered);
-  const tableRows = archive.visibleRows;
+  const allStorageRows = flattenStorageArchiveRows(storageArchiveFolders, rows);
+  const tableRows = archiveScope === "storage"
+    ? allStorageRows.filter((doc) => storageArchiveActive === "all" || doc.storageFolderId === storageArchiveActive)
+    : archive.visibleRows;
+  const clientArchiveGroups = state.cases.reduce((groups, item) => {
+    const client = ctx.clientById(item.clientId);
+    const clientId = String(client?.id || item.clientId || "none");
+    const clientName = client?.name || "Клієнт не вказаний";
+    if (!groups.has(clientId)) {
+      groups.set(clientId, { id: clientId, name: clientName, cases: [], count: 0 });
+    }
+    const group = groups.get(clientId);
+    const caseRows = filtered.filter((doc) => doc.caseId === item.id);
+    group.count += caseRows.length;
+    group.cases.push({ item, client, rows: caseRows, folders: caseFolders(item) });
+    return groups;
+  }, new Map());
   const tableRowKeys = new Set(tableRows.map((doc) => doc.key));
   state.selectedDocumentKeys = (state.selectedDocumentKeys || []).filter((key) => tableRowKeys.has(key));
   const selectedDocumentSet = new Set(state.selectedDocumentKeys || []);
@@ -332,15 +431,40 @@ export function renderDocumentsScreen(ctx) {
     (state.documentClientFilter || "all") !== "all" ||
     (state.documentDueFilter || "all") !== "all" ||
     (state.documentCaseFilter || "all") !== "all" ||
+    archiveScope === "storage" ||
     !archive.isAll;
   const allKpiActive = quickFilter === "all" && !hasManualDocumentFilters;
-  const archiveTitle = archive.isAll ? "Усі документи" : archive.selectedFolder?.name || "Усі документи справи";
-  const archiveSubtitle = archive.isAll
+  const archiveTitle = archiveScope === "storage"
+    ? storageArchiveActive === "all"
+      ? "Усі архівні"
+      : findArchiveFolder(storageArchiveFolders, storageArchiveActive)?.folder?.name || "Архів"
+    : archive.isAll
+    ? "Усі документи"
+    : archive.selectedFolder?.name || (archive.selectedCase ? "Усі документи справи" : archive.selectedClient?.name || "Усі документи");
+  const archiveSubtitle = archiveScope === "storage"
+    ? storageArchiveActive === "all"
+      ? "Самостійний архів без прив'язки до дерева справ"
+      : "Папка самостійного архіву"
+    : archive.isAll
     ? "Архів по всіх справах"
+    : archive.selectedClient && !archive.selectedCase
+    ? `Клієнт · ${archive.selectedClient.name}`
     : `№${archive.selectedCase?.id || selectedCase} · ${archive.selectedCase?.title || "Архів документів"}`;
   const documentsNode = $("#documents");
+  const renderCaseFolderNodes = (caseItem, folders = [], clientId = "", depth = 0) => folders.map((folder) => {
+    const count = filtered.filter((doc) => doc.caseId === caseItem.id && doc.folderName === folder.name).length || folderDocumentCount(folder);
+    const active = archiveScope === "cases" && archive.selectedCase?.id === caseItem.id && archive.selectedFolder?.name === folder.name;
+    return `
+      <button class="documents-folder-node ${active ? "active" : ""}" type="button" data-document-folder-node="${folderKey(caseItem.id, folder.name)}" data-document-folder-case-id="${escapeHtml(caseItem.id)}" data-document-folder-name="${escapeHtml(folder.name)}" data-document-client-id="${clientId}" style="--level:${depth}">
+        ${icon("file")}
+        <span>${escapeHtml(folder.name)}</span>
+        <em>${count}</em>
+      </button>
+      ${(folder.children || []).length ? renderCaseFolderNodes(caseItem, folder.children || [], clientId, depth + 1) : ""}
+    `;
+  }).join("");
   const renderStorageTree = (folders = [], depth = 0) => folders.map((folder) => {
-    const active = storageArchiveActive === folder.id;
+    const active = archiveScope === "storage" && storageArchiveActive === folder.id;
     const docs = folder.documents || [];
     const nested = folder.children || [];
     return `
@@ -446,36 +570,41 @@ export function renderDocumentsScreen(ctx) {
               <span>${state.cases.length} справ</span>
             </div>
             <div class="documents-tree">
-              <button class="documents-all-node ${archive.isAll ? "active" : ""}" type="button" data-document-all-node>
+              <button class="documents-all-node ${archiveScope === "cases" && archive.isAll ? "active" : ""}" type="button" data-document-all-node>
                 <span>${icon("file")}</span>
                 <strong>Усі документи</strong>
                 <em>${filtered.length}</em>
               </button>
-              ${state.cases.map((item) => {
-                const client = ctx.clientById(item.clientId);
-                const folders = caseFolders(item);
-                const caseRows = filtered.filter((doc) => doc.caseId === item.id);
-                const isOpen = archive.selectedCase?.id === item.id;
+              ${[...clientArchiveGroups.values()].map((group) => {
+                const clientOpen = archiveScope === "cases" && (
+                  String(state.documentArchiveClientId || "all") === group.id ||
+                  group.cases.some(({ item }) => archive.selectedCase?.id === item.id)
+                );
                 return `
-                  <div class="documents-tree-case ${isOpen ? "open" : ""}">
-                    <button class="documents-case-node ${isOpen && !archive.selectedFolder ? "active" : ""}" type="button" data-document-case-node="${item.id}">
+                  <div class="documents-tree-client ${clientOpen ? "open" : ""}">
+                    <button class="documents-client-node ${archiveScope === "cases" && clientOpen && !archive.selectedCase ? "active" : ""}" type="button" data-document-client-node="${group.id}">
                       <span>${icon("briefcase")}</span>
-                      <strong>№${item.id}</strong>
-                      <em>${caseRows.length}</em>
-                      <b class="documents-case-arrow">›</b>
-                      <small>${item.title}</small>
-                      <small class="documents-case-client">${client?.name || "Клієнт не вказаний"}</small>
+                      <strong>${escapeHtml(group.name)}</strong>
+                      <em>${group.count}</em>
+                      <b class="documents-client-arrow">›</b>
+                      <small>${group.cases.length} справ</small>
                     </button>
-                    ${isOpen ? `<div class="documents-folder-list">
-                      ${folders.map((folder) => {
-                        const count = filtered.filter((doc) => doc.caseId === item.id && doc.folderName === folder.name).length;
-                        const active = archive.selectedCase?.id === item.id && archive.selectedFolder?.name === folder.name;
+                    ${clientOpen ? `<div class="documents-client-case-list">
+                      ${group.cases.map(({ item, rows: caseRows, folders }) => {
+                        const isOpen = archiveScope === "cases" && archive.selectedCase?.id === item.id;
                         return `
-                          <button class="documents-folder-node ${active ? "active" : ""}" type="button" data-document-folder-node="${folderKey(item.id, folder.name)}">
-                            ${icon("file")}
-                            <span>${folder.name}</span>
-                            <em>${count}</em>
-                          </button>
+                          <div class="documents-tree-case ${isOpen ? "open" : ""}">
+                            <button class="documents-case-node ${isOpen && !archive.selectedFolder ? "active" : ""}" type="button" data-document-case-node="${item.id}" data-document-client-id="${group.id}">
+                              <span>${icon("file")}</span>
+                              <strong>№${item.id}</strong>
+                              <em>${caseRows.length}</em>
+                              <b class="documents-case-arrow">›</b>
+                              <small>${escapeHtml(item.title)}</small>
+                            </button>
+                            ${isOpen ? `<div class="documents-folder-list">
+                              ${renderCaseFolderNodes(item, folders, group.id) || `<p class="documents-tree-empty">Папок ще немає</p>`}
+                            </div>` : ""}
+                          </div>
                         `;
                       }).join("") || `<p class="documents-tree-empty">Папок ще немає</p>`}
                     </div>` : ""}
@@ -492,7 +621,7 @@ export function renderDocumentsScreen(ctx) {
             </div>
             <button class="secondary documents-storage-add-folder" type="button" data-archive-folder-add-root><i class="folder-icon" aria-hidden="true"></i> Додати папку</button>
             <div class="documents-tree">
-              <button class="documents-all-node ${storageArchiveActive === "all" ? "active" : ""}" type="button" data-document-storage-folder="all">
+              <button class="documents-all-node ${archiveScope === "storage" && storageArchiveActive === "all" ? "active" : ""}" type="button" data-document-storage-folder="all">
                 <span>${icon("archive")}</span>
                 <strong>Усі архівні</strong>
                 <em>${storageArchiveTotal}</em>
@@ -510,7 +639,7 @@ export function renderDocumentsScreen(ctx) {
             </div>
             <div class="documents-folder-head-actions">
               <span>${tableRows.length} документів</span>
-              ${!archive.isAll ? `<button class="secondary" type="button" data-documents-add-current>${icon("file")} Додати</button>` : ""}
+              ${archiveScope === "cases" && archive.selectedCase ? `<button class="secondary" type="button" data-documents-add-current>${icon("file")} Додати</button>` : ""}
               ${archive.selectedFolder && selectedFolderIndex >= 0 ? `<button class="secondary" type="button" data-documents-edit-folder>${icon("edit")} Папка</button>` : ""}
             </div>
           </div>
@@ -729,10 +858,22 @@ export function renderDocumentsScreen(ctx) {
     };
     if (existing) Object.assign(existing, payload);
     else folder.documents.unshift(payload);
+    state.documentArchiveScope = "storage";
     state.documentStorageArchiveFolderId = folder.id;
     return true;
   };
   if (archiveForm) {
+    archiveForm.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        archiveDialog?.close();
+        return;
+      }
+      if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.target?.matches?.("textarea, button, [role='button']")) return;
+      event.preventDefault();
+      archiveForm.requestSubmit();
+    });
     archiveForm.onsubmit = (event) => {
       if (event.submitter?.value === "cancel") return;
       event.preventDefault();
@@ -754,6 +895,8 @@ export function renderDocumentsScreen(ctx) {
   }
   const archiveClose = $("#document-archive-close");
   if (archiveClose) archiveClose.onclick = () => archiveDialog?.close();
+  const archiveCancel = $("#document-archive-cancel");
+  if (archiveCancel) archiveCancel.onclick = () => archiveDialog?.close();
   const folderDialog = $("#document-archive-folder-dialog");
   const folderForm = $("#document-archive-folder-form");
   const openArchiveFolderDialog = ({ mode = "create", folderId = "", parentId = "" } = {}) => {
@@ -768,6 +911,17 @@ export function renderDocumentsScreen(ctx) {
     folderDialog.showModal();
   };
   if (folderForm) {
+    folderForm.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        folderDialog?.close();
+        return;
+      }
+      if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.target?.matches?.("textarea, button, [role='button']")) return;
+      event.preventDefault();
+      folderForm.requestSubmit($("#document-archive-folder-submit"));
+    });
     folderForm.onsubmit = (event) => {
       if (event.submitter?.value === "cancel") return;
       event.preventDefault();
@@ -796,6 +950,8 @@ export function renderDocumentsScreen(ctx) {
   }
   const folderClose = $("#document-archive-folder-close");
   if (folderClose) folderClose.onclick = () => folderDialog?.close();
+  const folderCancel = $("#document-archive-folder-cancel");
+  if (folderCancel) folderCancel.onclick = () => folderDialog?.close();
   const archiveDeleteDialog = $("#archive-folder-delete-dialog");
   const archiveDeleteTitle = $("#archive-folder-delete-title");
   const archiveDeleteText = $("#archive-folder-delete-text");
@@ -1026,6 +1182,8 @@ export function renderDocumentsScreen(ctx) {
       state.documentClientFilter = "all";
       state.documentDueFilter = "all";
       state.documentCaseFilter = "all";
+      state.documentArchiveScope = "cases";
+      state.documentArchiveClientId = "all";
       state.documentArchiveCaseId = "all";
       state.documentArchiveFolder = "";
       state.selectedDocumentKey = "";
@@ -1036,6 +1194,8 @@ export function renderDocumentsScreen(ctx) {
   documentsNode.querySelector("[data-document-query]")?.addEventListener("input", (event) => {
     state.documentQuery = event.currentTarget.value;
     state.documentQuickFilter = "all";
+    state.documentArchiveScope = "cases";
+    state.documentArchiveClientId = "all";
     state.documentArchiveCaseId = "all";
     state.documentArchiveFolder = "";
     state.selectedDocumentKeys = [];
@@ -1047,12 +1207,14 @@ export function renderDocumentsScreen(ctx) {
   documentsNode.querySelector("[data-document-status]")?.addEventListener("change", (event) => {
     state.documentQuickFilter = "all";
     state.documentStatusFilter = event.currentTarget.value;
+    state.documentArchiveScope = "cases";
     state.selectedDocumentKeys = [];
     renderDocumentsScreen(ctx);
   });
   documentsNode.querySelector("[data-document-type]")?.addEventListener("change", (event) => {
     state.documentQuickFilter = "all";
     state.documentTypeFilter = event.currentTarget.value;
+    state.documentArchiveScope = "cases";
     state.selectedDocumentKeys = [];
     renderDocumentsScreen(ctx);
   });
@@ -1060,6 +1222,8 @@ export function renderDocumentsScreen(ctx) {
     state.documentQuickFilter = "all";
     state.documentClientFilter = event.currentTarget.value;
     state.documentCaseFilter = "all";
+    state.documentArchiveScope = "cases";
+    state.documentArchiveClientId = "all";
     state.documentArchiveCaseId = "all";
     state.documentArchiveFolder = "";
     state.selectedDocumentKey = "";
@@ -1069,10 +1233,14 @@ export function renderDocumentsScreen(ctx) {
   documentsNode.querySelector("[data-document-case]")?.addEventListener("change", (event) => {
     state.documentQuickFilter = "all";
     state.documentCaseFilter = event.currentTarget.value;
+    state.documentArchiveScope = "cases";
     if (event.currentTarget.value !== "all") {
+      const selectedFilterCase = state.cases.find((item) => item.id === event.currentTarget.value);
+      state.documentArchiveClientId = selectedFilterCase ? String(selectedFilterCase.clientId) : "all";
       state.documentArchiveCaseId = event.currentTarget.value;
       state.documentArchiveFolder = "";
     } else {
+      state.documentArchiveClientId = "all";
       state.documentArchiveCaseId = "all";
       state.documentArchiveFolder = "";
     }
@@ -1082,6 +1250,7 @@ export function renderDocumentsScreen(ctx) {
   documentsNode.querySelector("[data-document-due-filter]")?.addEventListener("click", () => {
     state.documentQuickFilter = "all";
     state.documentDueFilter = state.documentDueFilter === "overdue" ? "all" : "overdue";
+    state.documentArchiveScope = "cases";
     state.selectedDocumentKeys = [];
     renderDocumentsScreen(ctx);
   });
@@ -1093,6 +1262,8 @@ export function renderDocumentsScreen(ctx) {
     state.documentClientFilter = "all";
     state.documentDueFilter = "all";
     state.documentCaseFilter = "all";
+    state.documentArchiveScope = "cases";
+    state.documentArchiveClientId = "all";
     state.documentArchiveCaseId = "all";
     state.documentArchiveFolder = "";
     state.selectedDocumentKey = "";
@@ -1236,6 +1407,8 @@ export function renderDocumentsScreen(ctx) {
     });
   });
   documentsNode.querySelector("[data-document-all-node]")?.addEventListener("click", () => {
+    state.documentArchiveScope = "cases";
+    state.documentArchiveClientId = "all";
     state.documentArchiveCaseId = "all";
     state.documentArchiveFolder = "";
     state.documentCaseFilter = "all";
@@ -1243,8 +1416,22 @@ export function renderDocumentsScreen(ctx) {
     state.selectedDocumentKeys = [];
     renderDocumentsScreen(ctx);
   });
+  documentsNode.querySelectorAll("[data-document-client-node]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.documentArchiveScope = "cases";
+      state.documentArchiveClientId = button.dataset.documentClientNode || "all";
+      state.documentArchiveCaseId = "all";
+      state.documentArchiveFolder = "";
+      state.documentCaseFilter = "all";
+      state.selectedDocumentKey = "";
+      state.selectedDocumentKeys = [];
+      renderDocumentsScreen(ctx);
+    });
+  });
   documentsNode.querySelectorAll("[data-document-case-node]").forEach((button) => {
     button.addEventListener("click", () => {
+      state.documentArchiveScope = "cases";
+      state.documentArchiveClientId = button.dataset.documentClientId || state.documentArchiveClientId || "all";
       state.documentArchiveCaseId = button.dataset.documentCaseNode;
       state.documentArchiveFolder = "";
       state.documentCaseFilter = "all";
@@ -1255,9 +1442,12 @@ export function renderDocumentsScreen(ctx) {
   });
   documentsNode.querySelectorAll("[data-document-folder-node]").forEach((button) => {
     button.addEventListener("click", () => {
-      const [caseId, ...folderParts] = button.dataset.documentFolderNode.split("|");
+      const [fallbackCaseId, ...folderParts] = button.dataset.documentFolderNode.split("|");
+      const caseId = button.dataset.documentFolderCaseId || fallbackCaseId;
+      state.documentArchiveScope = "cases";
+      state.documentArchiveClientId = button.dataset.documentClientId || state.documentArchiveClientId || "all";
       state.documentArchiveCaseId = caseId;
-      state.documentArchiveFolder = folderParts.join("|");
+      state.documentArchiveFolder = button.dataset.documentFolderName || folderParts.join("|");
       state.documentCaseFilter = "all";
       state.selectedDocumentKey = "";
       state.selectedDocumentKeys = [];
@@ -1266,7 +1456,10 @@ export function renderDocumentsScreen(ctx) {
   });
   documentsNode.querySelectorAll("[data-document-storage-folder]").forEach((button) => {
     button.addEventListener("click", () => {
+      state.documentArchiveScope = "storage";
       state.documentStorageArchiveFolderId = button.dataset.documentStorageFolder || "all";
+      state.selectedDocumentKey = "";
+      state.selectedDocumentKeys = [];
       renderDocumentsScreen(ctx);
     });
   });
@@ -1292,9 +1485,8 @@ export function renderDocumentsScreen(ctx) {
     button.addEventListener("click", () => {
       const key = button.dataset.documentStorageDoc;
       if (!key) return;
+      state.documentArchiveScope = "storage";
       state.selectedDocumentKey = key;
-      state.documentArchiveCaseId = "all";
-      state.documentArchiveFolder = "";
       renderDocumentsScreen(ctx);
     });
   });

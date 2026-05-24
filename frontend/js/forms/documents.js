@@ -1,6 +1,44 @@
 import { saveDocumentToApi, shouldUseApi, uploadDocumentFileToApi } from "../api.js";
 import { normalizeDocument } from "../state.js";
 
+const CASE_DOCUMENT_FOLDER_NAMES = ["Позови", "Клопотання", "Запити", "Відповіді та ухвали", "Інші документи"];
+
+function inferCaseDocumentFolder(doc = {}, fallback = "Інші документи") {
+  if (fallback && !CASE_DOCUMENT_FOLDER_NAMES.includes(fallback)) return fallback;
+  const haystack = [doc.type, doc.name, doc.folder, fallback].map((value) => String(value || "").toLowerCase()).join(" ");
+  if (/клопотан|клопа/.test(haystack)) return "Клопотання";
+  if (/адвокатськ.*запит|запит|витребуван/.test(haystack)) return "Запити";
+  if (/ухвал|відповід|рішенн|постанова/.test(haystack)) return "Відповіді та ухвали";
+  if (/позов|позовн|заява/.test(haystack)) return "Позови";
+  return CASE_DOCUMENT_FOLDER_NAMES.includes(fallback) ? "Інші документи" : fallback || "Інші документи";
+}
+
+function findOrCreateCaseFolder(folders = [], name = "Інші документи", today = "") {
+  let folder = folders.find((entry) => entry.name === name);
+  if (!folder) {
+    folder = { name, updated: today, files: [], children: [] };
+    folders.push(folder);
+  }
+  if (!Array.isArray(folder.files)) folder.files = [];
+  if (!Array.isArray(folder.children)) folder.children = [];
+  return folder;
+}
+
+function findOrCreateCaseSubfolder(parent, name = "Нова підпапка", today = "") {
+  if (!parent) return null;
+  if (!Array.isArray(parent.children)) parent.children = [];
+  const cleanName = String(name || "").trim();
+  if (!cleanName) return parent;
+  let folder = parent.children.find((entry) => entry.name === cleanName);
+  if (!folder) {
+    folder = { name: cleanName, updated: today, files: [], children: [] };
+    parent.children.push(folder);
+  }
+  if (!Array.isArray(folder.files)) folder.files = [];
+  if (!Array.isArray(folder.children)) folder.children = [];
+  return folder;
+}
+
 export function setupDocumentForm({
   state,
   $,
@@ -97,6 +135,7 @@ export function setupDocumentForm({
     };
     if (existing) Object.assign(existing, payload);
     else folder.documents.unshift(payload);
+    state.documentArchiveScope = "storage";
     state.documentStorageArchiveFolderId = folder.id;
   }
 
@@ -335,7 +374,26 @@ export function setupDocumentForm({
     return normalizeDocument(await uploadDocumentFileToApi(savedDocument.id, file));
   }
 
-  $("#document-form").addEventListener("submit", async (event) => {
+  const documentForm = $("#document-form");
+  const documentDialog = $("#document-dialog");
+  const closeDocumentDialog = () => {
+    if (documentDialog?.open) documentDialog.close();
+  };
+  $("#document-cancel-button")?.addEventListener("click", closeDocumentDialog);
+  documentForm.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeDocumentDialog();
+      return;
+    }
+    if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+    const target = event.target;
+    if (target?.matches?.("textarea, select, button, [role='button']")) return;
+    event.preventDefault();
+    documentForm.requestSubmit($("#document-submit-button"));
+  });
+
+  documentForm.addEventListener("submit", async (event) => {
     if (event.submitter?.value === "cancel") return;
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -393,28 +451,60 @@ export function setupDocumentForm({
         content
       };
       const uploadFile = fileName ? file : documentSourceMode === "onlyoffice" ? makeDocumentFile(documentCopyPayload, onlyOfficeCreateFormat) : null;
+      let savedDocument = null;
+      if (documentSourceMode === "onlyoffice" && shouldUseApi(state) && item) {
+        try {
+          savedDocument = normalizeDocument(await saveDocumentToApi({
+            caseId: item.id,
+            documentId: localDocumentId,
+            name,
+            type: form.get("type"),
+            folder: targetArchiveFolder.name,
+            status: form.get("status"),
+            submitted,
+            responseDue,
+            comment: form.get("comment"),
+            content,
+            url,
+            responsible: item.responsible,
+            history: [{ date: today, text: `Створено архівний документ: ${name}.` }]
+          }));
+          savedDocument = await uploadSavedFileIfNeeded(savedDocument, uploadFile);
+        } catch (_error) {
+          showToast("Не вдалося створити файл для ONLYOFFICE у базі.", "danger");
+          return;
+        }
+        item.documents.unshift(savedDocument);
+      }
       const createdDocument = {
-        documentId: localDocumentId,
-        name,
-        type: form.get("type"),
-        folder: targetArchiveFolder.name,
-        status: form.get("status"),
-        submitted,
-        responseDue,
-        comment: form.get("comment"),
+        ...savedDocument,
+        id: savedDocument?.id,
+        documentId: savedDocument?.documentId || savedDocument?.id || localDocumentId,
+        name: savedDocument?.name || name,
+        type: savedDocument?.type || form.get("type"),
+        folder: savedDocument?.folder || targetArchiveFolder.name,
+        status: savedDocument?.status || form.get("status"),
+        submitted: savedDocument?.submitted || submitted,
+        responseDue: savedDocument?.responseDue || responseDue,
+        comment: savedDocument?.comment || form.get("comment"),
         content,
-        fileName: uploadFile?.name || fileName,
+        fileName: savedDocument?.fileName || uploadFile?.name || fileName,
         fileObject: fileName ? file : uploadFile || null,
-        fileUrl: "",
-        onlyOfficeCallbackUrl: "",
-        url,
-        source,
+        fileUrl: savedDocument?.fileUrl || "",
+        onlyOfficeCallbackUrl: savedDocument?.onlyOfficeCallbackUrl || "",
+        url: savedDocument?.url || url,
+        source: savedDocument?.source || source,
         added: today
       };
-      addDocumentToArchive(targetArchiveFolder, createdDocument, null, today, form.get("comment"));
+      addDocumentToArchive(targetArchiveFolder, createdDocument, savedDocument ? item : null, today, form.get("comment"));
       $("#document-dialog").close();
       renderAll();
       switchView("documents");
+      if (documentSourceMode === "onlyoffice" && typeof openOfficeEditor === "function") {
+        openOfficeEditor(createdDocument, { returnView: "documents" });
+        showToast(createdDocument.fileUrl ? "Документ створено в архіві і відкрито в ONLYOFFICE." : "Документ створено в архіві. Для редагування в ONLYOFFICE потрібен серверний файл.");
+        return;
+      }
       showToast("Документ додано в архів.");
       return;
     }
@@ -439,7 +529,10 @@ export function setupDocumentForm({
           ? (nextFileName ? "Файл + Google посилання" : "Google посилання")
           : "ONLYOFFICE";
       const selectedFolderName = folders[Number(form.get("folder"))]?.name;
-      const folderName = folders[folderIndex]?.name || linked?.folder?.name || selectedFolderName || "Процесуальні документи";
+      const folderName = inferCaseDocumentFolder(
+        { name, type: form.get("type"), folder: folders[folderIndex]?.name || linked?.folder?.name || selectedFolderName },
+        folders[folderIndex]?.name || linked?.folder?.name || selectedFolderName
+      );
       const documentCopyPayload = {
         item,
         name,
@@ -527,13 +620,22 @@ export function setupDocumentForm({
     }
 
     let targetFolder = folders[Number(selectedFolder)] || folders[0];
+    const requestedSubfolderName = String(form.get("newFolderName") || "").trim();
     if (selectedFolder === "__new__") {
-      const folderName = form.get("newFolderName") || "Нова папка";
-      targetFolder = { name: folderName, updated: today, files: [] };
+      const folderName = requestedSubfolderName || "Нова папка";
+      targetFolder = { name: folderName, updated: today, files: [], children: [] };
       folders.push(targetFolder);
       state.openFolderIndex = folders.length - 1;
     } else {
-      state.openFolderIndex = Number(selectedFolder);
+      const inferredFolderName = inferCaseDocumentFolder(
+        { name, type: form.get("type"), folder: targetFolder?.name },
+        targetFolder?.name
+      );
+      targetFolder = findOrCreateCaseFolder(folders, inferredFolderName, today);
+      if (requestedSubfolderName) {
+        targetFolder = findOrCreateCaseSubfolder(targetFolder, requestedSubfolderName, today);
+      }
+      state.openFolderIndex = folders.findIndex((folder) => folder === targetFolder);
     }
     const documentCopyPayload = {
       item,
@@ -547,7 +649,6 @@ export function setupDocumentForm({
       content
     };
     const uploadFile = fileName ? file : documentSourceMode === "onlyoffice" ? makeDocumentFile(documentCopyPayload, onlyOfficeCreateFormat) : null;
-    const targetArchiveFolder = resolveArchiveFolder(form, today);
     const localDocumentId = makeDocumentId();
     let savedDocument = null;
     if (shouldUseApi(state)) {
@@ -615,13 +716,14 @@ export function setupDocumentForm({
     };
     targetFolder.files.unshift(createdFolderFile);
     targetFolder.updated = today;
-    addDocumentToArchive(targetArchiveFolder, createdDocument, item, today, form.get("comment"));
     item.history.unshift({
       date: today,
       text: `Додано документ: ${name} у папку «${targetFolder.name}».`
     });
     state.selectedCaseId = item.id;
     state.openCaseSection = "documents";
+    state.documentArchiveScope = "cases";
+    state.documentArchiveClientId = String(item.clientId || "all");
     state.documentArchiveCaseId = item.id;
     state.documentArchiveFolder = targetFolder.name;
     state.selectedDocumentKey = `${item.id}|procedural:0`;
