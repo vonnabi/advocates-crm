@@ -21353,8 +21353,15 @@ dialog::backdrop {
   text-align: center;
 }
 
+.document-send-title {
+  display: block;
+  grid-template-columns: none;
+}
+
 .document-export-title h2,
-.document-export-title p {
+.document-export-title p,
+.document-send-title h2,
+.document-send-title p {
   margin-inline: auto;
 }
 

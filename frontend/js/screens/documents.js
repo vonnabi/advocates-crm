@@ -416,9 +416,21 @@ function documentSendContact(state, client, channel, mode, manual = "") {
   return "";
 }
 
+function absoluteDocumentUrl(value = "") {
+  const url = String(value || "").trim();
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return url;
+  try {
+    return new URL(url, window.location.origin).href;
+  } catch (_error) {
+    return url;
+  }
+}
+
 function documentSendMessage(doc, item, contact, channel) {
-  const fileLine = doc.fileUrl || doc.url
-    ? `Посилання на документ: ${doc.fileUrl || doc.url}`
+  const documentUrl = absoluteDocumentUrl(doc.fileUrl || doc.url);
+  const fileLine = documentUrl
+    ? `Посилання на документ: ${documentUrl}`
     : "Документ буде доступний у CRM.";
   return [
     `Надсилаємо документ: ${doc.name}`,
@@ -493,7 +505,7 @@ function openDocumentSendDialog(ctx, key) {
       recipientCount: 1,
       documentId: doc.documentId || doc.id || "",
       documentName: doc.name,
-      documentUrl: doc.fileUrl || doc.url || "",
+      documentUrl: absoluteDocumentUrl(doc.fileUrl || doc.url),
       externalRecipient: mode === "client" ? "" : contact
     };
     try {

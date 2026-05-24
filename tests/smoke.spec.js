@@ -266,6 +266,7 @@ test("document menu can open send dialog and prepare Telegram send", async ({ pa
   await expect(page.locator("#document-send-dialog")).toContainText("Відправити документ");
   await expect(page.locator('#document-send-form select[name="channel"]')).toHaveValue("Telegram");
   await expect(page.locator("#document-send-recipient-preview")).toContainText("@test_documents");
+  await expect(page.locator('#document-send-form textarea[name="message"]')).toHaveValue(/Надсилаємо документ/);
   await page.locator('#document-send-form select[name="recipientMode"]').selectOption("manual");
   await page.locator('#document-send-form input[name="manualRecipient"]').fill("@manual_client");
   await page.locator("#document-send-submit").click();
