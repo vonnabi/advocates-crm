@@ -428,6 +428,12 @@ test("API empty demo mode still renders the workspace and AI empty state", async
   await expect(page.locator("[data-clients-footer-range]")).toHaveText("Показано 0 - 0 з 0 клієнтів");
   await expect(page.locator("[data-clients-pagination] button")).toHaveCount(0);
   await expect(page.locator("[data-client-mailing-recipient-count]")).toHaveText("0 клієнтів");
+  await page.locator("#add-client").click();
+  await expect(page.locator("#client-dialog")).toHaveJSProperty("open", true);
+  await expect(page.locator('#client-form select[name="manager"] option')).toHaveText(["Admin"]);
+  await expect(page.locator("#client-dialog")).not.toContainText("Мельник Н.П.");
+  await expect(page.locator("#client-dialog")).not.toContainText("Кравчук А.В.");
+  await page.locator("#client-dialog-close").click();
   await page.locator('.nav-item[data-view="settings"]').click();
   await expect(page.locator('[data-settings-focus="audit"]')).toContainText("0");
   await expect(page.locator(".settings-audit-card")).toContainText("Журнал змін порожній");

@@ -4,8 +4,10 @@ from django.core.management import call_command
 from django.db.models import Q
 from django.test import TestCase
 from django.utils import timezone
+from io import BytesIO
 from unittest.mock import patch
 from urllib.parse import urlsplit
+from zipfile import ZipFile
 
 from apps.accounts.models import CRMSettings, UserProfile
 from apps.audit.models import AuditLog
@@ -121,9 +123,9 @@ class DemoApiTests(TestCase):
         self.assertEqual(CaseMember.objects.filter(is_demo=True).count(), 0)
         self.assertEqual(CalendarEvent.objects.filter(is_demo=True).count(), 0)
         self.assertEqual(Payment.objects.filter(is_demo=True).count() + Invoice.objects.filter(is_demo=True).count() + Expense.objects.filter(is_demo=True).count(), 0)
-        self.assertFalse(Client.objects.filter(pk=manual_client.pk).exists())
-        self.assertFalse(Case.objects.filter(number=manual_case.number).exists())
-        self.assertFalse(Task.objects.filter(title="Реальна задача").exists())
+        self.assertTrue(Client.objects.filter(pk=manual_client.pk).exists())
+        self.assertTrue(Case.objects.filter(number=manual_case.number).exists())
+        self.assertTrue(Task.objects.filter(title="Реальна задача").exists())
         self.assertTrue(get_user_model().objects.filter(email="ivanenko@advocates.crm").exists())
         self.assertFalse(get_user_model().objects.filter(email__in=[
             "melnyk@advocates.crm",
@@ -133,7 +135,7 @@ class DemoApiTests(TestCase):
 
         empty_bootstrap = self.client.get("/api/bootstrap/")
         self.assertEqual(empty_bootstrap.status_code, 200)
-        self.assertEqual(empty_bootstrap.json()["meta"]["clients"], 0)
+        self.assertEqual(empty_bootstrap.json()["meta"]["clients"], 1)
 
         restore_response = self.client.post(
             "/api/demo-data/",
@@ -146,9 +148,9 @@ class DemoApiTests(TestCase):
         self.assertEqual(Case.objects.filter(is_demo=True).count(), 5)
         self.assertEqual(Task.objects.filter(is_demo=True).count(), 9)
         self.assertEqual(CalendarEvent.objects.filter(is_demo=True).count(), 6)
-        self.assertEqual(Client.objects.count(), 5)
-        self.assertEqual(Case.objects.count(), 5)
-        self.assertEqual(Task.objects.count(), 9)
+        self.assertEqual(Client.objects.count(), 6)
+        self.assertEqual(Case.objects.count(), 6)
+        self.assertEqual(Task.objects.count(), 10)
         self.assertEqual(CalendarEvent.objects.count(), 6)
         self.assertGreater(ClientCommunication.objects.count(), 0)
 
@@ -243,7 +245,7 @@ class DemoApiTests(TestCase):
         self.assertTrue(get_user_model().objects.filter(email="kravchuk@advocates.crm").exists())
         self.assertTrue(get_user_model().objects.filter(email="petrenko@advocates.crm").exists())
 
-    def test_demo_clear_removes_user_records_attached_to_demo_parent(self):
+    def test_demo_clear_keeps_user_records_attached_to_demo_parent(self):
         demo_case = Case.objects.get(number=demo_case_number("12345"))
         demo_client_id = demo_case.client_id
         user_document = CaseDocument.objects.create(
@@ -261,9 +263,9 @@ class DemoApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["demoData"]["enabled"])
-        self.assertFalse(CaseDocument.objects.filter(pk=user_document.pk).exists())
-        self.assertFalse(Case.objects.filter(number=demo_case_number("12345")).exists())
-        self.assertFalse(Client.objects.filter(pk=demo_client_id).exists())
+        self.assertTrue(CaseDocument.objects.filter(pk=user_document.pk, is_demo=False).exists())
+        self.assertTrue(Case.objects.filter(number=demo_case_number("12345"), is_demo=False).exists())
+        self.assertTrue(Client.objects.filter(pk=demo_client_id, is_demo=False).exists())
         self.assertEqual(Case.objects.filter(is_demo=True).count(), 0)
         self.assertEqual(Client.objects.filter(is_demo=True).count(), 0)
 
@@ -337,6 +339,85 @@ class DemoApiTests(TestCase):
         self.assertEqual(callback_response.json(), {"error": 0})
         document.refresh_from_db()
         self.assertEqual(document.file.read(), b"edited-docx")
+
+    def test_finance_invoice_and_act_create_real_docx_files(self):
+        self.client.post(
+            "/api/auth/login/",
+            {"email": "ivanenko@advocates.crm", "password": "demo12345"},
+            content_type="application/json",
+        )
+        case = Case.objects.first()
+
+        invoice_response = self.client.post(
+            "/api/finance/operations/",
+            {
+                "action": "invoice",
+                "caseId": case.number,
+                "title": "Рахунок за правову допомогу",
+                "amount": 8000,
+                "date": "2026-05-25",
+                "documentDue": "2026-06-01",
+                "documentNumber": "INV-TEST-1",
+                "documentTemplate": "Детальний шаблон",
+                "status": "Виставлено",
+                "method": "Документ",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(invoice_response.status_code, 200)
+        invoice_document = CaseDocument.objects.get(pk=invoice_response.json()["document"]["id"])
+        self.assertTrue(invoice_document.file)
+        invoice_xml = ZipFile(BytesIO(invoice_document.file.read())).read("word/document.xml").decode("utf-8")
+        self.assertIn("РАХУНОК НА ОПЛАТУ", invoice_xml)
+        self.assertIn("INV-TEST-1", invoice_xml)
+        self.assertIn("Умови оплати", invoice_xml)
+        self.assertIn("/api/documents/", invoice_response.json()["document"]["fileUrl"])
+        self.assertIn("token=", invoice_response.json()["document"]["fileUrl"])
+        self.assertEqual(invoice_response.json()["operation"]["documentId"], invoice_document.id)
+
+        act_response = self.client.post(
+            "/api/finance/operations/",
+            {
+                "action": "act",
+                "caseId": case.number,
+                "title": "Акт виконаних робіт",
+                "amount": 8000,
+                "date": "2026-05-25",
+                "documentNumber": "ACT-TEST-1",
+                "workPeriod": "травень 2026",
+                "documentTemplate": "Основний шаблон",
+                "status": "Чернетка",
+                "method": "Документ",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(act_response.status_code, 200)
+        act_document = CaseDocument.objects.get(pk=act_response.json()["document"]["id"])
+        self.assertTrue(act_document.file)
+        act_xml = ZipFile(BytesIO(act_document.file.read())).read("word/document.xml").decode("utf-8")
+        self.assertIn("АКТ НАДАНИХ ПОСЛУГ", act_xml)
+        self.assertIn("ACT-TEST-1", act_xml)
+        self.assertIn("Період виконання робіт", act_xml)
+        self.assertIn("/api/documents/", act_response.json()["document"]["fileUrl"])
+
+        delete_invoice_response = self.client.delete(f"/api/finance/operations/{invoice_response.json()['operation']['id']}/")
+        self.assertEqual(delete_invoice_response.status_code, 200)
+        self.assertFalse(CaseDocument.objects.filter(pk=invoice_document.id).exists())
+
+        recreated_document = CaseDocument.objects.create(
+            case=case,
+            title="Рахунок без фінансової операції.docx",
+            document_type="Рахунок",
+            folder="Фінансові документи",
+            status="Чернетка",
+        )
+        delete_orphan_invoice_response = self.client.delete(f"/api/documents/{recreated_document.id}/")
+        self.assertEqual(delete_orphan_invoice_response.status_code, 200)
+        self.assertFalse(CaseDocument.objects.filter(pk=recreated_document.id).exists())
+
+        delete_act_response = self.client.delete(f"/api/finance/operations/{act_response.json()['operation']['id']}/")
+        self.assertEqual(delete_act_response.status_code, 200)
+        self.assertFalse(CaseDocument.objects.filter(pk=act_document.id).exists())
 
     def test_audit_log_api_records_crm_actions(self):
         create_response = self.client.post(
@@ -1131,4 +1212,6 @@ class DemoApiTests(TestCase):
 
         delete_response = self.client.delete(f"/api/finance/operations/{operation['id']}/")
         self.assertEqual(delete_response.status_code, 200)
-        self.assertEqual(delete_response.json(), {"deleted": operation["id"]})
+        delete_payload = delete_response.json()
+        self.assertEqual(delete_payload["deleted"], operation["id"])
+        self.assertEqual(delete_payload["case"]["id"], demo_case_number("12345"))

@@ -1,18 +1,18 @@
-import { createInitialState } from "./js/state.js?v=empty-audit-1";
+import { createInitialState } from "./js/state.js?v=calendar-time-1";
 import {
   closeTopbarPanels as closeTopbarPanelsInChrome,
   isTopbarPanelOpen,
   setupTopbarControls,
   syncTopbarNotifications
-} from "./js/chrome.js?v=demo-empty-state-1";
-import { createDialogOpeners } from "./js/dialog-openers.js?v=clients-clean-1";
-import { setupDialogControls } from "./js/dialogs.js?v=document-export-modal-1";
-import { setupCaseDetailForms } from "./js/forms/case-details.js";
+} from "./js/chrome.js?v=preserve-manual-demo-1";
+import { createDialogOpeners } from "./js/dialog-openers.js?v=document-delete-path-3";
+import { setupDialogControls } from "./js/dialogs.js?v=document-delete-path-3";
+import { setupCaseDetailForms } from "./js/forms/case-details.js?v=finance-operation-menu-1";
 import { setupCaseItemForms } from "./js/forms/case-items.js";
 import { setupCaseForm } from "./js/forms/cases.js";
 import { setupClientForm } from "./js/forms/clients.js";
 import { setupDocumentForm } from "./js/forms/documents.js?v=document-target-mode-1";
-import { setupEventForm } from "./js/forms/events.js";
+import { setupEventForm } from "./js/forms/events.js?v=event-reminder-toggle-1";
 import {
   restoreNavigationState as restoreNavigationStateFromStorage,
   saveNavigationState as saveNavigationStateToStorage
@@ -26,26 +26,26 @@ import {
   renderCaseListScreen,
   renderCaseProfileScreen,
   renderCasesScreen
-} from "./js/screens/cases.js?v=test-doc-case-1";
+} from "./js/screens/cases.js?v=context-task-case-2";
 import {
   calendarEntries as calendarEntriesScreen,
   calendarEventMeta as calendarEventMetaScreen,
   calendarEventTypes as calendarEventTypesScreen,
   calendarStatuses as calendarStatusesScreen,
   renderCalendarScreen
-} from "./js/screens/calendar.js";
+} from "./js/screens/calendar.js?v=calendar-task-time-1";
 import {
   renderClientProfile as renderClientProfileScreen,
   renderClientRows as renderClientRowsScreen,
   renderClientsScreen
 } from "./js/screens/clients.js?v=clients-filter-1";
 import { renderDashboardScreen } from "./js/screens/dashboard.js?v=live-demo-1";
-import { renderDocumentsScreen } from "./js/screens/documents.js?v=document-archive-books-1";
+import { renderDocumentsScreen } from "./js/screens/documents.js?v=document-delete-path-3";
 import {
   renderMailingsScreen,
   setMailingTab as setMailingTabScreen
 } from "./js/screens/mailings.js?v=mailings-api-69";
-import { renderFinanceScreen } from "./js/screens/finance.js?v=live-demo-1";
+import { renderFinanceScreen } from "./js/screens/finance.js?v=finance-pagination-2";
 import { renderOSINTScreen } from "./js/screens/osint.js?v=live-demo-1";
 import { renderPlannerScreen } from "./js/screens/planner.js";
 import { renderSettingsScreen } from "./js/screens/settings.js?v=empty-audit-1";
@@ -247,10 +247,7 @@ const permissionControlRules = [
       "[data-edit-finance]",
       "[data-preview-finance]",
       "[data-finance-work-action]",
-      "[data-finance-add-income]",
-      "[data-finance-add-expense]",
-      "[data-finance-invoice]",
-      "[data-finance-act]",
+      "[data-finance-quick-action]",
       "[data-finance-salary-open]",
       "[data-salary-edit]",
       "[data-salary-delete]"

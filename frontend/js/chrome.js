@@ -265,7 +265,7 @@ function ensureDemoDataOverlay(ctx) {
       state.demoDataStatus = payload.demoData;
       syncDemoDataToggle(state);
       overlay.hidden = true;
-      showToast("Кабінет очищено: клієнти, справи, задачі, документи, календар і фінанси видалені.");
+      showToast("Демо-дані вимкнено. Ручні записи залишилися в CRM.");
       window.setTimeout(() => window.location.reload(), 350);
     } catch (_error) {
       showToast("Не вдалося очистити демо-дані.", "warning");
@@ -369,7 +369,7 @@ async function openDemoDataOverlay(ctx) {
   overlay.querySelector("[data-demo-data-text]").textContent = isSnapshotMode(ctx.state)
     ? "Зараз відкрито локальну JSON-копію CRM у цьому браузері. Вона не змінює серверну базу. Кнопка «Очистити» прибере локальну копію і поверне звичайний режим."
     : enabled
-    ? "Вимкнення повністю очистить робочі записи CRM: клієнтів, справи, задачі, документи, календар і фінанси. Після цього кабінет буде порожній."
+    ? "Вимкнення прибере тільки стартові демо-записи CRM. Клієнти, справи, задачі, документи, календар і фінанси, які ви додали вручну, залишаться."
     : "Демо-кабінет зараз порожній. Можна відновити стартовий набір клієнтів, справ, задач, документів, календаря та фінансів.";
   const counts = status.counts || {};
   overlay.querySelector("[data-demo-data-counts]").innerHTML = [

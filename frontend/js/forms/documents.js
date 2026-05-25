@@ -6,12 +6,12 @@ const PROCEDURAL_DOCUMENT_FOLDERS = new Set(["Позови", "Клопотанн
 const TECHNICAL_DOCUMENT_TYPES = new Set(["doc", "docx", "pdf", "txt", "rtf", "odt", "google docs", "google drive", "crm файл"]);
 
 function inferCaseDocumentFolder(doc = {}, fallback = "Інші документи") {
-  if (fallback && !CASE_DOCUMENT_FOLDER_NAMES.includes(fallback)) return fallback;
   const haystack = [doc.type, doc.name, doc.folder, fallback].map((value) => String(value || "").toLowerCase()).join(" ");
   if (/клопотан|клопа/.test(haystack)) return "Клопотання";
   if (/адвокатськ.*запит|запит|витребуван/.test(haystack)) return "Запити";
   if (/ухвал|відповід|рішенн|постанова/.test(haystack)) return "Відповіді та ухвали";
   if (/позов|позовн|заява/.test(haystack)) return "Позови";
+  if (fallback && !CASE_DOCUMENT_FOLDER_NAMES.includes(fallback)) return fallback;
   return CASE_DOCUMENT_FOLDER_NAMES.includes(fallback) ? "Інші документи" : fallback || "Інші документи";
 }
 

@@ -26,6 +26,64 @@ export function createDialogOpeners({
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   }
 
+  function isNeutralDemoAdminUser(user) {
+    return state.dataSource === "api"
+      && state.demoDataStatus?.enabled === false
+      && !state.sessionAuthenticated
+      && user?.role === "Адміністратор";
+  }
+
+  function displayManagerName(user) {
+    if (isNeutralDemoAdminUser(user)) return "Admin";
+    return String(user?.name || "").trim();
+  }
+
+  function clientManagerOptions(currentValue = "") {
+    const emptyApiMode = state.dataSource === "api" && state.demoDataStatus?.enabled === false;
+    const fallbackManagers = emptyApiMode ? [] : ["Іваненко А.Ю.", "Мельник Н.П.", "Кравчук А.В."];
+    const names = [
+      displayManagerName(state.currentUser),
+      ...(state.settingsUsers || [])
+        .filter((user) => user.role !== "Видалений" && user.active !== false)
+        .map(displayManagerName),
+      String(currentValue || "").trim(),
+      ...fallbackManagers
+    ].filter(Boolean);
+    const uniqueNames = [...new Set(names)];
+    return uniqueNames.length ? uniqueNames : ["Admin"];
+  }
+
+  function syncClientManagerOptions(form, currentValue = "") {
+    const managerSelect = form.elements.manager;
+    if (!managerSelect) return;
+    const options = clientManagerOptions(currentValue);
+    const selectedValue = options.includes(currentValue) ? currentValue : options[0];
+    managerSelect.innerHTML = options.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
+    managerSelect.value = selectedValue;
+  }
+
+  function syncCaseResponsibleOptions(form, currentValue = "") {
+    const responsibleSelect = form.elements.responsible;
+    if (!responsibleSelect) return;
+    const options = clientManagerOptions(currentValue);
+    const selectedValue = options.includes(currentValue) ? currentValue : options[0];
+    responsibleSelect.innerHTML = options.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
+    responsibleSelect.value = selectedValue;
+  }
+
+  function syncTaskCoexecutorOptions(form, values = []) {
+    const menu = form.querySelector(".task-coexecutors-menu");
+    if (!menu) return;
+    const normalized = Array.isArray(values)
+      ? values.filter(Boolean)
+      : String(values || "").split(",").map((value) => value.trim()).filter(Boolean);
+    const options = [...new Set([...clientManagerOptions(), ...normalized])];
+    menu.innerHTML = options.map((name) => `
+      <label><input name="coexecutors" type="checkbox" value="${escapeHtml(name)}" /> ${escapeHtml(name)}</label>
+    `).join("");
+    setCoexecutorChecks(form, normalized);
+  }
+
   function openClientDialog(clientId = null) {
     const form = $("#client-form");
     form.reset();
@@ -33,6 +91,7 @@ export function createDialogOpeners({
     form.elements.showPhoto.checked = false;
     form.elements.photoUrl.value = "";
     $("#client-dialog-title").textContent = "Новий клієнт";
+    syncClientManagerOptions(form);
 
     if (clientId !== null && clientId !== undefined) {
       const client = clientById(clientId);
@@ -52,7 +111,7 @@ export function createDialogOpeners({
       form.elements.request.value = client.request;
       form.elements.status.value = client.status;
       form.elements.source.value = client.source;
-      form.elements.manager.value = client.manager;
+      syncClientManagerOptions(form, client.manager);
       $("#client-dialog-title").textContent = "Редагувати клієнта";
     }
 
@@ -86,6 +145,7 @@ export function createDialogOpeners({
     const selected = select.selectedOptions?.[0] || select.options[0];
     const buttonText = shell.querySelector("[data-document-select-value]");
     const menu = shell.querySelector(".document-custom-select-menu");
+    shell.classList.toggle("is-disabled", select.disabled);
     if (buttonText) buttonText.textContent = selected?.textContent || "";
     if (!menu) return;
     menu.innerHTML = [...select.options].filter((option) => !option.hidden).map((option) => `
@@ -116,6 +176,7 @@ export function createDialogOpeners({
         `;
         select.insertAdjacentElement("afterend", shell);
         shell.querySelector(".document-custom-select-button")?.addEventListener("click", () => {
+          if (select.disabled) return;
           const isOpen = shell.classList.contains("is-open");
           closeDocumentSelectMenus(form, isOpen ? null : shell);
           shell.classList.toggle("is-open", !isOpen);
@@ -170,6 +231,7 @@ export function createDialogOpeners({
         `;
         select.insertAdjacentElement("afterend", shell);
         shell.querySelector(".document-custom-select-button")?.addEventListener("click", () => {
+          if (select.disabled) return;
           const isOpen = shell.classList.contains("is-open");
           closeDocumentSelectMenus(form, isOpen ? null : shell);
           shell.classList.toggle("is-open", !isOpen);
@@ -205,7 +267,7 @@ export function createDialogOpeners({
   }
 
   function setupClientCustomSelects(form) {
-    form.querySelectorAll("label > select").forEach((select) => {
+    form.querySelectorAll("label > select, .task-subtask-editor-row > select").forEach((select) => {
       select.classList.add("document-native-select");
       select.tabIndex = -1;
       select.setAttribute("aria-hidden", "true");
@@ -266,6 +328,7 @@ export function createDialogOpeners({
     form.elements.stage.value = "Первинна консультація";
     $("#case-dialog-title").textContent = "Нова справа";
     $("#case-submit-button").textContent = "Створити справу";
+    syncCaseResponsibleOptions(form);
 
     if (caseId !== null && caseId !== undefined) {
       const item = caseById(caseId);
@@ -281,7 +344,7 @@ export function createDialogOpeners({
       form.elements.status.value = item.status;
       form.elements.deadline.value = parseDisplayDate(item.deadline);
       form.elements.priority.value = item.priority;
-      form.elements.responsible.value = item.responsible;
+      syncCaseResponsibleOptions(form, item.responsible);
       $("#case-dialog-title").textContent = "Редагувати справу";
       $("#case-submit-button").textContent = "Зберегти справу";
     }
@@ -1438,6 +1501,7 @@ export function createDialogOpeners({
     if (!editor) return;
     editor.querySelector(".task-subtasks-editor-empty")?.remove();
     editor.insertAdjacentHTML("beforeend", subtaskEditorRow(subtask));
+    setupClientCustomSelects(form);
     editor.querySelector(".task-subtask-editor-row:last-child input")?.focus();
   }
 
@@ -1452,7 +1516,7 @@ export function createDialogOpeners({
     form.elements.taskIndex.value = taskIndex;
     form.elements.subtaskIndex.value = subtaskIndex === null || subtaskIndex === undefined ? "" : subtaskIndex;
     form.elements.status.value = "Нова";
-    form.elements.responsible.value = task.responsible || item.responsible || "Іваненко А.Ю.";
+    syncCaseResponsibleOptions(form, task.responsible || item.responsible);
     form.elements.due.value = parseDisplayDate(task.due);
     $("#subtask-parent-title").textContent = task.title || "Основна задача";
     $("#subtask-parent-case").textContent = `№${item.id} · ${item.title}`;
@@ -1465,7 +1529,7 @@ export function createDialogOpeners({
       if (!subtask) return;
       form.elements.title.value = subtask.title || "";
       form.elements.status.value = subtask.status || "Нова";
-      form.elements.responsible.value = subtask.responsible || task.responsible || item.responsible || "Іваненко А.Ю.";
+      syncCaseResponsibleOptions(form, subtask.responsible || task.responsible || item.responsible);
       form.elements.due.value = parseDisplayDate(subtask.due);
       $("#subtask-dialog-title").textContent = "Редагувати підзадачу";
       $("#subtask-submit-button").textContent = "Зберегти підзадачу";
@@ -1473,6 +1537,7 @@ export function createDialogOpeners({
 
     updateSubtaskStatusTone(form.elements.status);
     form.elements.status.onchange = () => updateSubtaskStatusTone(form.elements.status);
+    setupClientCustomSelects(form);
     $("#subtask-dialog").showModal();
     form.elements.title.focus();
   }
@@ -1481,9 +1546,23 @@ export function createDialogOpeners({
     const form = $("#task-form");
     form.reset();
     const subtaskMode = options.subtaskMode || "";
+    const isEditingTask = taskIndex !== null && taskIndex !== undefined;
+    const openedFromCaseDetail = $("#cases")?.classList.contains("active")
+      && state.caseScreen === "detail"
+      && returnView !== "tasks";
+    const shouldLockCase = Boolean(caseId)
+      && (isEditingTask || returnView === "cases" || returnView === "planner" || openedFromCaseDetail);
+    const taskCaseField = form.querySelector(".task-case-field");
+    const taskCaseLocked = form.querySelector("[data-task-case-locked]");
     form.dataset.originalCaseId = caseId || "";
     $("#task-case-select").innerHTML = state.cases.map((item) => `<option value="${item.id}">№${item.id} · ${item.title}</option>`).join("");
     form.elements.caseId.value = caseId;
+    const taskCase = caseById(caseId);
+    if (taskCaseField && taskCaseLocked) {
+      taskCaseField.classList.toggle("is-locked", shouldLockCase);
+      taskCaseLocked.hidden = !shouldLockCase;
+      taskCaseLocked.textContent = taskCase ? `№${taskCase.id} · ${taskCase.title}` : "Справа не вибрана";
+    }
     form.elements.taskIndex.value = "";
     state.taskDialogReturnView = returnView || ($("#tasks")?.classList.contains("active") ? "tasks" : "cases");
     form.elements.showInCalendar.checked = true;
@@ -1491,13 +1570,13 @@ export function createDialogOpeners({
     form.elements.plannerImportant.checked = false;
     form.elements.priority.value = "Середній";
     form.elements.status.value = returnView === "planner" ? "Заплановано" : "Нова";
-    form.elements.responsible.value = caseById(caseId)?.responsible || "Іваненко А.Ю.";
+    syncCaseResponsibleOptions(form, caseById(caseId)?.responsible);
     form.elements.reminderEnabled.checked = returnView === "planner";
     form.elements.reminderBefore.value = "За 1 день";
     form.elements.reminderChannel.value = "CRM";
     form.elements.plannerDate.value = "";
     form.elements.plannerTime.value = "";
-    setCoexecutorChecks(form, []);
+    syncTaskCoexecutorOptions(form, []);
     renderTaskSubtaskEditor(form, []);
     form.querySelector("#task-add-subtask").onclick = () => appendSubtaskRow(form);
     form.querySelector("#task-subtasks-editor").onclick = (event) => {
@@ -1507,7 +1586,10 @@ export function createDialogOpeners({
       if (!form.querySelector(".task-subtask-editor-row")) renderTaskSubtaskEditor(form, []);
     };
     form.querySelector("#task-subtasks-editor").onchange = (event) => {
-      if (event.target.matches('select[name="subtaskStatus"]')) updateSubtaskStatusTone(event.target);
+      if (event.target.matches('select[name="subtaskStatus"]')) {
+        updateSubtaskStatusTone(event.target);
+        syncDocumentCustomSelect(event.target);
+      }
     };
     form.querySelector(".task-coexecutors-picker")?.removeAttribute("open");
     form.querySelector(".task-coexecutors-menu").onchange = () => syncCoexecutorSummary(form);
@@ -1521,11 +1603,11 @@ export function createDialogOpeners({
       form.elements.description.value = task.description || "";
       form.elements.status.value = task.status;
       form.elements.priority.value = taskPriority(task);
-      form.elements.responsible.value = task.responsible || caseById(caseId)?.responsible || "Іваненко А.Ю.";
+      syncCaseResponsibleOptions(form, task.responsible || caseById(caseId)?.responsible);
       form.elements.due.value = parseDisplayDate(task.due);
       form.elements.plannerDate.value = task.plannerDate || parseDisplayDate(task.plannerDateText || "");
       form.elements.plannerTime.value = task.plannerTime || "";
-      setCoexecutorChecks(form, task.coexecutors || []);
+      syncTaskCoexecutorOptions(form, task.coexecutors || []);
       renderTaskSubtaskEditor(form, task.subtasks || defaultTaskSubtasks(task));
       form.elements.showInCalendar.checked = Boolean(task.showInCalendar);
       form.elements.plannerManual.checked = Boolean(task.plannerManual);
@@ -1542,6 +1624,7 @@ export function createDialogOpeners({
       $("#task-submit-button").textContent = subtaskMode ? "Зберегти підзадачі" : "Зберегти задачу";
       if (subtaskMode === "new") appendSubtaskRow(form);
     }
+    setupClientCustomSelects(form);
     $("#task-dialog").showModal();
   }
 
@@ -1552,6 +1635,9 @@ export function createDialogOpeners({
     $("#event-case").innerHTML = state.cases.map((item) => `<option value="${item.id}">№${item.id} · ${item.title}</option>`).join("");
     const initialCaseId = context.caseId || state.selectedCaseId || state.cases[0]?.id || "";
     const initialCase = caseById(initialCaseId);
+    const linkFields = form.querySelector("[data-event-link-fields]");
+    const shouldHideLinkFields = Boolean(context.caseId) && !context.eventId;
+    if (linkFields) linkFields.hidden = shouldHideLinkFields;
     form.elements.caseId.value = initialCaseId;
     form.elements.actionIndex.value = "";
     form.elements.eventId.value = "";
@@ -1562,10 +1648,11 @@ export function createDialogOpeners({
     form.elements.type.value = "Судове засідання";
     form.elements.authority.value = initialCase?.court === "Не вказано" ? "" : initialCase?.court || "";
     form.elements.location.value = initialCase?.authorityAddress || "";
-    form.elements.responsible.value = initialCase?.responsible || "Іваненко А.Ю.";
+    syncCaseResponsibleOptions(form, initialCase?.responsible);
     form.elements.recurrence.value = "Не повторювати";
+    form.elements.reminderEnabled.checked = false;
     form.elements.reminderBefore.value = "За 1 день";
-    form.elements.reminderChannels.value = "CRM + Telegram + SMS";
+    form.elements.reminderChannels.value = "CRM";
     form.elements.reminderRecipients.value = "Відповідальний юрист + клієнт";
     $("#event-dialog h2").textContent = "Нова подія";
     $("#event-submit-button").textContent = "Додати подію";
@@ -1590,11 +1677,12 @@ export function createDialogOpeners({
       form.elements.caseId.value = sourceEvent.caseId;
       form.elements.authority.value = sourceEvent.authority || "";
       form.elements.location.value = sourceEvent.location || "";
-      form.elements.responsible.value = meta.responsible;
+      syncCaseResponsibleOptions(form, meta.responsible);
       form.elements.recurrence.value = meta.recurrence;
-      form.elements.reminderBefore.value = meta.reminderBefore;
-      form.elements.reminderChannels.value = meta.reminderChannels;
-      form.elements.reminderRecipients.value = meta.reminderRecipients;
+      form.elements.reminderEnabled.checked = Boolean(meta.reminderEnabled);
+      form.elements.reminderBefore.value = meta.reminderBefore || "За 1 день";
+      form.elements.reminderChannels.value = meta.reminderChannels || "CRM";
+      form.elements.reminderRecipients.value = meta.reminderRecipients || "Відповідальний юрист + клієнт";
       form.elements.description.value = sourceEvent.description || "";
       $("#event-dialog h2").textContent = "Редагувати подію";
       $("#event-submit-button").textContent = "Зберегти подію";
@@ -1619,6 +1707,9 @@ export function createDialogOpeners({
       form.elements.authority.value = selectedCase.court === "Не вказано" ? "" : selectedCase.court || "";
       form.elements.location.value = selectedCase.authorityAddress || "";
       form.elements.responsible.value = selectedCase.responsible || form.elements.responsible.value;
+      syncCaseResponsibleOptions(form, form.elements.responsible.value);
+      syncDocumentCustomSelect(form.elements.client);
+      syncDocumentCustomSelect(form.elements.responsible);
     };
     $("#event-client").onchange = (event) => {
       const clientCase = state.cases.find((item) => item.clientId === Number(event.currentTarget.value));
@@ -1627,8 +1718,45 @@ export function createDialogOpeners({
         form.elements.authority.value = clientCase.court === "Не вказано" ? "" : clientCase.court || "";
         form.elements.location.value = clientCase.authorityAddress || "";
         form.elements.responsible.value = clientCase.responsible || form.elements.responsible.value;
+        syncCaseResponsibleOptions(form, form.elements.responsible.value);
+        syncDocumentCustomSelect(form.elements.caseId);
+        syncDocumentCustomSelect(form.elements.responsible);
       }
     };
+    const syncReminderState = () => {
+      const enabled = Boolean(form.elements.reminderEnabled.checked);
+      const settings = form.querySelector("[data-event-reminder-settings]");
+      const toggleCopy = form.querySelector(".event-reminder-toggle > span:first-child");
+      const channels = String(form.elements.reminderChannels.value || "CRM").split("+").map((item) => item.trim());
+      const hasExternal = channels.some((channel) => ["Telegram", "SMS"].includes(channel));
+      const hint = form.querySelector("[data-event-reminder-hint]");
+      [form.elements.reminderBefore, form.elements.reminderChannels, form.elements.reminderRecipients].forEach((select) => {
+        select.disabled = !enabled;
+        syncDocumentCustomSelect(select);
+      });
+      if (settings) settings.hidden = !enabled;
+      form.classList.toggle("event-reminder-enabled", enabled);
+      if (toggleCopy) {
+        toggleCopy.innerHTML = enabled
+          ? "<strong>Нагадування увімкнено</strong><em>Налаштуйте коли, кому і через які канали нагадати.</em>"
+          : "<strong>Нагадування вимкнено</strong><em>Увімкніть, якщо потрібно нагадати через CRM або зовнішні канали.</em>";
+      }
+      if (!hint) return;
+      if (!enabled) {
+        hint.hidden = true;
+        hint.innerHTML = "";
+        return;
+      }
+      hint.hidden = false;
+      hint.innerHTML = `
+        <strong>CRM-нагадування буде видно в системі.</strong>
+        <span>${hasExternal ? "Telegram/SMS потраплять у план відправки і спрацюють після підключення провайдерів та контактів отримувача." : "Зовнішні повідомлення не плануються."}</span>
+      `;
+    };
+    setupClientCustomSelects(form);
+    form.elements.reminderEnabled.onchange = syncReminderState;
+    form.elements.reminderChannels.onchange = syncReminderState;
+    syncReminderState();
     $("#event-dialog").showModal();
   }
 
@@ -1715,10 +1843,13 @@ export function createDialogOpeners({
       $("#delete-document-dialog").showModal();
       return;
     }
+    const folder = payload.folderPath?.length ? folderByPath(caseFolders(item), payload.folderPath) : caseFolders(item)[payload.folderIndex];
     const file = payload.type === "procedural"
       ? item.documents[payload.docIndex]
-      : caseFolders(item)[payload.folderIndex]?.files[payload.fileIndex];
+      : folder?.files[payload.fileIndex] || payload.file || payload.doc;
     if (!file) return;
+    payload.documentId = payload.documentId || file.documentId || file.id || "";
+    payload.documentName = payload.documentName || file.name || file.title || "";
     state.pendingDocumentDelete = payload;
     $("#delete-document-title").textContent = "Удалить документ?";
     $("#delete-document-text").textContent = `Вы уверены, что хотите удалить документ «${file.name}»?`;

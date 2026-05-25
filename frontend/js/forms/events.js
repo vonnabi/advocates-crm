@@ -1,5 +1,5 @@
-import { saveEventToApi, shouldUseApi } from "../api.js";
-import { normalizeEvent } from "../state.js";
+import { saveCaseToApi, saveEventToApi, shouldUseApi } from "../api.js";
+import { normalizeCase, normalizeEvent } from "../state.js";
 
 export function setupEventForm({
   state,
@@ -22,6 +22,7 @@ export function setupEventForm({
     const actionIndex = form.get("actionIndex") === "" ? null : Number(form.get("actionIndex"));
     const nextId = Math.max(0, ...state.events.map((item) => Number(item.id) || 0)) + 1;
     const selectedCaseId = form.get("caseId");
+    const reminderEnabled = Boolean(form.get("reminderEnabled"));
     const caseItem = selectedCaseId
       ? caseById(selectedCaseId)
       : state.cases.find((item) => item.clientId === Number(form.get("client"))) || state.cases[0];
@@ -40,10 +41,12 @@ export function setupEventForm({
       location: form.get("location"),
       responsible: form.get("responsible"),
       recurrence: form.get("recurrence"),
-      reminderBefore: form.get("reminderBefore"),
-      reminderChannels: form.get("reminderChannels"),
-      reminderRecipients: form.get("reminderRecipients"),
+      reminderEnabled,
+      reminderBefore: reminderEnabled ? form.get("reminderBefore") : "",
+      reminderChannels: reminderEnabled ? form.get("reminderChannels") : "",
+      reminderRecipients: reminderEnabled ? form.get("reminderRecipients") : "",
       description: form.get("description"),
+      proceduralAction: Boolean(selectedCaseId && !eventId),
       status
     });
 
@@ -86,6 +89,14 @@ export function setupEventForm({
         date: new Date().toLocaleDateString("uk-UA"),
         text: `Оновлено процесуальну дію: ${form.get("title")}.`
       });
+      if (shouldUseApi(state)) {
+        try {
+          Object.assign(caseItem, normalizeCase(await saveCaseToApi(caseItem)));
+        } catch (_error) {
+          showToast("Не вдалося зберегти процесуальну дію в базі.", "danger");
+          return;
+        }
+      }
       state.selectedCaseId = caseItem.id;
       $("#event-dialog").close();
       renderAll();
@@ -122,6 +133,14 @@ export function setupEventForm({
         date: new Date().toLocaleDateString("uk-UA"),
         text: `Додано процесуальну дію: ${form.get("title")}.`
       });
+      if (shouldUseApi(state)) {
+        try {
+          Object.assign(caseItem, normalizeCase(await saveCaseToApi(caseItem)));
+        } catch (_error) {
+          showToast("Не вдалося зберегти процесуальну дію в базі.", "danger");
+          return;
+        }
+      }
     }
 
     state.selectedEventId = `event-${createdEvent.id}`;

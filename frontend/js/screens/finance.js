@@ -1,4 +1,4 @@
-import { saveFinanceOperationToApi, shouldUseApi } from "../api.js";
+import { deleteFinanceOperationFromApi, saveCaseToApi, saveFinanceOperationToApi, shouldUseApi } from "../api.js";
 import {
   buildFinanceOperations,
   DEMO_END,
@@ -6,11 +6,65 @@ import {
   financeInsightsFromData,
   financeRowsFromCases,
   financeTotalsFromData
-} from "../derived-data.js?v=live-demo-1";
-import { normalizeFinanceOperation } from "../state.js";
+} from "../derived-data.js?v=finance-real-data-1";
+import { normalizeCase, normalizeFinanceOperation } from "../state.js";
 
 const DEFAULT_START = DEMO_START;
 const DEFAULT_END = DEMO_END;
+const FINANCE_PAGE_SIZE = 10;
+
+function financePageState(state) {
+  state.financePages = state.financePages && typeof state.financePages === "object" ? state.financePages : {};
+  return state.financePages;
+}
+
+function resetFinancePage(state, key = state.financeTab || "overview") {
+  financePageState(state)[key] = 1;
+}
+
+function paginateFinanceItems(state, key, items, pageSize = FINANCE_PAGE_SIZE) {
+  const pages = financePageState(state);
+  const total = items.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(Math.max(Number(pages[key]) || 1, 1), totalPages);
+  pages[key] = currentPage;
+  const start = (currentPage - 1) * pageSize;
+  return {
+    key,
+    items: items.slice(start, start + pageSize),
+    page: currentPage,
+    pageSize,
+    start,
+    total,
+    totalPages
+  };
+}
+
+function financePageNumbers(page, totalPages) {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, index) => index + 1);
+  const numbers = new Set([1, totalPages, page - 1, page, page + 1]);
+  return [...numbers].filter((item) => item >= 1 && item <= totalPages).sort((a, b) => a - b);
+}
+
+function financePaginationHtml(pagination, itemLabel = "записів") {
+  if (!pagination || pagination.total <= pagination.pageSize) return "";
+  const shownFrom = pagination.start + 1;
+  const shownTo = pagination.start + pagination.items.length;
+  const pages = financePageNumbers(pagination.page, pagination.totalPages);
+  return `
+    <div class="finance-pagination">
+      <span>Показано ${shownFrom}-${shownTo} з ${pagination.total} ${itemLabel}</span>
+      <div>
+        <button type="button" data-finance-page-key="${pagination.key}" data-finance-page="${Math.max(1, pagination.page - 1)}" ${pagination.page === 1 ? "disabled" : ""}>‹</button>
+        ${pages.map((page, index) => `
+          ${index > 0 && page - pages[index - 1] > 1 ? `<em>…</em>` : ""}
+          <button class="${page === pagination.page ? "active" : ""}" type="button" data-finance-page-key="${pagination.key}" data-finance-page="${page}">${page}</button>
+        `).join("")}
+        <button type="button" data-finance-page-key="${pagination.key}" data-finance-page="${Math.min(pagination.totalPages, pagination.page + 1)}" ${pagination.page === pagination.totalPages ? "disabled" : ""}>›</button>
+      </div>
+    </div>
+  `;
+}
 
 function financeDisplayDate(daysAgo = 0) {
   const date = new Date();
@@ -20,13 +74,11 @@ function financeDisplayDate(daysAgo = 0) {
 
 const FINANCE_TABS = [
   ["overview", "Огляд"],
-  ["income", "Надходження"],
-  ["expenses", "Витрати"],
+  ["payments", "Платежі"],
   ["cases", "Справа"],
   ["clients", "Клієнти"],
   ["invoices", "Рахунки"],
   ["acts", "Акти"],
-  ["payments", "Платежі"],
   ["salary", "Зарплата"],
   ["reports", "Звіти"]
 ];
@@ -54,7 +106,7 @@ const chartDates = ["01.05", "03.05", "05.05", "07.05", "09.05", "11.05", "13.05
 
 const FINANCE_ACTIONS = {
   income: {
-    tab: "income",
+    tab: "payments",
     title: "Додати надходження",
     hint: "Платіж зменшить борг по вибраній справі і з'явиться у фінансових операціях.",
     operationType: "Надходження",
@@ -64,7 +116,7 @@ const FINANCE_ACTIONS = {
     submit: "Зберегти надходження"
   },
   expense: {
-    tab: "expenses",
+    tab: "payments",
     title: "Додати витрату",
     hint: "Витрата буде прив'язана до справи, але не збільшить борг клієнта.",
     operationType: "Витрата",
@@ -162,6 +214,15 @@ const REPORT_ROWS = [
   ["Реєстр рахунків та актів", "Документи, статуси і пов'язані справи", "XLSX"]
 ];
 
+function escapeHtml(value = "") {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function isoToday() {
   return DEFAULT_END;
 }
@@ -247,6 +308,29 @@ function findSalaryRow(state, salaryId) {
   return salaryRows(state).find((row) => row.id === salaryId);
 }
 
+function findFinanceOperation(state, operationId) {
+  return financeOperations(state).find((item) => item.id === operationId);
+}
+
+function financeActionForOperation(operation = {}) {
+  if (operation.type === "Витрата") return "expense";
+  if (operation.type === "Рахунок") return "invoice";
+  if (operation.type === "Акт") return "act";
+  return "income";
+}
+
+async function saveFinanceCaseState(ctx, item) {
+  const { state, showToast } = ctx;
+  if (!item || !shouldUseApi(state)) return true;
+  try {
+    Object.assign(item, normalizeCase(await saveCaseToApi(item)));
+    return true;
+  } catch (_error) {
+    showToast("Не вдалося зберегти фінанси справи в базі.", "danger");
+    return false;
+  }
+}
+
 function salaryTotals(rows) {
   return rows.reduce((totals, row) => ({
     base: totals.base + row.base,
@@ -279,13 +363,352 @@ function salaryEmployeeOptions(state) {
 }
 
 function operationMatchesTab(operation, tab) {
-  if (tab === "income") return operation.type === "Надходження";
-  if (tab === "expenses") return operation.type === "Витрата";
   if (tab === "payments") return ["Надходження", "Витрата"].includes(operation.type);
   if (tab === "invoices") return operation.type === "Рахунок";
   if (tab === "acts") return operation.type === "Акт";
   if (tab === "clients") return operation.status === "Частково" || operation.status === "Очікується";
   return true;
+}
+
+function operationMatchesPaymentMode(operation, mode = "all") {
+  if (mode === "income") return operation.type === "Надходження";
+  if (mode === "expense") return operation.type === "Витрата";
+  return true;
+}
+
+function financeOperationCaseLabel(state, caseId) {
+  const item = state.cases.find((entry) => entry.id === caseId);
+  return item ? `№${item.id} · ${item.title || "Без назви"}` : `№${caseId}`;
+}
+
+function financeOperationFilterOptions(state, operations) {
+  const clients = new Map();
+  const casesByClient = new Map();
+  operations.forEach((operation) => {
+    const client = operation.client || "Клієнт не вказаний";
+    if (!clients.has(client)) clients.set(client, 0);
+    clients.set(client, clients.get(client) + 1);
+    if (!operation.caseId) return;
+    if (!casesByClient.has(client)) casesByClient.set(client, new Map());
+    const caseMap = casesByClient.get(client);
+    if (!caseMap.has(operation.caseId)) {
+      caseMap.set(operation.caseId, {
+        id: operation.caseId,
+        label: financeOperationCaseLabel(state, operation.caseId),
+        count: 0
+      });
+    }
+    caseMap.get(operation.caseId).count += 1;
+  });
+  return {
+    clients: [...clients.entries()].sort((a, b) => a[0].localeCompare(b[0], "uk")),
+    casesByClient
+  };
+}
+
+function operationMatchesFinanceFilters(operation, state) {
+  const query = (state.financeQuery || "").trim().toLowerCase();
+  const clientFilter = state.financeOperationClientFilter || "all";
+  const caseFilter = state.financeOperationCaseFilter || "all";
+  if (clientFilter !== "all" && operation.client !== clientFilter) return false;
+  if (caseFilter !== "all" && operation.caseId !== caseFilter) return false;
+  if (!query) return true;
+  return [
+    operation.date,
+    operation.type,
+    operation.title,
+    operation.client,
+    operation.caseId ? `№${operation.caseId}` : "",
+    operation.amount,
+    operation.status,
+    operation.method
+  ].some((value) => String(value || "").toLowerCase().includes(query));
+}
+
+function financeOperationFilters(state, operations, icon) {
+  const options = financeOperationFilterOptions(state, operations);
+  const selectedClient = state.financeOperationClientFilter || "all";
+  const selectedCase = state.financeOperationCaseFilter || "all";
+  const caseGroups = [...options.casesByClient.entries()]
+    .filter(([client]) => selectedClient === "all" || client === selectedClient)
+    .sort((a, b) => a[0].localeCompare(b[0], "uk"));
+  return `
+    <div class="finance-operation-filters">
+      <label class="finance-operation-search">
+        ${icon("search")}
+        <input type="search" data-finance-operation-search value="${escapeHtml(state.financeQuery || "")}" placeholder="Пошук операції, клієнта, справи...">
+      </label>
+      <label class="finance-filter-field">
+        <select data-finance-operation-client aria-label="Фільтр за клієнтом">
+          <option value="all" ${selectedClient === "all" ? "selected" : ""}>Усі клієнти</option>
+          ${options.clients.map(([client, count]) => `<option value="${escapeHtml(client)}" ${selectedClient === client ? "selected" : ""}>${escapeHtml(client)} · ${count}</option>`).join("")}
+        </select>
+      </label>
+      <label class="finance-filter-field">
+        <select data-finance-operation-case aria-label="Фільтр за справою">
+          <option value="all" ${selectedCase === "all" ? "selected" : ""}>Усі справи</option>
+          ${caseGroups.map(([client, caseMap]) => `
+            <optgroup label="${escapeHtml(client)}">
+              ${[...caseMap.values()].sort((a, b) => a.label.localeCompare(b.label, "uk")).map((item) => (
+                `<option value="${escapeHtml(item.id)}" ${selectedCase === item.id ? "selected" : ""}>${escapeHtml(item.label)} · ${item.count}</option>`
+              )).join("")}
+            </optgroup>
+          `).join("")}
+        </select>
+      </label>
+      <button class="secondary compact" type="button" data-finance-operation-reset>${icon("refresh")} Скинути</button>
+    </div>
+  `;
+}
+
+function financePaymentModeControl(state) {
+  const modes = [
+    ["income", "Надходження"],
+    ["all", "Усі платежі"],
+    ["expense", "Витрати"]
+  ];
+  const selected = state.financePaymentMode || "all";
+  return `
+    <div class="finance-payment-mode" role="group" aria-label="Режим платежів">
+      ${modes.map(([mode, label]) => `
+        <button class="${selected === mode ? "active" : ""}" type="button" data-finance-payment-mode="${mode}">${label}</button>
+      `).join("")}
+    </div>
+  `;
+}
+
+function closeFinanceSelectMenus(root, except = null) {
+  root.querySelectorAll(".finance-filter-field .document-custom-select.is-open, .finance-action-select-field .document-custom-select.is-open").forEach((shell) => {
+    if (shell === except) return;
+    shell.classList.remove("is-open");
+    shell.querySelector(".document-custom-select-button")?.setAttribute("aria-expanded", "false");
+    const menu = shell.querySelector(".document-custom-select-menu");
+    if (menu) menu.hidden = true;
+  });
+}
+
+function financeSelectOptionButton(option, select) {
+  return `
+    <button class="document-custom-select-option ${option.value === select.value ? "is-selected" : ""}" type="button" role="option" data-value="${escapeHtml(option.value)}" aria-selected="${option.value === select.value ? "true" : "false"}">
+      <span aria-hidden="true">✓</span>
+      <strong>${escapeHtml(option.textContent || "")}</strong>
+    </button>
+  `;
+}
+
+function syncFinanceCustomSelect(select) {
+  const shell = select.nextElementSibling?.classList?.contains("document-custom-select")
+    ? select.nextElementSibling
+    : null;
+  if (!shell) return;
+  const selected = select.selectedOptions?.[0] || select.options[0];
+  const buttonText = shell.querySelector("[data-document-select-value]");
+  const menu = shell.querySelector(".document-custom-select-menu");
+  if (buttonText) buttonText.textContent = selected?.textContent || "";
+  if (!menu) return;
+  menu.innerHTML = [...select.children].map((child) => {
+    if (child.tagName === "OPTGROUP") {
+      return `
+        <div class="document-custom-select-group">${escapeHtml(child.label || "")}</div>
+        ${[...child.children].map((option) => financeSelectOptionButton(option, select)).join("")}
+      `;
+    }
+    return financeSelectOptionButton(child, select);
+  }).join("");
+}
+
+function syncFinanceActionModeButtons(form) {
+  const action = form.elements.action?.value || "income";
+  form.querySelectorAll("[data-finance-action-choice]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.financeActionChoice === action);
+  });
+}
+
+function setNativeSelectOptions(select, options, value) {
+  if (!select) return;
+  select.innerHTML = options.map((option) => `<option>${escapeHtml(option)}</option>`).join("");
+  select.value = options.includes(value) ? value : options[0] || "";
+  syncFinanceCustomSelect(select);
+}
+
+function addDaysIso(value, days) {
+  const date = dateFromAny(value) || dateFromAny(isoToday()) || new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function workPeriodLabel(value) {
+  const date = dateFromAny(value) || dateFromAny(isoToday()) || new Date();
+  const months = ["січень", "лютий", "березень", "квітень", "травень", "червень", "липень", "серпень", "вересень", "жовтень", "листопад", "грудень"];
+  return `${months[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+function financeDocumentNumber(action) {
+  const prefix = action === "act" ? "АКТ" : "РХ";
+  return `${prefix}-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`;
+}
+
+function setFinanceActionMode(ctx, action, operation = null) {
+  const { state, caseById, currencyText } = ctx;
+  const form = document.querySelector("#finance-action-form");
+  const config = FINANCE_ACTIONS[action];
+  if (!form || !config) return;
+  const selected = caseById(form.elements.caseId.value) || caseById(state.selectedFinanceCaseId) || state.cases[0];
+  const selectedDebt = selected?.debt || selected?.income || 20000;
+  const isInvoice = action === "invoice";
+  const isAct = action === "act";
+  const isDocumentAction = isInvoice || isAct;
+  const labels = {
+    income: {
+      title: "Призначення платежу",
+      titlePlaceholder: "Наприклад: Оплата за правову допомогу",
+      titleHelp: "Фактичне надходження зменшує борг клієнта по вибраній справі.",
+      amount: "Сума надходження",
+      date: "Дата оплати",
+      status: "Статус платежу",
+      method: "Спосіб оплати",
+      commentPlaceholder: "Коротке пояснення для історії справи"
+    },
+    expense: {
+      title: "Категорія / опис витрати",
+      titlePlaceholder: "Наприклад: Судові витрати",
+      titleHelp: "Витрата прив'язується до справи, але не збільшує борг клієнта.",
+      amount: "Сума витрати",
+      date: "Дата витрати",
+      status: "Статус витрати",
+      method: "Спосіб оплати",
+      commentPlaceholder: "Наприклад: судовий збір або поштова відправка"
+    },
+    invoice: {
+      title: "Послуги / опис рахунку",
+      titlePlaceholder: "Наприклад: Рахунок за правову допомогу",
+      titleHelp: "Рахунок створює очікуване надходження і документ у справі.",
+      amount: "Сума рахунку",
+      date: "Дата рахунку",
+      status: "Статус рахунку",
+      method: "Канал документа",
+      commentPlaceholder: "Що включено у рахунок або як його потрібно відправити"
+    },
+    act: {
+      title: "Опис виконаних робіт",
+      titlePlaceholder: "Наприклад: Акт виконаних робіт",
+      titleHelp: "Акт фіксує виконані послуги і створює документ у справі.",
+      amount: "Сума за актом",
+      date: "Дата акта",
+      status: "Статус акта",
+      method: "Канал документа",
+      commentPlaceholder: "Коротко опишіть виконані роботи"
+    }
+  }[action];
+  const statusOptions = isInvoice
+    ? ["Чернетка", "Виставлено", "Подано", "Очікується", "Частково", "Оплачено", "Скасовано"]
+    : isAct
+      ? ["Чернетка", "Подано", "На підпис", "Підписано", "Скасовано"]
+      : ["Оплачено", "Частково", "Очікується", "Чернетка"];
+  const methodOptions = isDocumentAction
+    ? ["Документ", "ONLYOFFICE", "PDF", "Email"]
+    : ["Банківський переказ", "Картка", "Готівка", "Документ"];
+  form.elements.action.value = action;
+  document.querySelector("#finance-action-title").textContent = operation ? `Редагувати: ${operation.title}` : config.title;
+  document.querySelector("#finance-action-hint").textContent = config.hint;
+  document.querySelector("#finance-action-submit").textContent = operation ? "Зберегти зміни" : config.submit;
+  form.elements.title.value = operation?.title || config.defaultTitle;
+  form.elements.amount.value = operation ? Math.abs(Number(operation.amount) || 0) : action === "expense" ? 5000 : selectedDebt;
+  setNativeSelectOptions(form.elements.status, statusOptions, operation?.status || config.status);
+  setNativeSelectOptions(form.elements.method, methodOptions, operation?.method || config.method);
+  form.elements.comment.value = operation?.comment || (action === "invoice"
+    ? `Рахунок буде додано у документи справи. Поточний борг: ${currencyText(selected?.debt || 0)}.`
+    : "");
+  const titleField = document.querySelector("#finance-action-title-field");
+  const amountField = document.querySelector("#finance-action-amount-field");
+  const dateField = document.querySelector("#finance-action-date-field");
+  const statusField = form.elements.status?.closest("label");
+  const methodField = form.elements.method?.closest("label");
+  const titleHelp = document.querySelector("#finance-action-title-help");
+  const documentFields = document.querySelector("#finance-action-document-fields");
+  const dueField = document.querySelector("#finance-action-due-field");
+  const periodField = document.querySelector("#finance-action-period-field");
+  const numberField = document.querySelector("#finance-action-number-field");
+  const documentNote = document.querySelector("#finance-action-document-note");
+  if (titleField) titleField.childNodes[0].textContent = labels.title;
+  if (amountField) amountField.childNodes[0].textContent = labels.amount;
+  if (dateField) dateField.childNodes[0].textContent = labels.date;
+  if (statusField) statusField.childNodes[0].textContent = labels.status;
+  if (methodField) methodField.childNodes[0].textContent = labels.method;
+  if (titleHelp) titleHelp.textContent = labels.titleHelp;
+  form.elements.title.placeholder = labels.titlePlaceholder;
+  form.elements.comment.placeholder = labels.commentPlaceholder;
+  if (documentFields) documentFields.hidden = !isDocumentAction;
+  if (dueField) dueField.hidden = !isInvoice;
+  if (periodField) periodField.hidden = !isAct;
+  if (numberField) numberField.childNodes[0].textContent = isAct ? "Номер акта" : "Номер рахунку";
+  if (isDocumentAction) {
+    form.elements.documentNumber.value = operation?.documentNumber || form.elements.documentNumber.value || financeDocumentNumber(action);
+    form.elements.documentDue.value = form.elements.documentDue.value || addDaysIso(form.elements.date.value || isoToday(), 7);
+    form.elements.workPeriod.value = form.elements.workPeriod.value || workPeriodLabel(form.elements.date.value || isoToday());
+    form.elements.documentTemplate.value = form.elements.documentTemplate.value || "Основний шаблон";
+    if (documentNote) {
+      documentNote.textContent = isInvoice
+        ? "Буде створено документ-рахунок у папці «Фінансові документи» цієї справи."
+        : "Буде створено акт виконаних робіт у папці «Фінансові документи» цієї справи.";
+    }
+  } else {
+    form.elements.documentNumber.value = "";
+    form.elements.documentDue.value = "";
+    form.elements.workPeriod.value = "";
+  }
+  syncFinanceActionModeButtons(form);
+  form.querySelectorAll(".finance-action-select-field > select").forEach(syncFinanceCustomSelect);
+}
+
+function setupFinanceCustomSelects(root) {
+  root.querySelectorAll(".finance-filter-field > select, .finance-action-select-field > select, .finance-action-case-field:not(.is-locked) > select").forEach((select) => {
+    select.classList.add("document-native-select");
+    select.tabIndex = -1;
+    select.setAttribute("aria-hidden", "true");
+    let shell = select.nextElementSibling?.classList?.contains("document-custom-select")
+      ? select.nextElementSibling
+      : null;
+    if (!shell) {
+      shell = document.createElement("div");
+      shell.className = `document-custom-select ${select.closest(".finance-action-select-field, .finance-action-case-field") ? "finance-modal-select" : "finance-filter-select"}`;
+      shell.innerHTML = `
+        <button class="document-custom-select-button" type="button" aria-haspopup="listbox" aria-expanded="false">
+          <span data-document-select-value></span>
+          <span class="document-custom-select-chevron" aria-hidden="true"></span>
+        </button>
+        <div class="document-custom-select-menu" role="listbox" hidden></div>
+      `;
+      select.insertAdjacentElement("afterend", shell);
+      shell.querySelector(".document-custom-select-button")?.addEventListener("click", () => {
+        const isOpen = shell.classList.contains("is-open");
+        closeFinanceSelectMenus(root, isOpen ? null : shell);
+        shell.classList.toggle("is-open", !isOpen);
+        shell.querySelector(".document-custom-select-button")?.setAttribute("aria-expanded", String(!isOpen));
+        const menu = shell.querySelector(".document-custom-select-menu");
+        if (menu) menu.hidden = isOpen;
+      });
+      shell.querySelector(".document-custom-select-menu")?.addEventListener("click", (event) => {
+        const optionButton = event.target.closest(".document-custom-select-option");
+        if (!optionButton) return;
+        select.value = optionButton.dataset.value || "";
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        syncFinanceCustomSelect(select);
+        closeFinanceSelectMenus(root);
+      });
+    }
+    syncFinanceCustomSelect(select);
+  });
+  if (!root.dataset.financeCustomSelectsBound) {
+    root.dataset.financeCustomSelectsBound = "true";
+    root.addEventListener("click", (event) => {
+      if (event.target.closest(".finance-filter-field .document-custom-select, .finance-action-select-field .document-custom-select")) return;
+      closeFinanceSelectMenus(root);
+    });
+    root.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeFinanceSelectMenus(root);
+    });
+  }
 }
 
 function financeTotals(rows, operations, state) {
@@ -304,38 +727,121 @@ function kpiCard({ title, value, trend, detail = "порівняно з попе
   `;
 }
 
-function operationRows(operations, badge) {
+function operationRows(operations, badge, icon, options = {}) {
+  const { menuId = "", showActions = true, clickable = false, selectedId = "", caseTree = false } = options;
   if (!operations.length) {
     return `<div class="finance-operation-empty">Фінансових операцій за обраний період не знайдено.</div>`;
   }
-  return operations.map((item) => {
-    const statusTone = item.status === "Частково"
+  const grouped = operations.reduce((groups, item) => {
+    const client = item.client || "Клієнт не вказаний";
+    if (!groups.has(client)) groups.set(client, []);
+    groups.get(client).push(item);
+    return groups;
+  }, new Map());
+  return [...grouped.entries()].map(([client, items]) => {
+    const rowsHtml = caseTree
+      ? financeOperationCaseTreeRows(items, badge, icon, { menuId, showActions, clickable, selectedId })
+      : items.map((item) => financeOperationRow(item, badge, icon, { menuId, showActions, clickable, selectedId })).join("");
+    return `
+    <div class="finance-operation-client-group">
+      <div class="finance-operation-client-cell">
+        <strong>${escapeHtml(client)}</strong>
+        <small>${items.length} ${items.length === 1 ? "операція" : "операції"}</small>
+      </div>
+      <div class="finance-operation-client-rows">${rowsHtml}</div>
+    </div>
+  `;
+  }).join("");
+}
+
+function financeOperationCaseTreeRows(items, badge, icon, options = {}) {
+  const { menuId = "", showActions = true, clickable = false, selectedId = "" } = options;
+  const grouped = items.reduce((groups, item) => {
+    const caseKey = item.caseId || "none";
+    if (!groups.has(caseKey)) groups.set(caseKey, []);
+    groups.get(caseKey).push(item);
+    return groups;
+  }, new Map());
+  return [...grouped.entries()].map(([caseId, caseItems]) => `
+    <div class="finance-operation-case-group">
+      <div class="finance-operation-case-cell">
+        ${caseId !== "none"
+          ? `<button class="case-link-button" type="button" data-finance-open-case="${escapeHtml(caseId)}">№${escapeHtml(caseId)}</button>`
+          : `<span class="muted">Без справи</span>`}
+        <small>${caseItems.length} ${caseItems.length === 1 ? "дія" : "дії"}</small>
+      </div>
+      <div class="finance-operation-case-rows">
+        ${caseItems.map((item) => financeOperationRow(item, badge, icon, { menuId, showActions, clickable, selectedId, tree: true })).join("")}
+      </div>
+    </div>
+  `).join("");
+}
+
+function financeOperationRow(item, badge, icon, options = {}) {
+  const { menuId = "", showActions = true, clickable = false, selectedId = "", tree = false } = options;
+  const statusTone = item.status === "Частково"
       ? "red"
       : item.status === "Очікується"
         ? "amber"
         : item.status === "Чернетка"
           ? "blue"
           : "green";
-    const amountText = item.amount
-      ? `${item.amount < 0 ? "-" : ""}${new Intl.NumberFormat("uk-UA").format(Math.abs(item.amount))} грн`
-      : "Документ";
-    const caseCell = item.caseId
-      ? `<button class="case-link-button" type="button" data-finance-open-case="${item.caseId}">№${item.caseId}</button>`
-      : `<span class="muted">Без справи</span>`;
-    return `
-      <div class="finance-operation-row">
-        <span>${item.date}</span>
-        <strong class="${item.type === "Витрата" ? "danger" : "success"}">${item.type}</strong>
-        <span>${item.title}</span>
-        ${caseCell}
-        <span>${item.client}</span>
-        <b class="${item.amount < 0 ? "danger" : ""}">${amountText}</b>
-        ${badge(item.status, statusTone)}
-        <span>${item.method}</span>
-        <button class="icon-button finance-row-menu" type="button" data-finance-row-action="${item.caseId}" title="Дії">⋮</button>
+  const amountText = item.amount
+    ? `${item.amount < 0 ? "-" : ""}${new Intl.NumberFormat("uk-UA").format(Math.abs(item.amount))} грн`
+    : "Документ";
+  const caseCell = item.caseId
+    ? `<button class="case-link-button" type="button" data-finance-open-case="${item.caseId}">№${item.caseId}</button>`
+    : `<span class="muted">Без справи</span>`;
+  return `
+    <div class="finance-operation-row ${tree ? "is-case-tree" : ""} ${clickable ? "is-clickable" : ""} ${selectedId === item.id ? "is-selected" : ""}" ${clickable ? `role="button" tabindex="0" data-finance-select-operation="${escapeHtml(item.id)}" data-finance-open-operation="${escapeHtml(item.id)}"` : ""}>
+      <span>${item.date}</span>
+      ${tree ? "" : caseCell}
+      <strong class="${item.type === "Витрата" ? "danger" : "success"}">${item.type}</strong>
+      <span>${item.title}</span>
+      <b class="${item.amount < 0 ? "danger" : ""}">${amountText}</b>
+      ${badge(item.status, statusTone)}
+      <span>${item.method}</span>
+      ${showActions ? `<div class="finance-action-cell">
+        <button class="icon-button finance-row-menu ${menuId === item.id ? "is-open" : ""}" type="button" data-finance-operation-menu="${item.id}" aria-expanded="${menuId === item.id}" title="Дії">⋮</button>
+        ${menuId === item.id ? `
+          <div class="salary-row-menu finance-operation-menu">
+            <button type="button" data-finance-operation-edit="${item.id}">${icon("edit")} Редагувати</button>
+            <button class="danger" type="button" data-finance-operation-delete="${item.id}">${icon("trash")} Видалити</button>
+          </div>
+        ` : ""}
+      </div>` : ""}
+    </div>
+  `;
+}
+
+function financeOperationDetailCard(operation, icon, badge, currencyText) {
+  if (!operation) return "";
+  const statusTone = operation.status === "Частково"
+    ? "red"
+    : operation.status === "Очікується"
+      ? "amber"
+      : operation.status === "Чернетка"
+        ? "blue"
+        : "green";
+  const amountText = operation.amount
+    ? `${operation.amount < 0 ? "-" : ""}${new Intl.NumberFormat("uk-UA").format(Math.abs(operation.amount))} грн`
+    : currencyText(0);
+  return `
+    <article class="panel finance-selected-operation-card">
+      <div class="toolbar">
+        <h2>Операція</h2>
+        <span>${operation.type}</span>
       </div>
-    `;
-  }).join("");
+      <strong>${escapeHtml(operation.title || "Фінансова операція")}</strong>
+      <div><span>Дата</span><b>${operation.date || "-"}</b></div>
+      <div><span>Клієнт</span><b>${escapeHtml(operation.client || "Не вказано")}</b></div>
+      <div><span>Справа</span>${operation.caseId ? `<button class="case-link-button" type="button" data-finance-open-case="${operation.caseId}">№${operation.caseId}</button>` : "<b>Без справи</b>"}</div>
+      <div><span>Сума</span><b class="${operation.amount < 0 ? "danger" : ""}">${amountText}</b></div>
+      <div><span>Статус</span>${badge(operation.status, statusTone)}</div>
+      <div><span>Спосіб</span><b>${escapeHtml(operation.method || "-")}</b></div>
+      <button class="secondary compact" type="button" data-finance-open-operation="${escapeHtml(operation.id)}">${icon("file")} Відкрити в платежах</button>
+    </article>
+  `;
 }
 
 function barRows(rows, color = "#1f7ae0") {
@@ -369,13 +875,14 @@ function financeWorkspaceSummary(label, value, hint) {
   `;
 }
 
-function financeCaseWorkspace(rows, currencyText, badge) {
+function financeCaseWorkspace(state, rows, currencyText, badge) {
+  const pagination = paginateFinanceItems(state, "cases", rows);
   return `
     <div class="finance-workspace-table case-finance-workspace">
       <div class="finance-workspace-head">
         <span>Справа</span><span>Клієнт</span><span>Договір</span><span>Оплачено</span><span>Борг</span><span>Статус</span><span></span>
       </div>
-      ${rows.map((item) => `
+      ${pagination.items.map((item) => `
         <div class="finance-workspace-row">
           <button class="case-link-button" type="button" data-finance-open-case="${item.id}">№${item.id}</button>
           <span>${item.client}</span>
@@ -386,18 +893,20 @@ function financeCaseWorkspace(rows, currencyText, badge) {
           <button class="secondary compact" type="button" data-finance-work-case="${item.id}">Відкрити</button>
         </div>
       `).join("")}
+      ${financePaginationHtml(pagination, "справ")}
     </div>
   `;
 }
 
-function financeClientWorkspace(rows, currencyText) {
+function financeClientWorkspace(state, rows, currencyText) {
   const debtRows = rows.filter((item) => item.debt > 0);
   if (!debtRows.length) {
     return `<div class="finance-operation-empty">Активних боргів немає.</div>`;
   }
+  const pagination = paginateFinanceItems(state, "clients", debtRows);
   return `
     <div class="finance-workspace-cards">
-      ${debtRows.map((item) => `
+      ${pagination.items.map((item) => `
         <button class="finance-client-card" type="button" data-finance-open-case="${item.id}">
           <span>${item.client}</span>
           <strong>${currencyText(item.debt)}</strong>
@@ -405,11 +914,13 @@ function financeClientWorkspace(rows, currencyText) {
         </button>
       `).join("")}
     </div>
+    ${financePaginationHtml(pagination, "клієнтів")}
   `;
 }
 
 function financeSalaryWorkspace(state, icon, currencyText) {
   const rows = filteredSalaryRows(state);
+  const pagination = paginateFinanceItems(state, "salary", rows);
   const employees = salaryEmployeeOptions(state);
   const totals = salaryTotals(rows);
   const history = salaryHistoryValues(rows);
@@ -456,7 +967,7 @@ function financeSalaryWorkspace(state, icon, currencyText) {
       <div class="finance-workspace-head">
         <span>Співробітник</span><span>Роль</span><span>Ставка</span><span>Бонус</span><span>До виплати</span><span>Дата</span><span>Статус</span><span></span>
       </div>
-      ${rows.length ? rows.map((row) => `
+      ${rows.length ? pagination.items.map((row) => `
         <div class="finance-workspace-row">
           <div class="salary-person">
             <strong>${row.name}</strong>
@@ -480,6 +991,7 @@ function financeSalaryWorkspace(state, icon, currencyText) {
           </div>
         </div>
       `).join("") : `<div class="finance-operation-empty">Для обраного співробітника нарахувань немає.</div>`}
+      ${financePaginationHtml(pagination, "нарахувань")}
     </div>
   `;
 }
@@ -511,6 +1023,7 @@ function financeWorkspace(ctx, rows, operations, visibleOperations, totals) {
   const isClients = state.financeTab === "clients";
   const isSalary = state.financeTab === "salary";
   const isReports = state.financeTab === "reports";
+  const isPayments = state.financeTab === "payments";
   const income = operations.filter((item) => item.type === "Надходження").reduce((sum, item) => sum + Math.max(item.amount, 0), 0);
   const expenses = Math.abs(operations.filter((item) => item.type === "Витрата").reduce((sum, item) => sum + item.amount, 0));
   const currentSalaryRows = isSalary ? filteredSalaryRows(state) : [];
@@ -522,6 +1035,16 @@ function financeWorkspace(ctx, rows, operations, visibleOperations, totals) {
     actionLabel: "Додати запис",
     empty: "Записів за обраний період немає."
   };
+  const workspaceAction = isPayments && state.financePaymentMode === "expense" ? "expense" : currentMeta.action;
+  const workspaceActionLabel = isPayments && state.financePaymentMode === "expense"
+    ? "Додати витрату"
+    : isPayments && state.financePaymentMode === "income"
+      ? "Додати надходження"
+      : currentMeta.actionLabel;
+  const operationPagination = !isCases && !isClients && !isSalary && !isReports
+    ? paginateFinanceItems(state, state.financeTab, visibleOperations)
+    : null;
+  const pageOperations = operationPagination?.items || visibleOperations;
 
   return `
     <section class="panel finance-workspace-panel">
@@ -536,7 +1059,7 @@ function financeWorkspace(ctx, rows, operations, visibleOperations, totals) {
           ${isSalary
             ? `<button class="primary" type="button" data-finance-salary-open>${icon("check")} Нарахувати зарплату</button>`
             : !isReports
-              ? `<button class="primary" type="button" data-finance-work-action="${currentMeta.action}">${currentMeta.actionLabel}</button>`
+              ? `<button class="primary" type="button" data-finance-work-action="${workspaceAction}">${workspaceActionLabel}</button>`
               : ""}
         </div>
       </div>
@@ -553,15 +1076,18 @@ function financeWorkspace(ctx, rows, operations, visibleOperations, totals) {
         : isReports
           ? financeReportsWorkspace(icon, totals, currencyText)
           : isCases
-            ? financeCaseWorkspace(rows, currencyText, badge)
+            ? financeCaseWorkspace(state, rows, currencyText, badge)
             : isClients
-              ? financeClientWorkspace(rows, currencyText)
+              ? financeClientWorkspace(state, rows, currencyText)
               : `
-                <div class="finance-workspace-table">
-                  <div class="finance-operation-head">
-                    <span>Дата</span><span>Тип</span><span>Назва / Опис</span><span>Справа</span><span>Клієнт</span><span>Сума</span><span>Статус</span><span>Спосіб оплати</span><span></span>
+                <div class="finance-workspace-table is-operations ${isPayments ? "is-payments" : ""}">
+                  ${isPayments ? financePaymentModeControl(state) : ""}
+                  ${financeOperationFilters(state, operations, icon)}
+                  <div class="finance-operation-head is-tree">
+                    <span>Клієнт</span><span>Справа</span><span>Дата</span><span>Тип</span><span>Назва / Опис</span><span>Сума</span><span>Статус</span><span>Спосіб оплати</span><span></span>
                   </div>
-                  <div class="finance-operation-list">${visibleOperations.length ? operationRows(visibleOperations, badge) : `<div class="finance-operation-empty">${currentMeta.empty}</div>`}</div>
+                  <div class="finance-operation-list is-tree">${visibleOperations.length ? operationRows(pageOperations, badge, icon, { menuId: state.financeOperationMenuId, selectedId: state.selectedFinanceOperationId, caseTree: true }) : `<div class="finance-operation-empty">${currentMeta.empty}</div>`}</div>
+                  ${financePaginationHtml(operationPagination)}
                 </div>
               `}
     </section>
@@ -616,31 +1142,64 @@ function addFinanceDocument(ctx, item, action, amount, title, date, comment, api
   return documentData;
 }
 
-function openFinanceActionDialog(ctx, action) {
-  const { state, caseById, clientById, currencyText } = ctx;
+function removeFinanceDocumentFromCase(ctx, item, operation) {
+  if (!item || !["Рахунок", "Акт"].includes(operation?.type)) return;
+  const { caseFolders } = ctx;
+  const documentId = operation.documentId || (operation.id?.startsWith("document-") ? operation.id.replace("document-", "") : "");
+  const folders = caseFolders(item);
+  const financeFolder = folders.find((folder) => folder.name === "Фінансові документи");
+  const comparableTitle = String(operation.title || "").toLowerCase();
+  const matchesDocument = (doc = {}) => {
+    const id = String(doc.documentId || doc.id || "");
+    const name = String(doc.name || doc.title || "").toLowerCase();
+    return Boolean(documentId && id === String(documentId))
+      || Boolean(operation.type === "Рахунок" && comparableTitle && name.includes(comparableTitle))
+      || Boolean(operation.type === "Акт" && operation.id?.startsWith("document-") && id === operation.id.replace("document-", ""));
+  };
+  item.documents = (item.documents || []).filter((doc) => !matchesDocument(doc));
+  if (financeFolder) {
+    financeFolder.files = (financeFolder.files || []).filter((file) => !matchesDocument(file));
+    financeFolder.updated = new Date().toLocaleDateString("uk-UA");
+  }
+}
+
+function openFinanceActionDialog(ctx, action, operationId = "", options = {}) {
+  const { state, caseById, clientById } = ctx;
   const config = FINANCE_ACTIONS[action];
   const form = document.querySelector("#finance-action-form");
   if (!config || !form) return;
-  const selected = caseById(state.selectedFinanceCaseId) || state.cases[0];
-  const selectedDebt = selected?.debt || selected?.income || 20000;
+  const operation = operationId ? findFinanceOperation(state, operationId) : null;
+  const lockCase = Boolean(operation || options.lockCase);
+  const showActionPicker = Boolean(options.showActionPicker && !operation);
+  const selected = caseById(operation?.caseId || options.caseId || state.selectedFinanceCaseId) || state.cases[0];
   form.reset();
-  form.elements.action.value = action;
-  document.querySelector("#finance-action-title").textContent = config.title;
-  document.querySelector("#finance-action-hint").textContent = config.hint;
-  document.querySelector("#finance-action-submit").textContent = config.submit;
+  form.elements.operationId.value = operation?.id || "";
+  const actionMode = document.querySelector("#finance-action-mode");
+  if (actionMode) actionMode.hidden = !showActionPicker;
+  const deleteButton = document.querySelector("#finance-action-delete");
+  if (deleteButton) {
+    deleteButton.hidden = !operation;
+    deleteButton.dataset.financeOperationDelete = operation?.id || "";
+  }
   document.querySelector("#finance-action-case").innerHTML = state.cases.map((item) => {
     const client = clientById(item.clientId)?.name || "Клієнт не вказаний";
     return `<option value="${item.id}">№${item.id} · ${client}</option>`;
   }).join("");
-  form.elements.caseId.value = selected?.id || state.cases[0]?.id || "";
-  form.elements.title.value = config.defaultTitle;
-  form.elements.amount.value = action === "expense" ? 5000 : selectedDebt;
-  form.elements.date.value = isoToday();
-  form.elements.status.value = config.status;
-  form.elements.method.value = config.method;
-  form.elements.comment.value = action === "invoice"
-    ? `Рахунок буде додано у документи справи. Поточний борг: ${currencyText(selected?.debt || 0)}.`
-    : "";
+  form.elements.caseId.value = operation?.caseId || selected?.id || state.cases[0]?.id || "";
+  const caseField = form.querySelector(".finance-action-case-field");
+  caseField?.classList.toggle("is-locked", lockCase);
+  const selectedCase = caseById(form.elements.caseId.value);
+  const selectedCaseClient = selectedCase ? clientById(selectedCase.clientId)?.name : "";
+  const caseSummary = document.querySelector("#finance-action-case-summary");
+  if (caseSummary) {
+    caseSummary.textContent = selectedCase
+      ? `№${selectedCase.id} · ${selectedCaseClient || "Клієнт не вказаний"}`
+      : "Справу не вибрано";
+  }
+  form.elements.title.value = operation?.title || config.defaultTitle;
+  form.elements.date.value = operation ? (dateFromAny(operation.date)?.toISOString().slice(0, 10) || isoToday()) : isoToday();
+  setupFinanceCustomSelects(form);
+  setFinanceActionMode(ctx, action, operation);
   document.querySelector("#finance-action-dialog").showModal();
 }
 
@@ -659,6 +1218,7 @@ async function applyFinanceAction(ctx, formData) {
   const action = formData.get("action");
   const config = FINANCE_ACTIONS[action];
   const item = caseById(formData.get("caseId"));
+  const operationId = formData.get("operationId");
   const amount = Math.max(0, Number(formData.get("amount")) || 0);
   if (!config || !item || !amount) return;
 
@@ -668,7 +1228,20 @@ async function applyFinanceAction(ctx, formData) {
   const title = formData.get("title") || config.defaultTitle;
   const status = formData.get("status") || config.status;
   const method = formData.get("method") || config.method;
-  const comment = formData.get("comment") || "";
+  const rawComment = formData.get("comment") || "";
+  const documentNumber = String(formData.get("documentNumber") || "").trim();
+  const documentDue = String(formData.get("documentDue") || "").trim();
+  const workPeriod = String(formData.get("workPeriod") || "").trim();
+  const documentTemplate = String(formData.get("documentTemplate") || "").trim();
+  const documentMeta = [];
+  if (action === "invoice" || action === "act") {
+    if (documentNumber) documentMeta.push(`Номер документа: ${documentNumber}`);
+    if (action === "invoice" && documentDue) documentMeta.push(`Строк оплати: ${formatDate(documentDue)}`);
+    if (action === "act" && workPeriod) documentMeta.push(`Період робіт: ${workPeriod}`);
+    if (documentTemplate) documentMeta.push(`Шаблон: ${documentTemplate}`);
+  }
+  const comment = [rawComment, ...documentMeta].filter(Boolean).join("\n");
+  const documentTitle = documentNumber ? `${documentNumber}: ${title}` : title;
   const today = new Date().toLocaleDateString("uk-UA");
   const client = clientById(item.clientId)?.name || "Клієнт не вказаний";
   const operation = {
@@ -681,16 +1254,29 @@ async function applyFinanceAction(ctx, formData) {
     amount: action === "expense" ? -amount : action === "act" ? 0 : amount,
     status,
     method,
+    comment,
+    documentNumber,
+    documentDue,
+    workPeriod,
+    documentTemplate,
     custom: true
   };
   let apiResult = null;
   if (shouldUseApi(state)) {
     try {
+      if (operationId) {
+        await deleteFinanceOperationFromApi(operationId);
+        state.financeOperations = (state.financeOperations || []).filter((item) => item.id !== operationId);
+      }
       apiResult = await saveFinanceOperationToApi({
         ...operation,
         action,
         date: dateIso,
         amount,
+        documentNumber,
+        documentDue,
+        workPeriod,
+        documentTemplate,
         comment
       });
       Object.assign(operation, normalizeFinanceOperation(apiResult.operation || operation));
@@ -701,6 +1287,7 @@ async function applyFinanceAction(ctx, formData) {
   }
 
   state.financeOperations = state.financeOperations || [];
+  if (operationId) state.financeOperations = state.financeOperations.filter((item) => item.id !== operationId);
   state.financeOperations.unshift(operation);
 
   if (action === "income") {
@@ -718,8 +1305,8 @@ async function applyFinanceAction(ctx, formData) {
     item.income = item.totalFee;
     item.paid = finance.paid;
     item.debt = Math.max(item.totalFee - item.paid, 0);
-    item.nextPaymentDue = item.nextPaymentDue || formatDate(dateIso);
-    addFinanceDocument(ctx, item, action, amount, title, date, comment, apiResult?.document);
+    item.nextPaymentDue = item.nextPaymentDue || formatDate(documentDue || dateIso);
+    addFinanceDocument(ctx, item, action, amount, documentTitle, date, comment, apiResult?.document);
   }
 
   if (action === "expense") {
@@ -727,7 +1314,7 @@ async function applyFinanceAction(ctx, formData) {
   }
 
   if (action === "act") {
-    addFinanceDocument(ctx, item, action, amount, title, date, comment, apiResult?.document);
+    addFinanceDocument(ctx, item, action, amount, documentTitle, date, comment, apiResult?.document);
   }
 
   item.financeComment = comment || item.financeComment || "";
@@ -735,9 +1322,11 @@ async function applyFinanceAction(ctx, formData) {
     date: today,
     text: `${config.title}: ${title} на ${currencyText(amount)}.`
   });
+  if (apiResult?.case) Object.assign(item, normalizeCase(apiResult.case));
   state.selectedCaseId = item.id;
   state.selectedFinanceCaseId = item.id;
   state.financeTab = config.tab;
+  if (config.tab === "payments") state.financePaymentMode = action === "expense" ? "expense" : "income";
   state.documentCaseFilter = item.id;
   document.querySelector("#finance-action-dialog")?.close();
   renderAll();
@@ -745,6 +1334,54 @@ async function applyFinanceAction(ctx, formData) {
   showToast(action === "invoice" || action === "act"
     ? `${config.title} створено і додано до документів справи.`
     : `${config.title} збережено у фінансах справи.`);
+}
+
+async function deleteFinanceOperation(ctx, operationId) {
+  const { state, caseById, renderAll, switchView, showToast } = ctx;
+  const operation = findFinanceOperation(state, operationId);
+  if (!operation) return;
+  const item = caseById(operation.caseId);
+
+  if (operation.generated && item) {
+    const amount = Math.abs(Number(operation.amount) || 0);
+    if (operation.id.startsWith("case-income-")) {
+      item.paid = Math.max(0, (Number(item.paid) || 0) - amount);
+      item.debt = Math.max((Number(item.income || item.totalFee) || 0) - item.paid, 0);
+    } else if (operation.id.startsWith("case-invoice-")) {
+      item.totalFee = Number(item.paid) || 0;
+      item.income = item.totalFee;
+      item.debt = 0;
+      item.nextPaymentDue = "";
+    }
+    if (!(await saveFinanceCaseState(ctx, item))) return;
+  } else if (shouldUseApi(state)) {
+    try {
+      const result = await deleteFinanceOperationFromApi(operation.id);
+      if (result?.case && item) Object.assign(item, normalizeCase(result.case));
+    } catch (_error) {
+      showToast("Не вдалося видалити фінансову операцію з бази.", "danger");
+      return;
+    }
+  } else if (item) {
+    const amount = Math.abs(Number(operation.amount) || 0);
+    if (operation.type === "Надходження") {
+      item.paid = Math.max(0, (Number(item.paid) || 0) - amount);
+      item.debt = Math.max((Number(item.income || item.totalFee) || 0) - item.paid, 0);
+    }
+    if (operation.type === "Рахунок") {
+      item.totalFee = Math.max(Number(item.paid) || 0, (Number(item.income || item.totalFee) || 0) - amount);
+      item.income = item.totalFee;
+      item.debt = Math.max(item.totalFee - (Number(item.paid) || 0), 0);
+    }
+  }
+
+  removeFinanceDocumentFromCase(ctx, item, operation);
+  state.financeOperations = (state.financeOperations || []).filter((item) => item.id !== operation.id);
+  state.financeOperationMenuId = "";
+  document.querySelector("#finance-action-dialog")?.close();
+  renderAll();
+  switchView("finance");
+  showToast("Фінансову операцію видалено.");
 }
 
 function bindFinanceActionDialog(ctx) {
@@ -755,6 +1392,22 @@ function bindFinanceActionDialog(ctx) {
     if (event.submitter?.value === "cancel") return;
     event.preventDefault();
     applyFinanceAction(ctx, new FormData(event.currentTarget));
+  });
+  document.querySelector("#finance-action-delete")?.addEventListener("click", (event) => {
+    const operationId = event.currentTarget.dataset.financeOperationDelete;
+    if (operationId) deleteFinanceOperation(ctx, operationId);
+  });
+  form.querySelectorAll("[data-finance-action-choice]").forEach((button) => {
+    button.addEventListener("click", () => setFinanceActionMode(ctx, button.dataset.financeActionChoice || "income"));
+  });
+  form.elements.date?.addEventListener("change", () => {
+    const action = form.elements.action?.value;
+    if (action === "invoice" && !form.elements.documentDue.value) {
+      form.elements.documentDue.value = addDaysIso(form.elements.date.value || isoToday(), 7);
+    }
+    if (action === "act" && !form.elements.workPeriod.value) {
+      form.elements.workPeriod.value = workPeriodLabel(form.elements.date.value || isoToday());
+    }
   });
 }
 
@@ -939,6 +1592,7 @@ export function renderFinanceScreen(ctx) {
     showToast
   } = ctx;
   state.financeTab = state.financeTab || "overview";
+  state.financePaymentMode = state.financePaymentMode || "all";
   state.financeDateStart = state.financeDateStart || DEFAULT_START;
   state.financeDateEnd = state.financeDateEnd || DEFAULT_END;
   state.financeDatePickerOpen = Boolean(state.financeDatePickerOpen);
@@ -947,20 +1601,27 @@ export function renderFinanceScreen(ctx) {
 
   const rows = financeRows(ctx);
   const operationsInRange = financeOperations(state).filter((item) => inDateRange(item.date, state.financeDateStart, state.financeDateEnd));
-  const visibleOperations = operationsInRange.filter((item) => operationMatchesTab(item, state.financeTab));
+  const tabOperations = operationsInRange.filter((item) => operationMatchesTab(item, state.financeTab));
+  const modeOperations = state.financeTab === "payments"
+    ? tabOperations.filter((item) => operationMatchesPaymentMode(item, state.financePaymentMode))
+    : tabOperations;
+  const visibleOperations = modeOperations.filter((item) => operationMatchesFinanceFilters(item, state));
+  const recentOperations = operationsInRange.slice(0, 10);
+  const selectedRecentOperation = recentOperations.find((item) => item.id === state.selectedFinanceOperationId);
   const totals = financeTotals(rows, operationsInRange, state);
   const insights = financeInsightsFromData(rows, operationsInRange);
   const debtRows = rows.filter((item) => item.debt > 0).slice(0, 4);
   const selectedCaseId = state.selectedFinanceCaseId || rows[0]?.id;
   const hasFinanceData = operationsInRange.length > 0 || rows.some((item) => item.total > 0 || item.paid > 0 || item.debt > 0);
   const hasFinanceTotals = totals.income > 0 || totals.expenses > 0 || totals.profit > 0 || totals.expected > 0 || totals.debt > 0;
-  const lineData = hasFinanceData ? FINANCE_LINE : EMPTY_FINANCE_LINE;
-  const cashflowData = hasFinanceData ? CASHFLOW : CASHFLOW.map(([label]) => [label, 0, 0]);
+  const demoFinanceView = state.demoDataStatus?.enabled !== false && hasFinanceData;
+  const lineData = demoFinanceView ? FINANCE_LINE : EMPTY_FINANCE_LINE;
+  const cashflowData = demoFinanceView ? CASHFLOW : CASHFLOW.map(([label]) => [label, 0, 0]);
   const hasIncomeStructure = insights.incomeStructure.length > 0;
-  const accountBalance = hasFinanceData ? 540200 : 0;
-  const cashBalance = hasFinanceData ? 28500 : 0;
-  const supplierDebt = hasFinanceData ? 48900 : 0;
-  const availableBalance = hasFinanceData ? 304800 : 0;
+  const accountBalance = totals.profit;
+  const cashBalance = 0;
+  const supplierDebt = 0;
+  const availableBalance = Math.max(0, totals.profit - supplierDebt);
   const emptyKpiDetail = "даних ще немає";
   const financeTrend = (value, trend, detail) => value > 0 && hasFinanceTotals
     ? { trend, detail }
@@ -1052,12 +1713,12 @@ export function renderFinanceScreen(ctx) {
           <article class="panel finance-operations-card">
             <div class="toolbar">
               <h2>Останні фінансові операції <small>Фінанси по справах</small></h2>
-              <span class="muted">${visibleOperations.length} записів</span>
+              <span class="muted">${recentOperations.length} записів</span>
             </div>
-            <div class="finance-operation-head">
-              <span>Дата</span><span>Тип</span><span>Назва / Опис</span><span>Справа</span><span>Клієнт</span><span>Сума</span><span>Статус</span><span>Спосіб оплати</span><span></span>
+            <div class="finance-operation-head is-readonly is-tree">
+              <span>Клієнт</span><span>Справа</span><span>Дата</span><span>Тип</span><span>Назва / Опис</span><span>Сума</span><span>Статус</span><span>Спосіб оплати</span>
             </div>
-            <div class="finance-operation-list">${operationRows(visibleOperations, badge)}</div>
+            <div class="finance-operation-list is-readonly is-tree">${operationRows(recentOperations, badge, icon, { showActions: false, clickable: true, selectedId: state.selectedFinanceOperationId, caseTree: true })}</div>
             <button class="case-link-button finance-view-all" type="button" data-finance-all-operations>Переглянути всі операції</button>
           </article>
 
@@ -1090,6 +1751,7 @@ export function renderFinanceScreen(ctx) {
         </div>
 
         <aside class="finance-right-column">
+          ${financeOperationDetailCard(selectedRecentOperation, icon, badge, currencyText)}
           <article class="panel finance-status-card">
             <h2>Фінансовий стан</h2>
             ${[
@@ -1116,22 +1778,25 @@ export function renderFinanceScreen(ctx) {
 
           <article class="panel finance-quick-card">
             <h2>Швидкі дії</h2>
-            <button type="button" data-finance-add-income>${icon("check")} Додати надходження</button>
-            <button type="button" data-finance-add-expense>${icon("file")} Додати витрату</button>
-            <button type="button" data-finance-invoice>${icon("file")} Виставити рахунок клієнту</button>
-            <button type="button" data-finance-act>${icon("file")} Створити акт</button>
+            <button type="button" data-finance-quick-action>${icon("check")} Нова фінансова дія</button>
             <button type="button" data-finance-payments>${icon("briefcase")} Перейти до всіх платежів</button>
           </article>
         </aside>
       </section>
-      ` : financeWorkspace(ctx, rows, operationsInRange, visibleOperations, totals)}
+      ` : financeWorkspace(ctx, rows, modeOperations, visibleOperations, totals)}
     </div>
   `;
+  setupFinanceCustomSelects($("#finance"));
 
   const rerender = () => renderFinanceScreen(ctx);
 
   document.querySelectorAll("[data-finance-tab]").forEach((button) => button.addEventListener("click", () => {
     state.financeTab = button.dataset.financeTab;
+    if (state.financeTab === "payments") state.financePaymentMode = "all";
+    state.financeQuery = "";
+    state.financeOperationClientFilter = "all";
+    state.financeOperationCaseFilter = "all";
+    resetFinancePage(state);
     rerender();
   }));
   document.querySelector("[data-finance-date-toggle]")?.addEventListener("click", () => {
@@ -1156,11 +1821,51 @@ export function renderFinanceScreen(ctx) {
       [state.financeDateStart, state.financeDateEnd] = [state.financeDateEnd, state.financeDateStart];
     }
     state.financeDatePickerOpen = false;
+    resetFinancePage(state);
     showToast("Період фінансів застосовано.");
     rerender();
   });
   document.querySelectorAll("[data-export-finance]").forEach((button) => button.addEventListener("click", () => {
     exportFinanceReport(ctx, totals, visibleOperations);
+  }));
+  document.querySelector("[data-finance-operation-search]")?.addEventListener("input", (event) => {
+    state.financeQuery = event.currentTarget.value;
+    resetFinancePage(state);
+    rerender();
+  });
+  document.querySelector("[data-finance-operation-client]")?.addEventListener("change", (event) => {
+    state.financeOperationClientFilter = event.currentTarget.value || "all";
+    const selectedOperation = tabOperations.find((item) => item.caseId === state.financeOperationCaseFilter);
+    if (state.financeOperationClientFilter !== "all" && selectedOperation?.client !== state.financeOperationClientFilter) {
+      state.financeOperationCaseFilter = "all";
+    }
+    resetFinancePage(state);
+    rerender();
+  });
+  document.querySelector("[data-finance-operation-case]")?.addEventListener("change", (event) => {
+    state.financeOperationCaseFilter = event.currentTarget.value || "all";
+    resetFinancePage(state);
+    rerender();
+  });
+  document.querySelector("[data-finance-operation-reset]")?.addEventListener("click", () => {
+    state.financeQuery = "";
+    state.financeOperationClientFilter = "all";
+    state.financeOperationCaseFilter = "all";
+    resetFinancePage(state);
+    rerender();
+  });
+  document.querySelectorAll("[data-finance-payment-mode]").forEach((button) => button.addEventListener("click", () => {
+    state.financePaymentMode = button.dataset.financePaymentMode || "all";
+    state.financeQuery = "";
+    state.financeOperationClientFilter = "all";
+    state.financeOperationCaseFilter = "all";
+    resetFinancePage(state, "payments");
+    rerender();
+  }));
+  document.querySelectorAll("[data-finance-page]").forEach((button) => button.addEventListener("click", () => {
+    const key = button.dataset.financePageKey || state.financeTab || "overview";
+    financePageState(state)[key] = Number(button.dataset.financePage) || 1;
+    rerender();
   }));
   document.querySelectorAll("[data-finance-open-case]").forEach((button) => button.addEventListener("click", () => {
     openFinanceCase(ctx, button.dataset.financeOpenCase);
@@ -1168,16 +1873,64 @@ export function renderFinanceScreen(ctx) {
   document.querySelectorAll("[data-finance-work-case]").forEach((button) => button.addEventListener("click", () => {
     openFinanceCase(ctx, button.dataset.financeWorkCase);
   }));
-  document.querySelectorAll("[data-finance-row-action]").forEach((button) => button.addEventListener("click", () => {
-    state.selectedFinanceCaseId = button.dataset.financeRowAction;
-    openFinanceDialog(button.dataset.financeRowAction);
+  const openOperationInPayments = (operationId) => {
+    const operation = findFinanceOperation(state, operationId);
+    if (!operation) return;
+    state.financeTab = "payments";
+    state.financePaymentMode = "all";
+    state.financeQuery = operation.title || "";
+    state.financeOperationClientFilter = operation.client || "all";
+    state.financeOperationCaseFilter = operation.caseId || "all";
+    state.financeOperationMenuId = "";
+    state.selectedFinanceOperationId = operation.id;
+    showToast("Операцію відкрито у вкладці платежів.");
+    rerender();
+  };
+  document.querySelectorAll("[data-finance-select-operation]").forEach((row) => {
+    row.addEventListener("click", (event) => {
+      if (event.target.closest("button")) return;
+      state.selectedFinanceOperationId = row.dataset.financeSelectOperation;
+      rerender();
+    });
+    row.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      state.selectedFinanceOperationId = row.dataset.financeSelectOperation;
+      rerender();
+    });
+  });
+  document.querySelectorAll("[data-finance-open-operation]").forEach((target) => {
+    if (target.tagName === "BUTTON") {
+      target.addEventListener("click", () => openOperationInPayments(target.dataset.financeOpenOperation));
+      return;
+    }
+    target.addEventListener("dblclick", (event) => {
+      if (event.target.closest("button")) return;
+      openOperationInPayments(target.dataset.financeOpenOperation);
+    });
+  });
+  document.querySelectorAll("[data-finance-operation-menu]").forEach((button) => button.addEventListener("click", () => {
+    state.financeOperationMenuId = state.financeOperationMenuId === button.dataset.financeOperationMenu ? "" : button.dataset.financeOperationMenu;
+    rerender();
+  }));
+  document.querySelectorAll("[data-finance-operation-edit]").forEach((button) => button.addEventListener("click", () => {
+    const operation = findFinanceOperation(state, button.dataset.financeOperationEdit);
+    state.financeOperationMenuId = "";
+    if (!operation) return;
+    state.selectedFinanceCaseId = operation.caseId;
+    if (operation.generated) {
+      openFinanceDialog(operation.caseId);
+      return;
+    }
+    openFinanceActionDialog(ctx, financeActionForOperation(operation), operation.id);
+  }));
+  document.querySelectorAll("[data-finance-operation-delete]").forEach((button) => button.addEventListener("click", () => {
+    deleteFinanceOperation(ctx, button.dataset.financeOperationDelete);
   }));
   document.querySelector("[data-finance-back-overview]")?.addEventListener("click", () => {
     state.financeTab = "overview";
     rerender();
   });
   document.querySelectorAll("[data-finance-work-action]").forEach((button) => button.addEventListener("click", () => {
-    state.selectedFinanceCaseId = selectedCaseId;
     openFinanceActionDialog(ctx, button.dataset.financeWorkAction);
   }));
   document.querySelectorAll("[data-finance-salary-open]").forEach((button) => button.addEventListener("click", () => {
@@ -1186,6 +1939,7 @@ export function renderFinanceScreen(ctx) {
   document.querySelector("[data-salary-filter]")?.addEventListener("change", (event) => {
     state.salaryFilter = event.currentTarget.value;
     state.salaryMenuId = "";
+    resetFinancePage(state, "salary");
     rerender();
   });
   document.querySelectorAll("[data-salary-menu]").forEach((button) => button.addEventListener("click", () => {
@@ -1210,6 +1964,10 @@ export function renderFinanceScreen(ctx) {
   });
   document.querySelector("[data-finance-all-operations]")?.addEventListener("click", () => {
     state.financeTab = "payments";
+    state.financePaymentMode = "all";
+    state.financeQuery = "";
+    state.financeOperationClientFilter = "all";
+    state.financeOperationCaseFilter = "all";
     showToast("Відкрито вкладку платежів.");
     rerender();
   });
@@ -1218,24 +1976,15 @@ export function renderFinanceScreen(ctx) {
     showToast("Показано клієнтів із заборгованістю.", "warning");
     rerender();
   });
-  document.querySelector("[data-finance-add-income]")?.addEventListener("click", () => {
-    state.selectedFinanceCaseId = selectedCaseId;
-    openFinanceActionDialog(ctx, "income");
-  });
-  document.querySelector("[data-finance-add-expense]")?.addEventListener("click", () => {
-    state.selectedFinanceCaseId = selectedCaseId;
-    openFinanceActionDialog(ctx, "expense");
-  });
-  document.querySelector("[data-finance-invoice]")?.addEventListener("click", () => {
-    state.selectedFinanceCaseId = selectedCaseId;
-    openFinanceActionDialog(ctx, "invoice");
-  });
-  document.querySelector("[data-finance-act]")?.addEventListener("click", () => {
-    state.selectedFinanceCaseId = selectedCaseId;
-    openFinanceActionDialog(ctx, "act");
+  document.querySelector("[data-finance-quick-action]")?.addEventListener("click", () => {
+    openFinanceActionDialog(ctx, "income", "", { showActionPicker: true });
   });
   document.querySelector("[data-finance-payments]")?.addEventListener("click", () => {
     state.financeTab = "payments";
+    state.financePaymentMode = "all";
+    state.financeQuery = "";
+    state.financeOperationClientFilter = "all";
+    state.financeOperationCaseFilter = "all";
     rerender();
   });
   document.querySelector("[data-finance-chart-scale]")?.addEventListener("change", () => showToast("Масштаб графіка змінено."));

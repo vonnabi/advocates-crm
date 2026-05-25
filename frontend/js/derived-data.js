@@ -55,14 +55,6 @@ export function clientName(state, item) {
   return state.clients.find((client) => client.id === Number(item.clientId))?.name || "Клієнт не вказаний";
 }
 
-function caseExpense(item) {
-  if (item.expenses) return Number(item.expenses);
-  const docs = item.documents?.length || 0;
-  const tasks = item.tasks?.length || 0;
-  const priority = item.priority === "Високий" ? 900 : item.priority === "Середній" ? 600 : 400;
-  return Math.round((docs * 450 + tasks * 300 + priority) / 50) * 50;
-}
-
 export function financeRowsFromCases(state) {
   return state.cases.map((item) => {
     const finance = caseFinancials(item);
@@ -81,15 +73,11 @@ export function financeRowsFromCases(state) {
 export function buildFinanceOperations(state) {
   const custom = state.financeOperations || [];
   const customIncomeByCase = new Map();
-  const customExpenseByCase = new Map();
   const customInvoiceByCase = new Map();
   custom.forEach((operation) => {
     if (!operation.caseId) return;
     if (operation.type === "Надходження") {
       customIncomeByCase.set(operation.caseId, (customIncomeByCase.get(operation.caseId) || 0) + Math.max(0, operation.amount || 0));
-    }
-    if (operation.type === "Витрата") {
-      customExpenseByCase.set(operation.caseId, (customExpenseByCase.get(operation.caseId) || 0) + Math.abs(operation.amount || 0));
     }
     if (operation.type === "Рахунок") {
       customInvoiceByCase.set(operation.caseId, (customInvoiceByCase.get(operation.caseId) || 0) + Math.max(0, operation.amount || 0));
@@ -98,7 +86,6 @@ export function buildFinanceOperations(state) {
   const generated = state.cases.flatMap((item) => {
     const finance = caseFinancials(item);
     const generatedPaid = Math.max(0, finance.paid - (customIncomeByCase.get(item.id) || 0));
-    const generatedExpense = Math.max(0, caseExpense(item) - (customExpenseByCase.get(item.id) || 0));
     const generatedDebt = Math.max(0, finance.debt - (customInvoiceByCase.get(item.id) || 0));
     const client = clientName(state, item);
     const rows = [];
@@ -113,20 +100,6 @@ export function buildFinanceOperations(state) {
         amount: generatedPaid,
         status: finance.debt > 0 ? "Частково" : "Оплачено",
         method: finance.debt > 0 ? "Часткова оплата" : "Банківський переказ",
-        generated: true
-      });
-    }
-    if (generatedExpense > 0) {
-      rows.push({
-        id: `case-expense-${item.id}`,
-        date: formatDisplayDate(item.opened),
-        type: "Витрата",
-        title: "Судові та супровідні витрати",
-        caseId: item.id,
-        client,
-        amount: -generatedExpense,
-        status: "Оплачено",
-        method: "Картка",
         generated: true
       });
     }

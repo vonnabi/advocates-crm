@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Advocates Bureau CRM</title>
     <link rel="icon" type="image/png" href="assets/advocates-crm-logo.png" data-brand-favicon />
-    <link rel="stylesheet" href="styles.css?v=clients-filter-1" />
+    <link rel="stylesheet" href="styles.css?v=finance-pagination-2" />
   </head>
   <body>
     <aside class="sidebar">
@@ -299,7 +299,10 @@
         <label>Коментар по оплаті
           <textarea name="financeComment" rows="3" placeholder="Наприклад: друга частина після подання позову"></textarea>
         </label>
-        <button class="primary" id="finance-submit-button" value="default" type="submit">Зберегти фінанси</button>
+        <div class="modal-actions split">
+          <button class="secondary danger" value="delete" type="submit">Очистити фінанси</button>
+          <button class="primary" id="finance-submit-button" value="default" type="submit">Зберегти фінанси</button>
+        </div>
       </form>
     </dialog>
 
@@ -310,20 +313,48 @@
           <button id="finance-action-dialog-close" class="ghost" type="button">Закрити</button>
         </div>
         <input name="action" type="hidden" />
+        <input name="operationId" type="hidden" />
+        <div class="finance-action-mode" id="finance-action-mode" hidden>
+          <button type="button" data-finance-action-choice="income">Надходження</button>
+          <button type="button" data-finance-action-choice="expense">Витрата</button>
+          <button type="button" data-finance-action-choice="invoice">Рахунок</button>
+          <button type="button" data-finance-action-choice="act">Акт</button>
+        </div>
         <p class="finance-action-hint" id="finance-action-hint">Дія буде прив'язана до справи, клієнта і фінансової історії.</p>
-        <label>Справа
+        <label class="finance-action-case-field">Справа
           <select name="caseId" id="finance-action-case"></select>
+          <span class="finance-action-case-summary" id="finance-action-case-summary"></span>
         </label>
-        <label>Назва / опис
+        <label id="finance-action-title-field">Назва / опис
           <input name="title" required placeholder="Наприклад: Оплата за правову допомогу" />
+          <small id="finance-action-title-help" class="finance-action-field-note"></small>
         </label>
-        <label>Сума
+        <label id="finance-action-amount-field">Сума
           <input name="amount" type="number" min="0" step="100" required placeholder="Наприклад: 20000" />
         </label>
-        <label>Дата
+        <label id="finance-action-date-field">Дата
           <input name="date" type="date" required />
         </label>
-        <label>Статус
+        <div class="finance-action-document-fields" id="finance-action-document-fields" hidden>
+          <label id="finance-action-number-field">Номер документа
+            <input name="documentNumber" placeholder="Автоматично" />
+          </label>
+          <label id="finance-action-due-field">Строк оплати
+            <input name="documentDue" type="date" />
+          </label>
+          <label id="finance-action-period-field" hidden>Період робіт
+            <input name="workPeriod" placeholder="Наприклад: травень 2026" />
+          </label>
+          <label class="finance-action-select-field" id="finance-action-template-field">Шаблон документа
+            <select name="documentTemplate">
+              <option>Основний шаблон</option>
+              <option>Короткий шаблон</option>
+              <option>Детальний шаблон</option>
+            </select>
+          </label>
+          <div class="finance-action-document-note" id="finance-action-document-note"></div>
+        </div>
+        <label class="finance-action-select-field">Статус
           <select name="status">
             <option>Оплачено</option>
             <option>Частково</option>
@@ -331,7 +362,7 @@
             <option>Чернетка</option>
           </select>
         </label>
-        <label>Спосіб / канал
+        <label class="finance-action-select-field">Спосіб / канал
           <select name="method">
             <option>Банківський переказ</option>
             <option>Картка</option>
@@ -342,7 +373,10 @@
         <label>Коментар
           <textarea name="comment" rows="3" placeholder="Коротке пояснення для історії справи"></textarea>
         </label>
-        <button class="primary" id="finance-action-submit" value="default" type="submit">Зберегти</button>
+        <div class="modal-actions split">
+          <button class="secondary danger" id="finance-action-delete" type="button" hidden>Видалити операцію</button>
+          <button class="primary" id="finance-action-submit" value="default" type="submit">Зберегти</button>
+        </div>
       </form>
     </dialog>
 
@@ -774,8 +808,9 @@
           <h2 id="task-dialog-title">Нова задача</h2>
           <button id="task-dialog-close" class="ghost" type="button">Закрити</button>
         </div>
-        <label>Справа
+        <label class="task-case-field">Справа
           <select name="caseId" id="task-case-select"></select>
+          <span class="task-case-locked" data-task-case-locked hidden></span>
         </label>
         <input name="taskIndex" type="hidden" />
         <div class="event-form-card task-form-card">
@@ -932,8 +967,8 @@
         </div>
         <input name="actionIndex" type="hidden" />
         <input name="eventId" type="hidden" />
-        <div class="event-form-card">
-          <div class="form-section-title"><strong>Основне</strong><span>Подія автоматично зв'язується зі справою і клієнтом.</span></div>
+        <div class="event-form-card event-main-card">
+          <div class="form-section-title"><strong>1. Подія</strong></div>
           <label class="wide-field">Назва події<input name="title" required placeholder="Наприклад: Судове засідання у справі клієнта" /></label>
           <div class="form-grid two">
             <label>Тип
@@ -961,14 +996,14 @@
               </select>
             </label>
           </div>
-          <div class="form-grid two">
+          <div class="form-grid two event-link-fields" data-event-link-fields>
             <label>Клієнт<select name="client" id="event-client"></select></label>
             <label>Справа<select name="caseId" id="event-case"></select></label>
           </div>
         </div>
-        <div class="event-form-card">
-          <div class="form-section-title"><strong>Час і місце</strong><span>Потрібно для календаря, строків і майбутньої моделі CalendarEvent.</span></div>
-          <div class="form-grid three">
+        <div class="event-form-card event-time-card">
+          <div class="form-section-title"><strong>2. Час і місце</strong></div>
+          <div class="form-grid three event-date-grid">
             <label>Дата<input name="date" type="date" required /></label>
             <label>Час початку<input name="time" type="time" required /></label>
             <label>Час завершення<input name="endTime" type="time" /></label>
@@ -997,8 +1032,18 @@
           </label>
         </div>
         <div class="event-form-card event-reminder-card">
-          <div class="form-section-title"><strong>Нагадування</strong><span>CRM покаже план відправки через Telegram, SMS і внутрішні сповіщення.</span></div>
-          <div class="form-grid three">
+          <div class="form-section-title"><strong>3. Нагадування</strong></div>
+          <label class="event-reminder-toggle">
+            <span>
+              <strong>Нагадування вимкнено</strong>
+              <em>Увімкніть, якщо потрібно нагадати через CRM або зовнішні канали.</em>
+            </span>
+            <span class="settings-switch">
+              <input name="reminderEnabled" type="checkbox" />
+              <span aria-hidden="true"></span>
+            </span>
+          </label>
+          <div class="form-grid three" data-event-reminder-settings>
             <label>Коли
               <select name="reminderBefore">
                 <option>За 1 годину</option>
@@ -1009,7 +1054,7 @@
                 <option>Індивідуально</option>
               </select>
             </label>
-            <label>Канали
+            <label>Канали нагадування
               <select name="reminderChannels">
                 <option>CRM + Telegram + SMS</option>
                 <option>CRM</option>
@@ -1028,6 +1073,7 @@
               </select>
             </label>
           </div>
+          <div class="event-reminder-hint" data-event-reminder-hint></div>
           <label>Опис<textarea name="description" rows="3" placeholder="Контекст події, що підготувати, що взяти із собою"></textarea></label>
         </div>
         <button class="primary" id="event-submit-button" value="default" type="submit">Додати подію</button>
@@ -1062,6 +1108,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="app.js?v=empty-audit-1"></script>
+    <script type="module" src="app.js?v=finance-pagination-2"></script>
   </body>
 </html>

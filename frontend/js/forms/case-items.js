@@ -1,5 +1,5 @@
-import { saveTaskToApi, shouldUseApi } from "../api.js";
-import { normalizeTask } from "../state.js";
+import { saveCaseToApi, saveTaskToApi, shouldUseApi } from "../api.js";
+import { normalizeCase, normalizeTask } from "../state.js";
 
 export function setupCaseItemForms({ state, $, caseById, caseFolders, formatDate, renderAll, switchView, showToast }) {
   function defaultSubtasksForTask(task = {}, fallbackResponsible = "") {
@@ -206,7 +206,7 @@ export function setupCaseItemForms({ state, $, caseById, caseFolders, formatDate
     showToast(subtaskIndex === null ? "Підзадачу додано." : "Підзадачу оновлено.");
   });
 
-  $("#folder-form").addEventListener("submit", (event) => {
+  $("#folder-form").addEventListener("submit", async (event) => {
     if (event.submitter?.value === "cancel") return;
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -225,6 +225,14 @@ export function setupCaseItemForms({ state, $, caseById, caseFolders, formatDate
         date: today,
         text: `Папку документів перейменовано: ${previousName} → ${name}.`
       });
+      if (shouldUseApi(state)) {
+        try {
+          Object.assign(item, normalizeCase(await saveCaseToApi(item)));
+        } catch (_error) {
+          showToast("Не вдалося зберегти папку в базі.", "danger");
+          return;
+        }
+      }
       state.selectedCaseId = item.id;
       $("#folder-dialog").close();
       renderAll();
@@ -241,6 +249,14 @@ export function setupCaseItemForms({ state, $, caseById, caseFolders, formatDate
       date: today,
       text: `Створено папку документів: ${name}.`
     });
+    if (shouldUseApi(state)) {
+      try {
+        Object.assign(item, normalizeCase(await saveCaseToApi(item)));
+      } catch (_error) {
+        showToast("Не вдалося зберегти папку в базі.", "danger");
+        return;
+      }
+    }
     state.selectedCaseId = item.id;
     $("#folder-dialog").close();
     renderAll();

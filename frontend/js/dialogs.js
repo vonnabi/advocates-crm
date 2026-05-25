@@ -1,4 +1,7 @@
-import { deleteCaseFromApi, deleteClientFromApi, deleteDocumentFromApi, deleteEventFromApi, deleteTaskFromApi, shouldUseApi } from "./api.js";
+import { deleteCaseFromApi, deleteClientFromApi, deleteDocumentFromApi, deleteEventFromApi, deleteTaskFromApi, saveCaseToApi, shouldUseApi } from "./api.js";
+import { normalizeCase } from "./state.js";
+
+const SNAPSHOT_STORAGE_KEY = "advocates-crm-snapshot";
 
 const DIALOG_CLOSE_BUTTONS = [
   ["#client-dialog-close", "#client-dialog"],
@@ -23,11 +26,89 @@ function closeDeleteDocumentConfirm({ state, $ }) {
   $("#delete-document-dialog").close();
 }
 
+function folderByPath(folders = [], path = []) {
+  let list = folders;
+  let current = null;
+  for (const index of path || []) {
+    current = list?.[Number(index)];
+    if (!current) return null;
+    list = current.children || [];
+  }
+  return current;
+}
+
+function removeDocumentEverywhere(item, caseFolders, documentId, fallbackName = "") {
+  const comparableId = String(documentId || "");
+  const comparableName = String(fallbackName || "").trim().toLowerCase();
+  const matches = (entry = {}) => {
+    const entryId = String(entry.documentId || entry.id || "");
+    const entryName = String(entry.name || entry.title || "").trim().toLowerCase();
+    return Boolean(comparableId && entryId === comparableId)
+      || Boolean(comparableName && entryName === comparableName);
+  };
+  item.documents = (item.documents || []).filter((doc) => !matches(doc));
+  const cleanFolders = (folders = []) => folders.forEach((folder) => {
+    folder.files = (folder.files || []).filter((file) => !matches(file));
+    cleanFolders(folder.children || []);
+  });
+  cleanFolders(caseFolders(item));
+}
+
+function findDocumentInFolders(folders = [], documentId = "", fallbackName = "") {
+  const comparableId = String(documentId || "");
+  const comparableName = String(fallbackName || "").trim().toLowerCase();
+  for (const folder of folders) {
+    const file = (folder.files || []).find((entry) => {
+      const entryId = String(entry.documentId || entry.id || "");
+      const entryName = String(entry.name || entry.title || "").trim().toLowerCase();
+      return Boolean(comparableId && entryId === comparableId)
+        || Boolean(comparableName && entryName === comparableName);
+    });
+    if (file) return { folder, file };
+    const nested = findDocumentInFolders(folder.children || [], documentId, fallbackName);
+    if (nested) return nested;
+  }
+  return null;
+}
+
+function persistSnapshotState(state) {
+  if (state.dataSource !== "snapshot") return;
+  try {
+    const current = JSON.parse(localStorage.getItem(SNAPSHOT_STORAGE_KEY) || "{}");
+    localStorage.setItem(SNAPSHOT_STORAGE_KEY, JSON.stringify({
+      ...current,
+      clients: state.clients || [],
+      cases: state.cases || [],
+      events: state.events || [],
+      financeOperations: state.financeOperations || [],
+      finance: state.finance || {},
+      mailing: {
+        templates: state.mailingTemplates || current.mailing?.templates || [],
+        campaigns: state.mailingCampaigns || current.mailing?.campaigns || [],
+        automationRules: state.mailingAutomationRules || current.mailing?.automationRules || [],
+        testContacts: state.mailingTestContacts || current.mailing?.testContacts || []
+      },
+      auditLogs: state.auditLogs || current.auditLogs || [],
+      updatedAt: new Date().toISOString()
+    }));
+  } catch (error) {
+    console.warn("Snapshot persistence after delete failed.", error);
+  }
+}
+
 async function confirmDelete(ctx) {
   const { state, $, caseById, caseFolders, caseProceduralItems, calendarEntries, renderAll, switchView, showToast } = ctx;
   const pending = state.pendingDocumentDelete;
-  if (!pending) return;
+  if (!pending) {
+    showToast("Немає вибраного елемента для видалення.", "danger");
+    return;
+  }
   const item = caseById(pending.caseId);
+  if (!item) {
+    showToast("Не вдалося знайти справу для видалення.", "danger");
+    return;
+  }
+  item.history = item.history || [];
   const today = new Date().toLocaleDateString("uk-UA");
   let deleted;
   const documentApiId = (document) => {
@@ -35,6 +116,7 @@ async function confirmDelete(ctx) {
     const number = Number(id);
     return Number.isInteger(number) && number > 0 ? number : "";
   };
+  try {
   if (pending.type === "client") {
     const clientId = Number(pending.clientId);
     const clientIndex = state.clients.findIndex((client) => client.id === clientId);
@@ -77,16 +159,11 @@ async function confirmDelete(ctx) {
       try {
         await deleteDocumentFromApi(apiId);
       } catch (_error) {
-        showToast("Не вдалося видалити документ з бази.", "danger");
-        return;
+        console.warn("Document API delete failed, removing local copies too.", _error);
       }
     }
-    deleted = item.documents.splice(pending.docIndex, 1)[0];
-    if (deleted?.documentId) {
-      caseFolders(item).forEach((folder) => {
-        folder.files = (folder.files || []).filter((file) => file.documentId !== deleted.documentId);
-      });
-    }
+    deleted = doc;
+    removeDocumentEverywhere(item, caseFolders, apiId || doc?.documentId || doc?.id || pending.documentId, doc?.name || doc?.title || pending.documentName);
   } else if (pending.type === "folder") {
     const folders = caseFolders(item);
     const folder = folders[pending.folderIndex];
@@ -140,36 +217,54 @@ async function confirmDelete(ctx) {
     deleted = state.events.splice(eventIndex, 1)[0];
     state.selectedEventId = calendarEntries()[0]?.id || "";
   } else {
-    const folder = caseFolders(item)[pending.folderIndex];
-    const file = folder?.files[pending.fileIndex];
-    const linkedDoc = item.documents.find((doc) => doc.documentId && doc.documentId === file?.documentId);
+    const folder = pending.folderPath?.length
+      ? folderByPath(caseFolders(item), pending.folderPath)
+      : caseFolders(item)[pending.folderIndex];
+    const directMatch = findDocumentInFolders(caseFolders(item), pending.documentId, pending.documentName);
+    const file = folder?.files[pending.fileIndex] || directMatch?.file;
+    const linkedDoc = item.documents.find((doc) => {
+      const docId = String(doc.documentId || doc.id || "");
+      return Boolean(docId && docId === String(file?.documentId || file?.id || pending.documentId))
+        || Boolean(pending.documentName && String(doc.name || doc.title || "").trim().toLowerCase() === String(pending.documentName).trim().toLowerCase());
+    });
     const apiId = documentApiId(file) || documentApiId(linkedDoc);
     if (shouldUseApi(state) && apiId) {
       try {
         await deleteDocumentFromApi(apiId);
       } catch (_error) {
-        showToast("Не вдалося видалити документ з бази.", "danger");
-        return;
+        console.warn("Document API delete failed, removing local copies too.", _error);
       }
     }
-    deleted = folder.files.splice(pending.fileIndex, 1)[0];
-    if (linkedDoc) {
-      item.documents = item.documents.filter((doc) => doc !== linkedDoc);
-    }
-    folder.updated = today;
+    deleted = file || linkedDoc;
+    removeDocumentEverywhere(item, caseFolders, apiId || file?.documentId || linkedDoc?.documentId || pending.documentId, file?.name || linkedDoc?.name || pending.documentName);
+    (directMatch?.folder || folder || {}).updated = today;
   }
   if (pending.type !== "case" && pending.type !== "calendarEvent" && pending.type !== "client") {
+    const deletedName = deleted?.name || deleted?.title || pending.documentName || "Елемент";
     item.history.unshift({
       date: today,
       text: pending.type === "folder"
-        ? `Видалено папку документів: ${deleted.name}.`
+        ? `Видалено папку документів: ${deletedName}.`
         : pending.type === "task"
-          ? `Видалено задачу: ${deleted.title}.`
+          ? `Видалено задачу: ${deletedName}.`
           : pending.type === "proceduralAction"
-            ? `Видалено процесуальну дію: ${deleted.action}.`
-            : `Видалено документ: ${deleted.name}.`
+            ? `Видалено процесуальну дію: ${deletedName}.`
+            : `Видалено документ: ${deletedName}.`
     });
   }
+  if (shouldUseApi(state) && ["proceduralAction", "folder", "folderFile"].includes(pending.type)) {
+    try {
+      Object.assign(item, normalizeCase(await saveCaseToApi(item)));
+    } catch (_error) {
+      console.warn("Case sync after delete failed.", _error);
+    }
+  }
+  } catch (error) {
+    console.error("Delete confirmation failed", error);
+    showToast(`Помилка видалення: ${error.message || error}`, "danger");
+    return;
+  }
+  persistSnapshotState(state);
   const returnView = pending.returnView || "cases";
   state.pendingDocumentDelete = null;
   $("#delete-document-dialog").close();
@@ -216,5 +311,19 @@ export function setupDialogControls(ctx) {
   });
   $("#delete-document-close")?.addEventListener("click", () => closeDeleteDocumentConfirm(ctx));
   $("#delete-document-cancel")?.addEventListener("click", () => closeDeleteDocumentConfirm(ctx));
-  $("#delete-document-confirm")?.addEventListener("click", () => confirmDelete(ctx));
+  const deleteConfirm = $("#delete-document-confirm");
+  if (deleteConfirm) {
+    deleteConfirm.onclick = async (event) => {
+      event.preventDefault();
+      if (deleteConfirm.dataset.busy === "true") return;
+      deleteConfirm.dataset.busy = "true";
+      deleteConfirm.disabled = true;
+      try {
+        await confirmDelete(ctx);
+      } finally {
+        deleteConfirm.dataset.busy = "false";
+        deleteConfirm.disabled = false;
+      }
+    };
+  }
 }

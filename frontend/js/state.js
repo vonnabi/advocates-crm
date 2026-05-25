@@ -95,7 +95,11 @@ function isoDatePart(value) {
 
 function timePart(value) {
   if (!value || value === "-") return "";
-  return String(value).match(/\b\d{2}:\d{2}\b/)?.[0] || "";
+  const clean = String(value).trim();
+  const isoTime = clean.match(/T(\d{2}:\d{2})/);
+  if (isoTime) return isoTime[1];
+  const time = clean.match(/\b\d{1,2}:\d{2}\b/)?.[0] || "";
+  return time.length === 4 ? `0${time}` : time;
 }
 
 function displayDate(value, fallback = "") {
@@ -168,8 +172,9 @@ export function normalizeEvent(event) {
   return {
     ...event,
     date: date || event.date || "",
-    time: timePart(event.startsAt) || event.time || "09:00",
-    endTime: timePart(event.endsAt) || event.endTime || "",
+    time: event.time || timePart(event.startsAt) || "09:00",
+    endTime: event.endTime || timePart(event.endsAt) || "",
+    reminderEnabled: Boolean(event.reminderEnabled || event.reminderChannels),
   };
 }
 
@@ -482,6 +487,10 @@ export async function createInitialState() {
     documentArchiveScope: "cases",
     financeQuery: "",
     financeStatusFilter: "all",
+    financeOperationClientFilter: "all",
+    financeOperationCaseFilter: "all",
+    financePaymentMode: "all",
+    selectedFinanceOperationId: "",
     selectedFinanceCaseId: demoCaseId("2024/12345"),
     financeTab: "overview",
     financeDateStart: demoRangeStart,

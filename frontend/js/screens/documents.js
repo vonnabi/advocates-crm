@@ -2249,7 +2249,10 @@ export function renderDocumentsScreen(ctx) {
       openDeleteDocumentConfirm({
         caseId,
         folderIndex: payload.folderIndex,
+        folderPath: payload.folderPath,
         fileIndex: payload.fileIndex,
+        documentId: payload.file?.documentId || payload.file?.id || payload.doc?.documentId || payload.doc?.id || "",
+        documentName: payload.file?.name || payload.doc?.name || "",
         type: "folderFile",
         returnView: "documents"
       });

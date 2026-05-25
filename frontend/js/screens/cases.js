@@ -58,12 +58,12 @@ function isCaseCompleted(item) {
 }
 
 function inferCaseDocumentFolderName(doc = {}, fallback = "Інші документи") {
-  if (fallback && !["Позови", "Клопотання", "Запити", "Відповіді та ухвали", "Інші документи"].includes(fallback)) return fallback;
   const haystack = [doc.type, doc.name, doc.folder, fallback].map((value) => String(value || "").toLowerCase()).join(" ");
   if (/клопотан|клопа/.test(haystack)) return "Клопотання";
   if (/адвокатськ.*запит|запит|витребуван/.test(haystack)) return "Запити";
   if (/ухвал|відповід|рішенн|постанова/.test(haystack)) return "Відповіді та ухвали";
   if (/позов|позовн|заява/.test(haystack)) return "Позови";
+  if (fallback && !["Позови", "Клопотання", "Запити", "Відповіді та ухвали", "Інші документи"].includes(fallback)) return fallback;
   return fallback || "Інші документи";
 }
 
@@ -1196,6 +1196,23 @@ function caseActionRows(item, filter = "all") {
 
 export function caseProceduralItems(item) {
   if (Array.isArray(item.proceduralActions)) return item.proceduralActions;
+  const savedEvents = state.events
+    .filter((event) => event.caseId === item.id && (event.proceduralAction || event.source !== "task"))
+    .map((event) => ({
+      action: event.title,
+      initiator: event.authority || event.responsible || "Адвокат",
+      initiated: event.date ? formatDate(event.date) : "-",
+      time: event.time || "",
+      due: event.date ? `${formatDate(event.date)} ${event.time || ""}`.trim() : "-",
+      status: event.status || "Заплановано",
+      tone: semanticTone(event.status || "Заплановано"),
+      description: event.description || ""
+    }));
+  if (savedEvents.length) {
+    item.proceduralActions = savedEvents;
+    return item.proceduralActions;
+  }
+  if (state.demoDataStatus?.enabled === false) return [];
   if (!isDemoCaseNumber(item.id)) return [];
   item.proceduralActions = [
     {
@@ -1340,7 +1357,8 @@ async function runCaseDocumentESignAction(item, encoded) {
 }
 
 export function caseFolders(item) {
-  if (!Array.isArray(item.folders) || !item.folders.length) {
+  if (!Array.isArray(item.folders)) item.folders = [];
+  if (!item.folders.length && state.demoDataStatus?.enabled !== false && isDemoCaseNumber(item.id)) {
     item.folders = [
       {
         name: "Позови",
@@ -1386,10 +1404,11 @@ export function caseFolders(item) {
   }
   const folders = item.folders;
   const comparableName = (value = "") => String(value || "").trim().toLowerCase().replace(/\.(docx?|pdf|txt|rtf|odt)$/i, "");
-  const hasFileForDocument = (doc, list = folders) => list.some((folder) =>
+  const hasFileForDocument = (doc, list = folders, expectedFolderName = "") => list.some((folder) =>
     (folder.files || []).some((file) =>
-      doc.documentId && String(file.documentId || file.id || "") === String(doc.documentId) || comparableName(file.name) === comparableName(doc.name)
-    ) || hasFileForDocument(doc, folder.children || [])
+      folder.name === expectedFolderName
+        && (doc.documentId && String(file.documentId || file.id || "") === String(doc.documentId) || comparableName(file.name) === comparableName(doc.name))
+    ) || hasFileForDocument(doc, folder.children || [], expectedFolderName)
   );
   const findFolderByName = (name, list = folders) => {
     for (const folder of list) {
@@ -1400,8 +1419,13 @@ export function caseFolders(item) {
     return null;
   };
   (item.documents || []).forEach((doc) => {
-    if (hasFileForDocument(doc)) return;
     const folderName = inferCaseDocumentFolderName(doc, doc.folder || doc.folderName || "Інші документи");
+    if (hasFileForDocument(doc, folders, folderName)) return;
+    folders.forEach((folder) => {
+      folder.files = (folder.files || []).filter((file) =>
+        !(doc.documentId && String(file.documentId || file.id || "") === String(doc.documentId) || comparableName(file.name) === comparableName(doc.name))
+      );
+    });
     let folder = findFolderByName(folderName);
     if (!folder) {
       folder = { name: folderName, updated: doc.updated || doc.submitted || demoDisplayDate("15.05"), files: [], children: [] };

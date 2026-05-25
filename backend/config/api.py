@@ -3,9 +3,12 @@ import hmac
 import re
 import os
 import urllib.request
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 from hashlib import sha1
+from io import BytesIO
+from xml.sax.saxutils import escape
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from django.contrib.auth import authenticate, get_user_model, login as auth_login, logout as auth_logout, update_session_auth_hash
 from django.conf import settings
@@ -22,7 +25,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 from apps.accounts.models import CRMSettings, UserProfile
 from apps.audit.models import AuditLog
 from apps.calendar_app.models import CalendarEvent
-from apps.cases.demo_data import clear_all_business_data, demo_data_counts
+from apps.cases.demo_data import clear_demo_business_data, demo_data_counts
 from apps.cases.models import Case, CaseDocument, CaseMember
 from apps.clients.models import Client, ClientCommunication
 from apps.communications.models import AutomationRule, Campaign, MessageDelivery, MessageTemplate
@@ -418,8 +421,14 @@ def upsert_case(data, case=None):
     case.income_amount = data.get("income", case.income_amount or 0)
     case.paid_amount = data.get("paid", case.paid_amount or 0)
     case.debt_amount = data.get("debt", case.debt_amount or 0)
+    if "firstPaymentDate" in data:
+        case.first_payment_at = parse_date(data.get("firstPaymentDate"))
+    if "nextPaymentDue" in data:
+        case.next_payment_due_at = parse_date(data.get("nextPaymentDue"))
     case.finance_comment = data.get("financeComment", case.finance_comment or "")
     case.history = data.get("history", case.history or [])
+    case.procedural_actions = data.get("proceduralActions", case.procedural_actions or [])
+    case.document_folders = data.get("folders", case.document_folders or [])
     case.save()
     sync_case_members_from_payload(case, data)
     return case
@@ -539,6 +548,8 @@ def upsert_event(data, event=None):
     event.title = data.get("title", event.title or "")
     event.event_type = data.get("type", event.event_type or "Інше")
     event.starts_at = starts_at or event.starts_at or timezone.now()
+    if ends_at and ends_at <= event.starts_at:
+        ends_at = event.starts_at + timedelta(hours=1)
     event.ends_at = ends_at
     event.client = client or event.client or (case.client if case else None)
     event.case = case or event.case
@@ -547,11 +558,18 @@ def upsert_event(data, event=None):
     event.responsible = user_for_name(data.get("responsible")) or event.responsible
     event.description = data.get("description", event.description or "")
     event.recurrence = data.get("recurrence", event.recurrence or "")
-    event.reminder_before = data.get("reminderBefore", event.reminder_before or "")
-    event.reminder_channels = data.get("reminderChannels", event.reminder_channels or "")
-    event.reminder_recipients = data.get("reminderRecipients", event.reminder_recipients or "")
+    reminder_enabled = bool(data.get("reminderEnabled")) if "reminderEnabled" in data else bool(event.reminder_channels)
+    if reminder_enabled:
+        event.reminder_before = data.get("reminderBefore", event.reminder_before or "За 1 день")
+        event.reminder_channels = data.get("reminderChannels", event.reminder_channels or "CRM")
+        event.reminder_recipients = data.get("reminderRecipients", event.reminder_recipients or "Відповідальний юрист + клієнт")
+    else:
+        event.reminder_before = ""
+        event.reminder_channels = ""
+        event.reminder_recipients = ""
     event.reminder_log = data.get("reminderLog", event.reminder_log or [])
     event.status = data.get("status", event.status or "Заплановано")
+    event.procedural_action = bool(data.get("proceduralAction", event.procedural_action))
     event.save()
     ensure_case_member(case, event.responsible)
     return event
@@ -623,6 +641,12 @@ def serialize_finance_expense(item):
 
 
 def serialize_finance_invoice(item):
+    document = CaseDocument.objects.filter(
+        case=item.case,
+        document_type="Рахунок",
+        folder="Фінансові документи",
+        comment__icontains=f"Номер рахунку: {item.number}",
+    ).order_by("-id").first()
     return {
         "id": f"invoice-{item.id}",
         "date": finance_date_value(item.issued_at),
@@ -634,6 +658,7 @@ def serialize_finance_invoice(item):
         "status": item.status or "Очікується",
         "method": "Документ",
         "custom": True,
+        "documentId": document.id if document else "",
     }
 
 
@@ -694,17 +719,182 @@ def recalculate_case_debt(case):
     case.save(update_fields=["income_amount", "paid_amount", "debt_amount", "finance_comment", "history"])
 
 
-def create_finance_document(case, title, document_type, status, amount, date, comment):
-    return CaseDocument.objects.create(
+def docx_text(value):
+    return escape(str(value or ""))
+
+
+def money_label(value):
+    return f"{money(value):,.0f}".replace(",", " ")
+
+
+def docx_run(text, bold=False, size=22):
+    props = f"<w:rPr>{'<w:b/>' if bold else ''}<w:sz w:val=\"{size}\"/></w:rPr>"
+    return f"<w:r>{props}<w:t>{docx_text(text)}</w:t></w:r>"
+
+
+def docx_paragraph(text="", bold=False, size=22, align="left", spacing_after=120):
+    return (
+        "<w:p>"
+        f"<w:pPr><w:jc w:val=\"{align}\"/><w:spacing w:after=\"{spacing_after}\"/></w:pPr>"
+        f"{docx_run(text, bold=bold, size=size)}"
+        "</w:p>"
+    )
+
+
+def docx_cell(text="", bold=False, width=2400, shading=""):
+    shade = f'<w:shd w:fill="{shading}"/>' if shading else ""
+    return (
+        "<w:tc>"
+        f"<w:tcPr><w:tcW w:w=\"{width}\" w:type=\"dxa\"/>{shade}</w:tcPr>"
+        f"{docx_paragraph(text, bold=bold, spacing_after=0)}"
+        "</w:tc>"
+    )
+
+
+def docx_table(rows, header=True):
+    body = []
+    for index, row in enumerate(rows):
+        shading = "EAF4FF" if header and index == 0 else ""
+        body.append("<w:tr>" + "".join(docx_cell(cell, bold=header and index == 0, shading=shading) for cell in row) + "</w:tr>")
+    return (
+        "<w:tbl>"
+        '<w:tblPr><w:tblW w:w="0" w:type="auto"/>'
+        '<w:tblBorders><w:top w:val="single" w:sz="6" w:color="CBD8E6"/>'
+        '<w:left w:val="single" w:sz="6" w:color="CBD8E6"/>'
+        '<w:bottom w:val="single" w:sz="6" w:color="CBD8E6"/>'
+        '<w:right w:val="single" w:sz="6" w:color="CBD8E6"/>'
+        '<w:insideH w:val="single" w:sz="6" w:color="CBD8E6"/>'
+        '<w:insideV w:val="single" w:sz="6" w:color="CBD8E6"/></w:tblBorders></w:tblPr>'
+        + "".join(body)
+        + "</w:tbl>"
+    )
+
+
+def docx_bytes(elements):
+    body = "".join(elements)
+    document_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        f"<w:body>{body}<w:sectPr><w:pgSz w:w=\"11906\" w:h=\"16838\"/>"
+        '<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body>'
+        "</w:document>"
+    )
+    buffer = BytesIO()
+    with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "[Content_Types].xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+            "</Types>",
+        )
+        archive.writestr(
+            "_rels/.rels",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
+            "</Relationships>",
+        )
+        archive.writestr("word/document.xml", document_xml)
+    return buffer.getvalue()
+
+
+def finance_document_elements(case, document_type, title, amount, date, comment, document_number="", document_due=None, work_period="", template="Основний шаблон"):
+    client_name = case.client.full_name if case.client else "Клієнт не вказаний"
+    template = template or "Основний шаблон"
+    amount_text = f"{money_label(amount)} грн"
+    doc_number = document_number or f"{document_type.upper()}-{case.number.replace('/', '-')}"
+    service_rows = [
+        ["№", "Найменування послуги", "К-сть", "Ціна", "Сума"],
+        ["1", title, "1", amount_text, amount_text],
+    ]
+    short = template == "Короткий шаблон"
+    detailed = template == "Детальний шаблон"
+    title_text = "РАХУНОК НА ОПЛАТУ" if document_type == "Рахунок" else "АКТ НАДАНИХ ПОСЛУГ"
+    elements = [
+        docx_paragraph(f"{title_text} № {doc_number}", bold=True, size=30, align="center", spacing_after=60),
+        docx_paragraph(f"від {date_value(date)}", size=22, align="center", spacing_after=240),
+        docx_table([
+            ["Виконавець", "Advocates Bureau CRM"],
+            ["Замовник", client_name],
+            ["Справа", f"№{case.number}"],
+        ], header=False),
+        docx_paragraph("", spacing_after=120),
+    ]
+    if document_type == "Рахунок":
+        elements.extend([
+            docx_paragraph(f"Строк оплати: {date_value(document_due) if document_due else date_value(date)}", bold=True),
+            docx_table(service_rows),
+            docx_paragraph(f"Разом до сплати: {amount_text}", bold=True, size=24, align="right", spacing_after=220),
+        ])
+        if not short:
+            elements.extend([
+                docx_paragraph("Призначення платежу", bold=True, size=24),
+                docx_paragraph(f"Оплата правової допомоги за справою №{case.number}.", spacing_after=160),
+            ])
+        if detailed:
+            elements.extend([
+                docx_paragraph("Умови оплати", bold=True, size=24),
+                docx_paragraph("Оплата здійснюється на підставі цього рахунку. Документ сформовано CRM автоматично та може бути відредагований у ONLYOFFICE."),
+            ])
+    else:
+        period = work_period or "період не вказано"
+        elements.extend([
+            docx_paragraph(f"Період виконання робіт: {period}", bold=True),
+            docx_table(service_rows),
+            docx_paragraph(f"Загальна вартість послуг: {amount_text}", bold=True, size=24, align="right", spacing_after=160),
+            docx_paragraph("Сторони підтверджують, що послуги надані належним чином, у погодженому обсязі та прийняті Замовником.", spacing_after=160),
+        ])
+        if detailed:
+            elements.extend([
+                docx_paragraph("Зауваження сторін", bold=True, size=24),
+                docx_paragraph("На момент підписання цього акта зауваження щодо строків, якості та обсягу наданих послуг відсутні."),
+            ])
+    if comment and not short:
+        elements.extend([docx_paragraph("Коментар", bold=True, size=24), docx_paragraph(comment)])
+    elements.extend([
+        docx_paragraph("", spacing_after=240),
+        docx_table([
+            ["Виконавець", "Замовник"],
+            ["________________________", "________________________"],
+            ["Advocates Bureau CRM", client_name],
+        ], header=False),
+    ])
+    return elements
+
+
+def create_finance_document(case, title, document_type, status, amount, date, comment, document_number="", document_due=None, work_period="", template="Основний шаблон", finance_link_number=""):
+    link_number = finance_link_number or document_number
+    document_marker = f"Номер рахунку: {link_number}" if document_type == "Рахунок" and link_number else ""
+    full_comment = "\n".join(part for part in [comment or "", document_marker] if part).strip()
+    document = CaseDocument.objects.create(
         case=case,
         title=f"{document_type}: {title} · №{case.number}.docx",
         document_type=document_type,
         status=status,
         folder="Фінансові документи",
         submitted_at=date,
-        comment=f"{comment or ''} Сума: {money(amount):,.0f} грн.".strip(),
+        comment=f"{full_comment} Сума: {money(amount):,.0f} грн.".strip(),
         history=[],
     )
+    content = docx_bytes(
+        finance_document_elements(
+            case,
+            document_type,
+            title,
+            amount,
+            date,
+            comment,
+            document_number=document_number,
+            document_due=document_due,
+            work_period=work_period,
+            template=template,
+        ),
+    )
+    document.file.save(safe_document_upload_name(document, document.title), ContentFile(content), save=True)
+    return document
 
 
 def create_finance_operation(data):
@@ -719,6 +909,10 @@ def create_finance_operation(data):
     status = data.get("status") or "Оплачено"
     method = data.get("method") or "Банківський переказ"
     comment = data.get("comment") or ""
+    document_number = data.get("documentNumber") or ""
+    document_due = parse_date(data.get("documentDue"))
+    work_period = data.get("workPeriod") or ""
+    document_template = data.get("documentTemplate") or "Основний шаблон"
     history = case.history or []
 
     if action == "income" or operation_type == "Надходження":
@@ -760,19 +954,44 @@ def create_finance_operation(data):
             number=next_invoice_number(),
             amount=amount,
             issued_at=date,
-            due_at=date,
+            due_at=document_due or date,
             status=status,
         )
-        document = create_finance_document(case, title, "Рахунок", "Подано", amount, date, comment)
+        document = create_finance_document(
+            case,
+            title,
+            "Рахунок",
+            status or "Виставлено",
+            amount,
+            date,
+            comment,
+            document_number=document_number or invoice.number,
+            document_due=document_due or date,
+            template=document_template,
+            finance_link_number=invoice.number,
+        )
         case.income_amount = case.income_amount + invoice.amount
         case.finance_comment = comment or case.finance_comment
         history.insert(0, {"date": date_value(timezone.localdate()), "text": f"Виставлено рахунок: {invoice.number} на {money(invoice.amount):,.0f} грн."})
         case.history = history
         recalculate_case_debt(case)
-        return {"operation": serialize_finance_invoice(invoice), "document": serialize_document(document), "case": serialize_case(case)}
+        operation_payload = serialize_finance_invoice(invoice)
+        operation_payload["documentId"] = document.id
+        return {"operation": operation_payload, "document": serialize_document(document), "case": serialize_case(case)}
 
     if action == "act" or operation_type == "Акт":
-        document = create_finance_document(case, title, "Акт", status or "Чернетка", amount, date, comment)
+        document = create_finance_document(
+            case,
+            title,
+            "Акт",
+            status or "Чернетка",
+            amount,
+            date,
+            comment,
+            document_number=document_number,
+            work_period=work_period,
+            template=document_template,
+        )
         history.insert(0, {"date": date_value(timezone.localdate()), "text": f"Створено акт: {document.title}."})
         case.finance_comment = comment or case.finance_comment
         case.history = history
@@ -797,8 +1016,24 @@ def delete_finance_operation(operation_id):
         Expense.objects.get(pk=raw_id).delete()
         return
     if prefix == "invoice":
-        item = Invoice.objects.select_related("case").get(pk=raw_id)
+        item = Invoice.objects.select_related("case").filter(pk=raw_id).first()
+        if not item:
+            CaseDocument.objects.get(pk=raw_id, document_type="Рахунок", folder="Фінансові документи").delete()
+            return
         case = item.case
+        CaseDocument.objects.filter(pk=raw_id, document_type="Рахунок", folder="Фінансові документи").delete()
+        CaseDocument.objects.filter(
+            case=case,
+            document_type="Рахунок",
+            folder="Фінансові документи",
+            comment__icontains=f"Номер рахунку: {item.number}",
+        ).delete()
+        CaseDocument.objects.filter(
+            case=case,
+            document_type="Рахунок",
+            folder="Фінансові документи",
+            title__icontains=item.number,
+        ).delete()
         case.income_amount = max(case.income_amount - item.amount, case.paid_amount)
         item.delete()
         recalculate_case_debt(case)
@@ -818,7 +1053,13 @@ def finance_operation_case(operation_id):
     if prefix == "expense":
         return Expense.objects.select_related("case").get(pk=raw_id).case
     if prefix == "invoice":
-        return Invoice.objects.select_related("case").get(pk=raw_id).case
+        try:
+            return Invoice.objects.select_related("case").get(pk=raw_id).case
+        except Invoice.DoesNotExist:
+            document = CaseDocument.objects.select_related("case").filter(pk=raw_id, document_type="Рахунок", folder="Фінансові документи").first()
+            if document:
+                return document.case
+            raise
     if prefix == "document":
         return CaseDocument.objects.select_related("case").get(pk=raw_id, document_type="Акт", folder="Фінансові документи").case
     raise Http404("Finance operation not found")
@@ -925,13 +1166,15 @@ def document_source_label(item):
 
 
 def serialize_task(item):
+    due_local = timezone.localtime(item.due_at) if item.due_at else None
+    planner_local = timezone.localtime(item.planner_at) if item.planner_at else None
     return {
         "id": item.id,
         "title": item.title,
         "caseId": item.case.number if item.case else "",
         "clientId": item.client_id,
         "responsible": user_name(item.responsible),
-        "due": datetime_value(item.due_at),
+        "due": datetime_value(due_local),
         "priority": item.priority,
         "status": item.status,
         "source": item.source,
@@ -941,7 +1184,7 @@ def serialize_task(item):
         "showInCalendar": item.show_in_calendar,
         "plannerManual": item.planner_manual,
         "plannerImportant": item.planner_important,
-        "plannerAt": datetime_value(item.planner_at),
+        "plannerAt": datetime_value(planner_local),
         "reminderEnabled": item.reminder_enabled,
         "reminderBefore": item.reminder_before,
         "reminderChannel": item.reminder_channel,
@@ -969,11 +1212,15 @@ def serialize_case(item, include_finance=True):
         "income": money(item.income_amount),
         "paid": money(item.paid_amount),
         "debt": money(item.debt_amount),
+        "firstPaymentDate": date_value(item.first_payment_at),
+        "nextPaymentDue": date_value(item.next_payment_due_at),
         "financeComment": item.finance_comment,
     } if include_finance else {
         "income": 0,
         "paid": 0,
         "debt": 0,
+        "firstPaymentDate": "",
+        "nextPaymentDue": "",
         "financeComment": "",
     }
     return {
@@ -996,6 +1243,8 @@ def serialize_case(item, include_finance=True):
         **finance_payload,
         "description": item.description,
         "history": item.history,
+        "proceduralActions": item.procedural_actions or [],
+        "folders": item.document_folders or [],
         "teamMembers": [serialize_case_member(member) for member in item.team_members.select_related("user", "user__crm_profile").all()],
         "documents": [serialize_document(document) for document in item.documents.all()],
         "tasks": [serialize_task(task) for task in item.tasks.all()],
@@ -1006,11 +1255,15 @@ def serialize_case(item, include_finance=True):
 
 
 def serialize_event(item):
+    starts_local = timezone.localtime(item.starts_at) if item.starts_at else None
+    ends_local = timezone.localtime(item.ends_at) if item.ends_at else None
     return {
         "id": item.id,
         "title": item.title,
         "type": item.event_type,
-        "date": date_value(item.starts_at.date()) if item.starts_at else "",
+        "date": date_value(starts_local.date()) if starts_local else "",
+        "time": starts_local.strftime("%H:%M") if starts_local else "",
+        "endTime": ends_local.strftime("%H:%M") if ends_local else "",
         "startsAt": datetime_value(item.starts_at),
         "endsAt": datetime_value(item.ends_at),
         "clientId": item.client_id,
@@ -1020,10 +1273,12 @@ def serialize_event(item):
         "responsible": user_name(item.responsible),
         "description": item.description,
         "recurrence": item.recurrence,
+        "reminderEnabled": bool(item.reminder_channels),
         "reminderBefore": item.reminder_before,
         "reminderChannels": item.reminder_channels,
         "reminderRecipients": item.reminder_recipients,
         "reminderLog": item.reminder_log,
+        "proceduralAction": item.procedural_action,
         "status": item.status,
     }
 
@@ -1460,7 +1715,7 @@ def mailing_payload():
 
 
 def clear_crm_business_data():
-    clear_all_business_data()
+    clear_demo_business_data()
 
 
 SNAPSHOT_LIST_KEYS = ("clients", "cases", "events")
@@ -1715,7 +1970,7 @@ def sanitize_case_payload_for_permissions(request, data):
     if request_can(request, "manage_finance"):
         return data
     sanitized = dict(data)
-    for key in ("income", "paid", "debt", "totalFee", "financeComment"):
+    for key in ("income", "paid", "debt", "totalFee", "firstPaymentDate", "nextPaymentDue", "financeComment"):
         sanitized.pop(key, None)
     return sanitized
 
@@ -2283,6 +2538,10 @@ def document_detail_api(request, document_id):
         forbidden = require_permission(request, "manage_documents", "Документами можуть керувати адміністратор, адвокат або помічник.")
         if forbidden:
             return forbidden
+        if item.document_type == "Рахунок" and item.folder == "Фінансові документи":
+            match = re.search(r"Номер рахунку:\s*([^\n]+)", item.comment or "")
+            if match:
+                Invoice.objects.filter(case=item.case, number=match.group(1).strip()).delete()
         log_crm_action(request, AuditLog.Action.DELETE, "document", item.id, item.title, f"Видалено документ {item.title}.")
         item.delete()
         return json_response({"deleted": document_id})
@@ -2501,7 +2760,11 @@ def finance_operation_detail_api(request, operation_id):
     except (Payment.DoesNotExist, Expense.DoesNotExist, Invoice.DoesNotExist, CaseDocument.DoesNotExist) as exc:
         raise Http404("Finance operation not found") from exc
     log_crm_action(request, AuditLog.Action.DELETE, "finance_operation", operation_id, operation_id, f"Видалено фінансову операцію {operation_id}.")
-    return json_response({"deleted": operation_id})
+    payload = {"deleted": operation_id}
+    if operation_case:
+        operation_case.refresh_from_db()
+        payload["case"] = serialize_case(operation_case)
+    return json_response(payload)
 
 
 @require_GET

@@ -37,6 +37,7 @@ class CalendarEvent(models.Model):
     reminder_recipients = models.CharField(max_length=128, blank=True)
     reminder_log = models.JSONField(default=list, blank=True)
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.PLANNED)
+    procedural_action = models.BooleanField(default=False, db_index=True)
     is_demo = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
