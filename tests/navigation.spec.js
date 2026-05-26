@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+test.skip(!process.env.RUN_LEGACY_SMOKE, "Legacy navigation tests target the old static demo fixture. Use tests/golden.spec.js for the current CRM smoke suite.");
+
 async function waitForAppReady(page) {
   await expect(page.locator("#dashboard")).toContainText("Активних справ");
 }

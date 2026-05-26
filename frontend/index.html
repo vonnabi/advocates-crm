@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Advocates Bureau CRM</title>
     <link rel="icon" type="image/png" href="assets/advocates-crm-logo.png" data-brand-favicon />
-    <link rel="stylesheet" href="styles.css?v=finance-pagination-2" />
+    <link rel="stylesheet" href="styles.css?v=modal-select-audit-1" />
   </head>
   <body>
     <aside class="sidebar">
@@ -388,7 +388,7 @@
         </div>
         <input name="salaryId" type="hidden" />
         <p class="finance-action-hint">Запис буде додано у зарплатну відомість і у фінансові витрати.</p>
-        <label>Співробітник
+        <label class="salary-select-field">Співробітник
           <select name="employee" id="salary-employee"></select>
         </label>
         <label>Ставка / основна сума
@@ -400,7 +400,7 @@
         <label>Дата нарахування
           <input name="date" type="date" required />
         </label>
-        <label>Статус
+        <label class="salary-select-field">Статус
           <select name="status">
             <option>Готово</option>
             <option>Очікує</option>
@@ -1108,6 +1108,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="app.js?v=finance-pagination-2"></script>
+    <script type="module" src="app.js?v=modal-select-audit-1"></script>
   </body>
 </html>

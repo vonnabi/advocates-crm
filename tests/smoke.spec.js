@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+test.skip(!process.env.RUN_LEGACY_SMOKE, "Legacy static smoke tests target the old demo fixture. Use tests/golden.spec.js for the current CRM smoke suite.");
+
 const views = [
   ["cases", "Усього справ"],
   ["clients", "Клієнти (5)"],

@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+test.skip(!process.env.RUN_LEGACY_SMOKE, "Legacy responsive tests target the old static demo fixture. Use tests/golden.spec.js for the current CRM smoke suite.");
+
 const viewports = [
   { name: "desktop", width: 1366, height: 768 },
   { name: "tablet", width: 820, height: 1180 },

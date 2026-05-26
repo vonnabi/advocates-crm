@@ -1,3 +1,5 @@
+import { setupScreenCustomSelects } from "../custom-selects.js";
+
 const LAW_HELPERS = [
   {
     key: "family",
@@ -411,6 +413,7 @@ export function renderAIScreen(ctx) {
     renderAIScreen(ctx);
     saveNavigationState?.();
   };
+  setupScreenCustomSelects($("#ai"), ".ai-case-filters select");
   const sendPrompt = (promptText) => {
     const prompt = String(promptText || state.aiDraftPrompt || "").trim();
     if (!prompt) {

@@ -44,7 +44,7 @@ import { renderDocumentsScreen } from "./js/screens/documents.js?v=document-dele
 import {
   renderMailingsScreen,
   setMailingTab as setMailingTabScreen
-} from "./js/screens/mailings.js?v=mailings-api-69";
+} from "./js/screens/mailings.js?v=modal-select-audit-1";
 import { renderFinanceScreen } from "./js/screens/finance.js?v=finance-pagination-2";
 import { renderOSINTScreen } from "./js/screens/osint.js?v=live-demo-1";
 import { renderPlannerScreen } from "./js/screens/planner.js";

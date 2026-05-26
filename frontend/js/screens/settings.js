@@ -143,7 +143,8 @@ function buildProjectReadiness(state, activeIntegrations, integrationsCount, act
   const archiveFolderCount = (folders = []) => folders.reduce((sum, folder) => sum + 1 + archiveFolderCount(folder.children || []), 0);
   const onlyOfficeProgress = integrationConfigProgress("ONLYOFFICE", state);
   const onlyOfficeReady = Boolean(onlyOfficeProgress.total && onlyOfficeProgress.filled >= onlyOfficeProgress.total);
-  const eSignUiReady = Boolean(integrationConfigFields["Е-підпис"]);
+  const eSignProgress = integrationConfigProgress("Е-підпис", state);
+  const eSignReady = Boolean(eSignProgress.total && eSignProgress.filled >= eSignProgress.total);
   const hasDocumentArchive = archiveFolderCount(archiveFolders) >= 2;
   const hasDocumentSources = ["Комп'ютер", "Google Docs", "CRM файл"].filter((source) => documentSources.has(source)).length;
   const backupReady = Boolean(apiReady || state.demoDataStatus);
@@ -154,7 +155,7 @@ function buildProjectReadiness(state, activeIntegrations, integrationsCount, act
   const integrationSetupScore = integrationRequiredTotal
     ? Math.round((integrationFilledTotal / integrationRequiredTotal) * 18)
     : 0;
-  const integrationScore = Math.min(82, 38 + activeIntegrations * 7 + integrationSetupScore + (onlyOfficeReady ? 4 : 0) + (eSignUiReady ? 3 : 0));
+  const integrationScore = Math.min(86, 36 + activeIntegrations * 6 + integrationSetupScore + (onlyOfficeReady ? 5 : 0) + (eSignReady ? 4 : 0));
   const documentScore = Math.min(88,
     38
     + (caseDocuments.length ? 12 : 0)
@@ -162,7 +163,7 @@ function buildProjectReadiness(state, activeIntegrations, integrationsCount, act
     + (hasDocumentArchive ? 10 : 0)
     + (onlyOfficeReady ? 10 : 0)
     + (apiReady ? 6 : 0)
-    + (eSignUiReady ? 4 : 0)
+    + (eSignReady ? 4 : 0)
     + 6
   );
   const pilotScore = Math.min(84,
@@ -196,16 +197,20 @@ function buildProjectReadiness(state, activeIntegrations, integrationsCount, act
     {
       title: "Інтеграції",
       score: integrationScore,
-      status: `${activeIntegrations}/${integrationsCount} активні`,
-      detail: "Telegram, SMS, Email, КЕП, ONLYOFFICE і AI мають UI, налаштування та підготовлені поля під провайдерів.",
-      next: "Першими бойовими варто підключати Telegram/Email, потім КЕП і ONLYOFFICE сервер."
+      status: `${activeIntegrations}/${integrationsCount} увімкнено · ${integrationFilledTotal}/${integrationRequiredTotal} полів`,
+      detail: "Telegram, SMS, Email, КЕП, ONLYOFFICE і AI мають UI, але готовність рахується тільки за заповненими обов'язковими параметрами.",
+      next: integrationFilledTotal >= integrationRequiredTotal
+        ? "Першими бойовими варто перевірити тестову відправку Telegram/Email, потім КЕП і ONLYOFFICE сервер."
+        : "Дозаповнити незакриті поля інтеграцій і виконати тестову відправку з кожного активного каналу."
     },
     {
       title: "Документи та AI",
       score: documentScore,
       status: `${caseDocuments.length} документів · ${archiveFolderCount(archiveFolders)} папки архіву`,
       detail: "Є створення документа з комп'ютера, Google Docs і ONLYOFFICE, перегляд/редагування, експорт, КЕП-статуси та окремий архів.",
-      next: "Наступний крок: перевірити з реальними DOCX/PDF клієнта і вирішити, які формати лишаємо в бойовому меню."
+      next: eSignReady
+        ? "Наступний крок: перевірити з реальними DOCX/PDF клієнта і вирішити, які формати лишаємо в бойовому меню."
+        : "Дописати налаштування КЕП і перевірити реальний DOCX/PDF клієнта."
     },
     {
       title: "Пілот і безпека",
@@ -238,9 +243,13 @@ function buildPilotChecklist(state, providerStatusByChannel, activeUsers) {
       };
     })
     .filter((item) => item.missing > 0);
+  const requiredIntegrationGaps = integrationGaps.filter((item) => item.channel !== "AI");
   const onlyOfficeProgress = integrationConfigProgress("ONLYOFFICE", state);
   const onlyOfficeReady = onlyOfficeProgress.total > 0 && onlyOfficeProgress.filled >= onlyOfficeProgress.total;
   const auditReady = Boolean((state.auditLogs || []).length || (state.settingsAudit || []).length);
+  const requiredGapLabel = requiredIntegrationGaps.length === 1
+    ? "1 інтеграцію треба доповнити"
+    : `${requiredIntegrationGaps.length} інтеграції треба доповнити`;
 
   return [
     {
@@ -254,13 +263,19 @@ function buildPilotChecklist(state, providerStatusByChannel, activeUsers) {
     },
     {
       title: "Канали зв'язку",
-      done: providersNeedingSetup.length === 0 && integrationGaps.every((item) => item.channel === "AI"),
-      status: providersNeedingSetup.length ? `${providersNeedingSetup.length} канали треба налаштувати` : "Канали готові",
+      done: providersNeedingSetup.length === 0 && requiredIntegrationGaps.length === 0,
+      status: providersNeedingSetup.length
+        ? `${providersNeedingSetup.length} канали треба налаштувати`
+        : requiredIntegrationGaps.length
+          ? requiredGapLabel
+          : "Канали готові",
       detail: providersNeedingSetup.length
         ? providersNeedingSetup.map((item) => `${item.channel}: ${item.detail}`).join(" ")
-        : "Telegram, SMS та Email не показують технічних стопперів у перевірці провайдера.",
-      action: integrationGaps.length
-        ? `Заповнити обов'язкові поля: ${integrationGaps.map((item) => `${item.channel} ${item.progress.filled}/${item.progress.total}`).join(", ")}.`
+        : requiredIntegrationGaps.length
+          ? "Увімкнені модулі є, але частина обов'язкових параметрів провайдерів ще порожня."
+          : "Telegram, SMS та Email не показують технічних стопперів у перевірці провайдера.",
+      action: requiredIntegrationGaps.length
+        ? `Заповнити обов'язкові поля: ${requiredIntegrationGaps.map((item) => `${item.channel} ${item.progress.filled}/${item.progress.total}`).join(", ")}.`
         : "Відправити тестове повідомлення з кожного активного каналу."
     },
     {
@@ -1922,7 +1937,7 @@ export function renderSettingsScreen(ctx) {
         </button>
         <button class="panel settings-summary-card ${state.settingsFocusedSection === "integrations" ? "active" : ""}" type="button" data-settings-focus="integrations" aria-pressed="${state.settingsFocusedSection === "integrations"}">
           <span>${icon("refresh")}</span>
-          <div><strong>${activeIntegrations}/${integrations.length}</strong><em>інтеграцій активні</em></div>
+          <div><strong>${activeIntegrations}/${integrations.length}</strong><em>інтеграцій увімкнено</em></div>
         </button>
         <button class="panel settings-summary-card ${state.settingsFocusedSection === "notifications" ? "active" : ""}" type="button" data-settings-focus="notifications" aria-pressed="${state.settingsFocusedSection === "notifications"}">
           <span>${icon("bell")}</span>

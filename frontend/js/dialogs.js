@@ -54,6 +54,25 @@ function removeDocumentEverywhere(item, caseFolders, documentId, fallbackName = 
   cleanFolders(caseFolders(item));
 }
 
+function removeFinanceOperationsForDocuments(state, documents = [], fallbackNames = []) {
+  const documentIds = new Set(documents
+    .map((document) => String(document?.documentId || document?.id || "").trim())
+    .filter(Boolean));
+  const names = new Set([
+    ...documents.map((document) => String(document?.name || document?.title || "").trim().toLowerCase()),
+    ...fallbackNames.map((name) => String(name || "").trim().toLowerCase())
+  ].filter(Boolean));
+  state.financeOperations = (state.financeOperations || []).filter((operation = {}) => {
+    const operationDocumentId = String(operation.documentId || "").trim();
+    if (operationDocumentId && documentIds.has(operationDocumentId)) return false;
+    if (operation.id?.startsWith("document-") && documentIds.has(operation.id.replace("document-", ""))) return false;
+    const operationTitle = String(operation.title || "").trim().toLowerCase();
+    const operationType = String(operation.type || "").trim().toLowerCase();
+    if (!operationTitle || !["рахунок", "акт"].includes(operationType)) return true;
+    return ![...names].some((name) => name.includes(operationTitle));
+  });
+}
+
 function findDocumentInFolders(folders = [], documentId = "", fallbackName = "") {
   const comparableId = String(documentId || "");
   const comparableName = String(fallbackName || "").trim().toLowerCase();
@@ -134,6 +153,7 @@ async function confirmDelete(ctx) {
     if (deletedCaseIds.size) {
       state.cases = state.cases.filter((caseItem) => !deletedCaseIds.has(caseItem.id));
       state.events = state.events.filter((event) => event.clientId !== clientId && !deletedCaseIds.has(event.caseId));
+      state.financeOperations = (state.financeOperations || []).filter((operation) => !deletedCaseIds.has(operation.caseId));
     }
     state.selectedClientId = state.clients[0]?.id || 0;
     state.selectedCaseId = state.cases[0]?.id || "";
@@ -150,6 +170,7 @@ async function confirmDelete(ctx) {
       }
     }
     deleted = state.cases.splice(caseIndex, 1)[0];
+    state.financeOperations = (state.financeOperations || []).filter((operation) => operation.caseId !== pending.caseId);
     state.selectedCaseId = state.cases[0]?.id || "";
     state.caseScreen = "list";
   } else if (pending.type === "procedural") {
@@ -163,6 +184,7 @@ async function confirmDelete(ctx) {
       }
     }
     deleted = doc;
+    removeFinanceOperationsForDocuments(state, [doc], [pending.documentName]);
     removeDocumentEverywhere(item, caseFolders, apiId || doc?.documentId || doc?.id || pending.documentId, doc?.name || doc?.title || pending.documentName);
   } else if (pending.type === "folder") {
     const folders = caseFolders(item);
@@ -180,6 +202,7 @@ async function confirmDelete(ctx) {
       }
     }
     deleted = folders.splice(pending.folderIndex, 1)[0];
+    removeFinanceOperationsForDocuments(state, deleted?.files || []);
     const deletedIds = new Set((deleted?.files || []).map((file) => file.documentId).filter(Boolean));
     if (deletedIds.size) {
       item.documents = item.documents.filter((doc) => !deletedIds.has(doc.documentId));
@@ -236,6 +259,7 @@ async function confirmDelete(ctx) {
       }
     }
     deleted = file || linkedDoc;
+    removeFinanceOperationsForDocuments(state, [file, linkedDoc], [pending.documentName]);
     removeDocumentEverywhere(item, caseFolders, apiId || file?.documentId || linkedDoc?.documentId || pending.documentId, file?.name || linkedDoc?.name || pending.documentName);
     (directMatch?.folder || folder || {}).updated = today;
   }

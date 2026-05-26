@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+test.skip(!process.env.RUN_LEGACY_SMOKE, "Legacy form tests target the old static demo fixture. Use tests/golden.spec.js for the current CRM smoke suite.");
+
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.clear();

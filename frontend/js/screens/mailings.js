@@ -1,4 +1,5 @@
 import { deleteMailingCampaignFromApi, deleteMailingTemplateFromApi, saveMailingAutomationRuleToApi, saveMailingCampaignToApi, saveMailingTemplateToApi, sendMailingCampaignInApi, shouldUseApi, updateMailingDeliveryInApi } from "../api.js?v=mailings-api-69";
+import { setupScreenCustomSelects } from "../custom-selects.js";
 
 export function setMailingTab(ctx, tab, remember = true) {
   const { state } = ctx;
@@ -27,16 +28,26 @@ export function renderMailingsScreen(ctx) {
   const demoSegmentRecipients = Math.max(120, 386 - Math.max(0, 3 - activeMailingFilters.length) * 58);
   const segmentRecipients = realDataMode ? totalClients : demoSegmentRecipients;
   const recipients = recipientMode === "all" ? totalClients : recipientMode === "manual" ? manualRecipients.length : segmentRecipients;
-  const estimatedTelegram = Math.round(recipients * 0.82);
-  const smsDelivered = Math.round(recipients * 0.625);
-  const emailDelivered = Math.round(recipients * 0.482);
+  const channelRates = { Telegram: 0.82, SMS: 0.625, Email: 0.482 };
+  const deliveryEstimate = (channel) => state.mailingChannels[channel] ? Math.round(recipients * channelRates[channel]) : 0;
+  const estimatedTelegram = deliveryEstimate("Telegram");
+  const smsDelivered = deliveryEstimate("SMS");
+  const emailDelivered = deliveryEstimate("Email");
+  const enabledChannelCount = Object.values(state.mailingChannels || {}).filter(Boolean).length;
   const totalMessages = estimatedTelegram + smsDelivered + emailDelivered;
   const metricText = (value) => recipients ? `${value}` : "0";
-  const forecastText = (value) => recipients ? `~ ${value}` : "0";
-  const totalMessagesText = totalMessages ? `~ ${totalMessages} сообщений` : "0 сообщений";
+  const forecastText = (channel, value) => !state.mailingChannels[channel] ? "выкл." : recipients ? `~ ${value}` : "0";
+  const totalMessagesText = totalMessages ? `~ ${totalMessages} сообщений` : enabledChannelCount ? "0 сообщений" : "каналы выключены";
   const mainTab = state.mailingMainTab || "new";
   const editorChannel = state.mailingEditorChannel || "Telegram";
   const previewChannel = state.mailingPreviewChannel || editorChannel;
+  const previewChannelConfig = {
+    Telegram: { title: "Advocates Bureau", subtitle: "бот", icon: "telegram", bodyClass: "telegram-theme" },
+    SMS: { title: "SMS Alpha", subtitle: "SMS", icon: "message", bodyClass: "sms-theme" },
+    Email: { title: "Advocates Bureau", subtitle: "Email", icon: "mail", bodyClass: "email-theme" }
+  };
+  const previewConfig = previewChannelConfig[previewChannel] || previewChannelConfig.Telegram;
+  const sampleClientName = manualRecipients[0]?.name || state.clients[0]?.name || (realDataMode ? "Клієнт" : "Петренко Іван Миколайович");
   const filterOptions = ["Статус клиента: Новый", "Статус клиента: Активный", "Статус клиента: Постоянный", "Telegram: Подключен", "SMS: Доступен", "Email: Заполнен", "Источник: Сайт", "Источник: Рекомендация", "Ответственный: Іваненко А.Ю.", "Клиенты с активными делами", "Есть согласие на рассылку"];
   const availableFilters = filterOptions.filter((filter) => !activeMailingFilters.includes(filter));
   const campaignFilter = state.mailingCampaignFilter || "all";
@@ -210,7 +221,7 @@ export function renderMailingsScreen(ctx) {
             </div>
             ` : ""}
             <div class="coverage-row">
-              <span class="coverage-user">${icon("user")}<strong>Всего клиентов</strong><em>${recipients}</em></span>
+              <span class="coverage-user">${icon("user")}<strong>Клиенты</strong><em>${recipients}</em></span>
               <span class="coverage-telegram">${icon("telegram")}<strong>Telegram</strong><em>${metricText(estimatedTelegram)}</em></span>
               <span class="coverage-sms">${icon("message")}<strong>SMS</strong><em>${metricText(smsDelivered)}</em></span>
               <span class="coverage-email">${icon("mail")}<strong>Email</strong><em>${metricText(emailDelivered)}</em></span>
@@ -279,20 +290,21 @@ export function renderMailingsScreen(ctx) {
         <aside class="mailing-right-stack">
           <section class="panel mailing-preview-card">
             <h2>Предпросмотр сообщения</h2>
-            <div class="preview-tabs">${["Telegram", "SMS", "Email"].map((channel) => `<button class="${previewChannel === channel ? "active" : ""}" data-preview-channel="${channel}">${channel}</button>`).join("")}</div>
+            <div class="preview-tabs">${["Telegram", "SMS", "Email"].map((channel) => `<button class="${previewChannel === channel ? "active" : ""} ${state.mailingChannels[channel] ? "" : "is-disabled"}" data-preview-channel="${channel}">${channel}</button>`).join("")}</div>
             <div class="telegram-preview">
-              <div class="telegram-preview-head"><button type="button" data-preview-action="back">←</button><span class="telegram-preview-avatar">AB</span><strong>${previewChannel === "Email" ? "Advocates Bureau" : previewChannel === "SMS" ? "SMS Alpha" : "Advocates Bureau"}<span>${previewChannel === "Telegram" ? "бот" : previewChannel}</span></strong><em><button type="button" data-preview-action="send">${icon(previewChannel === "Telegram" ? "telegram" : previewChannel === "SMS" ? "message" : "mail")}</button><button type="button" data-preview-action="menu">⋮</button></em></div>
-              <div class="telegram-preview-body">
+              <div class="telegram-preview-head"><button type="button" data-preview-action="back">←</button><span class="telegram-preview-avatar">AB</span><strong>${previewConfig.title}<span>${previewConfig.subtitle}</span></strong><em><button type="button" data-preview-action="send">${icon(previewConfig.icon)}</button><button type="button" data-preview-action="menu">⋮</button></em></div>
+              <div class="telegram-preview-body ${previewConfig.bodyClass} ${state.mailingChannels[previewChannel] ? "" : "channel-off"}">
                 <div class="telegram-bubble ${previewChannel.toLowerCase()}-bubble" id="mail-preview"></div>
+                ${state.mailingChannels[previewChannel] ? "" : `<p class="preview-channel-note">${previewChannel} выключен в настройках отправки</p>`}
               </div>
             </div>
           </section>
           <section class="panel forecast-card">
             <h2>Прогноз результатов</h2>
             <div class="forecast-row"><span>Всего получателей</span><strong>${recipients}</strong></div>
-            <div class="forecast-row green"><span>Telegram доставлено</span><strong>${forecastText(estimatedTelegram)}</strong></div>
-            <div class="forecast-row green"><span>SMS доставлено</span><strong>${forecastText(smsDelivered)}</strong></div>
-            <div class="forecast-row green"><span>Email доставлено</span><strong>${forecastText(emailDelivered)}</strong></div>
+            <div class="forecast-row ${state.mailingChannels.Telegram ? "green" : "muted"}"><span>Telegram доставлено</span><strong>${forecastText("Telegram", estimatedTelegram)}</strong></div>
+            <div class="forecast-row ${state.mailingChannels.SMS ? "green" : "muted"}"><span>SMS доставлено</span><strong>${forecastText("SMS", smsDelivered)}</strong></div>
+            <div class="forecast-row ${state.mailingChannels.Email ? "green" : "muted"}"><span>Email доставлено</span><strong>${forecastText("Email", emailDelivered)}</strong></div>
             <div class="forecast-total"><span>Ориентировочный охват</span><strong>${totalMessagesText}</strong></div>
           </section>
           <section class="panel mailing-tips-card">
@@ -316,10 +328,16 @@ export function renderMailingsScreen(ctx) {
     charCount.textContent = textarea.value.length;
     const previewText = textarea.value
       .replace("Шановний {{client_name}}!", "Шановні клієнти!")
-      .replaceAll("{{client_name}}", "Петренко Іван Миколайович");
-    preview.textContent = previewChannel === "SMS" ? previewText.slice(0, 180) : previewChannel === "Email" ? `Тема: Важливе повідомлення від Advocates Bureau\n\n${previewText}` : previewText;
+      .replaceAll("{{client_name}}", sampleClientName);
+    const emptyText = previewChannel === "Email" ? "Тема: Новое сообщение\n\nТекст письма появится здесь." : "Текст сообщения появится здесь.";
+    preview.textContent = previewChannel === "SMS"
+      ? (previewText || emptyText).slice(0, 180)
+      : previewChannel === "Email"
+        ? `Тема: Важливе повідомлення від Advocates Bureau\n\n${previewText || "Текст письма появится здесь."}`
+        : previewText || emptyText;
   };
   textarea?.addEventListener("input", update);
+  setupScreenCustomSelects($("#mailings"), "[data-automation-channel]");
   document.querySelectorAll("[data-mailing-main-tab]").forEach((button) => button.addEventListener("click", () => {
     setTab(button.dataset.mailingMainTab);
     rerender();

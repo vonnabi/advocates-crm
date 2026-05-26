@@ -370,10 +370,16 @@ class DemoApiTests(TestCase):
         invoice_xml = ZipFile(BytesIO(invoice_document.file.read())).read("word/document.xml").decode("utf-8")
         self.assertIn("РАХУНОК НА ОПЛАТУ", invoice_xml)
         self.assertIn("INV-TEST-1", invoice_xml)
+        self.assertIn("Advocates Bureau", invoice_xml)
+        self.assertIn("Послуга", invoice_xml)
         self.assertIn("Умови оплати", invoice_xml)
+        self.assertGreaterEqual(invoice_xml.count("<w:tbl>"), 3)
         self.assertIn("/api/documents/", invoice_response.json()["document"]["fileUrl"])
         self.assertIn("token=", invoice_response.json()["document"]["fileUrl"])
         self.assertEqual(invoice_response.json()["operation"]["documentId"], invoice_document.id)
+        self.assertTrue(any(row.get("invoiceNumber") for row in invoice_document.history))
+        invoice_document.comment = "Коментар користувача без службового номера."
+        invoice_document.save(update_fields=["comment"])
 
         act_response = self.client.post(
             "/api/finance/operations/",
@@ -394,15 +400,42 @@ class DemoApiTests(TestCase):
         self.assertEqual(act_response.status_code, 200)
         act_document = CaseDocument.objects.get(pk=act_response.json()["document"]["id"])
         self.assertTrue(act_document.file)
+        self.assertEqual(act_response.json()["operation"]["documentId"], act_document.id)
         act_xml = ZipFile(BytesIO(act_document.file.read())).read("word/document.xml").decode("utf-8")
-        self.assertIn("АКТ НАДАНИХ ПОСЛУГ", act_xml)
+        self.assertIn("АКТ ВИКОНАНИХ РОБІТ", act_xml)
         self.assertIn("ACT-TEST-1", act_xml)
         self.assertIn("Період виконання робіт", act_xml)
+        self.assertIn("Сторони підтверджують", act_xml)
+        self.assertGreaterEqual(act_xml.count("<w:tbl>"), 3)
         self.assertIn("/api/documents/", act_response.json()["document"]["fileUrl"])
 
         delete_invoice_response = self.client.delete(f"/api/finance/operations/{invoice_response.json()['operation']['id']}/")
         self.assertEqual(delete_invoice_response.status_code, 200)
         self.assertFalse(CaseDocument.objects.filter(pk=invoice_document.id).exists())
+
+        second_invoice_response = self.client.post(
+            "/api/finance/operations/",
+            {
+                "action": "invoice",
+                "caseId": case.number,
+                "title": "Рахунок для перевірки видалення",
+                "amount": 3000,
+                "date": "2026-05-26",
+                "status": "Виставлено",
+                "method": "Документ",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(second_invoice_response.status_code, 200)
+        second_operation_id = second_invoice_response.json()["operation"]["id"]
+        second_document = CaseDocument.objects.get(pk=second_invoice_response.json()["document"]["id"])
+        second_document.comment = "Коментар змінено вручну."
+        second_document.save(update_fields=["comment"])
+
+        delete_linked_document_response = self.client.delete(f"/api/documents/{second_document.id}/")
+        self.assertEqual(delete_linked_document_response.status_code, 200)
+        self.assertFalse(CaseDocument.objects.filter(pk=second_document.id).exists())
+        self.assertFalse(any(item["id"] == second_operation_id for item in self.client.get("/api/finance/operations/").json()["results"]))
 
         recreated_document = CaseDocument.objects.create(
             case=case,
@@ -414,6 +447,28 @@ class DemoApiTests(TestCase):
         delete_orphan_invoice_response = self.client.delete(f"/api/documents/{recreated_document.id}/")
         self.assertEqual(delete_orphan_invoice_response.status_code, 200)
         self.assertFalse(CaseDocument.objects.filter(pk=recreated_document.id).exists())
+
+        second_act_response = self.client.post(
+            "/api/finance/operations/",
+            {
+                "action": "act",
+                "caseId": case.number,
+                "title": "Акт для перевірки видалення",
+                "amount": 2000,
+                "date": "2026-05-26",
+                "status": "Чернетка",
+                "method": "Документ",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(second_act_response.status_code, 200)
+        second_act_operation_id = second_act_response.json()["operation"]["id"]
+        second_act_document = CaseDocument.objects.get(pk=second_act_response.json()["document"]["id"])
+
+        delete_linked_act_document_response = self.client.delete(f"/api/documents/{second_act_document.id}/")
+        self.assertEqual(delete_linked_act_document_response.status_code, 200)
+        self.assertFalse(CaseDocument.objects.filter(pk=second_act_document.id).exists())
+        self.assertFalse(any(item["id"] == second_act_operation_id for item in self.client.get("/api/finance/operations/").json()["results"]))
 
         delete_act_response = self.client.delete(f"/api/finance/operations/{act_response.json()['operation']['id']}/")
         self.assertEqual(delete_act_response.status_code, 200)

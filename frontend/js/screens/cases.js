@@ -1,4 +1,5 @@
 import { deleteCaseFromApi, saveCaseToApi, saveTaskToApi, shouldUseApi } from "../api.js";
+import { setupScreenCustomSelects } from "../custom-selects.js";
 import { normalizeCase, normalizeTask } from "../state.js";
 import { copyDocumentInCase, openDocumentArchiveDialog, openDocumentSendDialog } from "./documents.js";
 
@@ -804,6 +805,7 @@ function renderCaseList() {
     state.casePage = 1;
     renderCaseList();
   });
+  setupScreenCustomSelects($("#case-detail"), ".case-list-toolbar select, .case-pagination-left select");
   if (activeFilterId) {
     const activeFilter = document.getElementById(activeFilterId);
     activeFilter?.focus();

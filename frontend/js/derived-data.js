@@ -163,11 +163,16 @@ export function financeInsightsFromData(rows, operations) {
     if (item.title.toLowerCase().includes("консульта")) return "Консультації";
     if (item.status === "Частково") return "Часткові платежі";
     return "Гонорари";
-  }, (item) => Math.max(0, item.amount)).map(([label, value], index) => [
-    label,
-    `${Math.round((value / incomeTotal) * 100)}% (${new Intl.NumberFormat("uk-UA").format(value)} грн)`,
-    typeColors[index % typeColors.length]
-  ]);
+  }, (item) => Math.max(0, item.amount)).map(([label, value], index) => {
+    const percent = Math.round((value / incomeTotal) * 100);
+    return [
+      label,
+      `${percent}% (${new Intl.NumberFormat("uk-UA").format(value)} грн)`,
+      typeColors[index % typeColors.length],
+      value,
+      percent
+    ];
+  });
   const incomeByCase = rows
     .filter((item) => item.paid > 0)
     .sort((a, b) => b.paid - a.paid)

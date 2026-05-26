@@ -269,7 +269,7 @@ export function renderDashboardScreen(ctx) {
         <div>
           <span>Оперативний центр</span>
           <h2>Справи, задачі, календар і фінанси зведені в один робочий огляд.</h2>
-          <p>Дані підтягуються з демо-справ, задач, подій, фінансів та OSINT, щоб дашборд показував реальний стан CRM.</p>
+          <p>Дані підтягуються зі справ, задач, подій, фінансів та OSINT, щоб дашборд показував реальний стан CRM.</p>
         </div>
         <div class="dashboard-actions">
           <button class="primary" type="button" data-view-link="planner">${icon("refresh")} Синхронізувати план</button>
@@ -334,7 +334,7 @@ export function renderDashboardScreen(ctx) {
               <button class="secondary" type="button" data-view-link="planner">Відкрити планер</button>
             </div>
             <div class="dashboard-list">
-              ${taskRows(tasks.filter((task) => !isTaskDone(task)).sort((a, b) => (a.dueDate?.getTime() || 0) - (b.dueDate?.getTime() || 0)).slice(0, 6), icon)}
+              ${taskRows(tasks.filter((task) => !isTaskDone(task)).sort((a, b) => (a.dueDate?.getTime() || 0) - (b.dueDate?.getTime() || 0)).slice(0, 6), icon) || `<p class="dashboard-empty">Найближчих дедлайнів ще немає.</p>`}
             </div>
           </article>
 
@@ -347,7 +347,7 @@ export function renderDashboardScreen(ctx) {
               <button class="secondary" type="button" data-view-link="cases">Переглянути всі</button>
             </div>
             <div class="dashboard-list">
-              ${caseRows(state, highRiskCases.length ? highRiskCases : deadlineCases, currency, icon)}
+              ${caseRows(state, highRiskCases.length ? highRiskCases : deadlineCases, currency, icon) || `<p class="dashboard-empty">Ризикових справ поки немає.</p>`}
             </div>
           </article>
         </div>
@@ -384,7 +384,7 @@ export function renderDashboardScreen(ctx) {
               </div>
               <div class="dashboard-row">
                 <i>${osint.mentions}</i>
-                <span><strong>Нових згадок</strong><small>оновлено за демо-період</small></span>
+                <span><strong>Нових згадок</strong><small>оновлено за обраний період</small></span>
               </div>
               <div class="dashboard-row">
                 <i>${osint.risks}</i>
@@ -398,7 +398,7 @@ export function renderDashboardScreen(ctx) {
             <div class="dashboard-card-head">
               <div>
                 <h2>Продуктивність</h2>
-                <p>Стан виконання задач у демо-CRM</p>
+                <p>Стан виконання задач у CRM</p>
               </div>
               <strong class="dashboard-percent">${productivity}%</strong>
             </div>

@@ -4,6 +4,7 @@ import {
   DEMO_START,
   osintSummaryFromData
 } from "../derived-data.js?v=live-demo-1";
+import { setupScreenCustomSelects } from "../custom-selects.js";
 
 const OSINT_TABS = [
   ["overview", "Огляд"],
@@ -732,6 +733,7 @@ export function renderOSINTScreen(ctx) {
     </div>
   `;
 
+  setupScreenCustomSelects($("#osint"), "[data-osint-chart-scale]");
   document.querySelector("[data-osint-query]")?.addEventListener("input", (event) => {
     state.osintQuery = event.currentTarget.value;
     renderOSINTScreen(ctx);

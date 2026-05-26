@@ -1,4 +1,5 @@
 import { saveTaskToApi, shouldUseApi } from "../api.js";
+import { setupScreenCustomSelects } from "../custom-selects.js";
 import { normalizeTask } from "../state.js";
 
 let state;
@@ -789,6 +790,7 @@ function renderTasks() {
     state.taskPage = 1;
     renderTasks();
   });
+  setupScreenCustomSelects($("#tasks"), ".tasks-toolbar select, .tasks-pagination select");
   document.querySelectorAll("[data-task-page]").forEach((button) => {
     button.addEventListener("click", () => {
       if (button.dataset.taskPage === "prev") {

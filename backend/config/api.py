@@ -640,13 +640,48 @@ def serialize_finance_expense(item):
     }
 
 
-def serialize_finance_invoice(item):
-    document = CaseDocument.objects.filter(
-        case=item.case,
+def finance_document_links_invoice(document, invoice_number):
+    needle = str(invoice_number or "").strip()
+    if not needle:
+        return False
+    haystack = " ".join([
+        document.title or "",
+        document.comment or "",
+        " ".join(str(row.get("text", "")) for row in (document.history or []) if isinstance(row, dict)),
+    ])
+    if needle in haystack:
+        return True
+    return any(
+        isinstance(row, dict) and str(row.get("invoiceNumber") or row.get("financeLinkNumber") or "").strip() == needle
+        for row in (document.history or [])
+    )
+
+
+def finance_invoice_documents(invoice):
+    documents = CaseDocument.objects.filter(
+        case=invoice.case,
         document_type="Рахунок",
         folder="Фінансові документи",
-        comment__icontains=f"Номер рахунку: {item.number}",
-    ).order_by("-id").first()
+    ).order_by("-id")
+    return [document for document in documents if finance_document_links_invoice(document, invoice.number)]
+
+
+def invoice_number_from_finance_document(document):
+    for row in document.history or []:
+        if isinstance(row, dict):
+            marker = str(row.get("invoiceNumber") or row.get("financeLinkNumber") or "").strip()
+            if marker:
+                return marker
+    for source in (document.comment or "", document.title or ""):
+        match = re.search(r"Номер рахунку:\s*([^\n]+)", source)
+        if match:
+            return match.group(1).strip()
+    return ""
+
+
+def serialize_finance_invoice(item):
+    documents = finance_invoice_documents(item)
+    document = documents[0] if documents else None
     return {
         "id": f"invoice-{item.id}",
         "date": finance_date_value(item.issued_at),
@@ -665,6 +700,7 @@ def serialize_finance_invoice(item):
 def serialize_finance_act(document):
     return {
         "id": f"document-{document.id}",
+        "documentId": document.id,
         "date": finance_date_value(document.submitted_at),
         "type": "Акт",
         "title": document.title,
@@ -741,21 +777,31 @@ def docx_paragraph(text="", bold=False, size=22, align="left", spacing_after=120
     )
 
 
-def docx_cell(text="", bold=False, width=2400, shading=""):
+def docx_paragraphs(text="", bold=False, size=22, align="left", spacing_after=120):
+    lines = str(text or "").splitlines() or [""]
+    return "".join(docx_paragraph(line, bold=bold, size=size, align=align, spacing_after=spacing_after) for line in lines)
+
+
+def docx_cell(text="", bold=False, width=2400, shading="", align="left"):
     shade = f'<w:shd w:fill="{shading}"/>' if shading else ""
     return (
         "<w:tc>"
         f"<w:tcPr><w:tcW w:w=\"{width}\" w:type=\"dxa\"/>{shade}</w:tcPr>"
-        f"{docx_paragraph(text, bold=bold, spacing_after=0)}"
+        f"{docx_paragraph(text, bold=bold, align=align, spacing_after=0)}"
         "</w:tc>"
     )
 
 
-def docx_table(rows, header=True):
+def docx_table(rows, header=True, widths=None, aligns=None):
     body = []
     for index, row in enumerate(rows):
         shading = "EAF4FF" if header and index == 0 else ""
-        body.append("<w:tr>" + "".join(docx_cell(cell, bold=header and index == 0, shading=shading) for cell in row) + "</w:tr>")
+        cells = []
+        for cell_index, cell in enumerate(row):
+            width = widths[cell_index] if widths and cell_index < len(widths) else 2400
+            align = aligns[cell_index] if aligns and cell_index < len(aligns) else "left"
+            cells.append(docx_cell(cell, bold=header and index == 0, width=width, shading=shading, align=align))
+        body.append("<w:tr>" + "".join(cells) + "</w:tr>")
     return (
         "<w:tbl>"
         '<w:tblPr><w:tblW w:w="0" w:type="auto"/>'
@@ -768,6 +814,22 @@ def docx_table(rows, header=True):
         + "".join(body)
         + "</w:tbl>"
     )
+
+
+def finance_bureau_details():
+    try:
+        bureau = serialize_crm_settings()["bureau"]
+    except Exception:
+        bureau = CRMSettings.DEFAULT_BUREAU
+    name = bureau.get("name") or CRMSettings.DEFAULT_BUREAU["name"]
+    return {
+        "name": name,
+        "email": bureau.get("email") or CRMSettings.DEFAULT_BUREAU["email"],
+        "phone": bureau.get("phone") or CRMSettings.DEFAULT_BUREAU["phone"],
+        "address": bureau.get("address") or CRMSettings.DEFAULT_BUREAU["address"],
+        "website": bureau.get("website") or CRMSettings.DEFAULT_BUREAU["website"],
+        "signature": f"{name}\n{bureau.get('phone') or CRMSettings.DEFAULT_BUREAU['phone']}\n{bureau.get('email') or CRMSettings.DEFAULT_BUREAU['email']}",
+    }
 
 
 def docx_bytes(elements):
@@ -803,64 +865,95 @@ def docx_bytes(elements):
 
 def finance_document_elements(case, document_type, title, amount, date, comment, document_number="", document_due=None, work_period="", template="Основний шаблон"):
     client_name = case.client.full_name if case.client else "Клієнт не вказаний"
+    client_phone = case.client.phone if case.client else ""
+    client_email = case.client.email if case.client else ""
+    bureau = finance_bureau_details()
     template = template or "Основний шаблон"
     amount_text = f"{money_label(amount)} грн"
     doc_number = document_number or f"{document_type.upper()}-{case.number.replace('/', '-')}"
-    service_rows = [
-        ["№", "Найменування послуги", "К-сть", "Ціна", "Сума"],
-        ["1", title, "1", amount_text, amount_text],
-    ]
     short = template == "Короткий шаблон"
     detailed = template == "Детальний шаблон"
-    title_text = "РАХУНОК НА ОПЛАТУ" if document_type == "Рахунок" else "АКТ НАДАНИХ ПОСЛУГ"
-    elements = [
-        docx_paragraph(f"{title_text} № {doc_number}", bold=True, size=30, align="center", spacing_after=60),
-        docx_paragraph(f"від {date_value(date)}", size=22, align="center", spacing_after=240),
-        docx_table([
-            ["Виконавець", "Advocates Bureau CRM"],
-            ["Замовник", client_name],
-            ["Справа", f"№{case.number}"],
-        ], header=False),
-        docx_paragraph("", spacing_after=120),
+    service_name = title or ("Правова допомога" if document_type == "Рахунок" else "Юридичні послуги")
+    service_rows = [
+        ["№", "Послуга", "К-сть", "Ціна", "Сума"],
+        ["1", service_name, "1", amount_text, amount_text],
+    ]
+    party_rows = [
+        ["Виконавець", bureau["name"]],
+        ["Адреса виконавця", bureau["address"]],
+        ["Контакти виконавця", f"{bureau['phone']} · {bureau['email']}"],
+        ["Замовник", client_name],
+        ["Контакти замовника", " · ".join(part for part in [client_phone, client_email] if part) or "не вказано"],
+        ["Справа", f"№{case.number} · {case.title}"],
     ]
     if document_type == "Рахунок":
+        title_text = "РАХУНОК НА ОПЛАТУ"
+        elements = [
+            docx_paragraph(bureau["name"], bold=True, size=24, align="center", spacing_after=40),
+            docx_paragraph(f"{bureau['address']} · {bureau['phone']} · {bureau['email']}", size=18, align="center", spacing_after=220),
+            docx_paragraph(f"{title_text} № {doc_number}", bold=True, size=32, align="center", spacing_after=60),
+            docx_paragraph(f"від {date_value(date)}", size=22, align="center", spacing_after=220),
+        ]
+        if short:
+            elements.extend([
+                docx_table([
+                    ["Клієнт", client_name],
+                    ["Справа", f"№{case.number}"],
+                    ["Строк оплати", date_value(document_due) if document_due else date_value(date)],
+                ], header=False, widths=[2200, 6800]),
+                docx_paragraph("", spacing_after=80),
+            ])
+        else:
+            elements.extend([
+                docx_table(party_rows, header=False, widths=[2400, 6600]),
+                docx_paragraph("", spacing_after=120),
+            ])
         elements.extend([
             docx_paragraph(f"Строк оплати: {date_value(document_due) if document_due else date_value(date)}", bold=True),
-            docx_table(service_rows),
+            docx_table(service_rows, widths=[700, 5000, 900, 1500, 1500], aligns=["center", "left", "center", "right", "right"]),
             docx_paragraph(f"Разом до сплати: {amount_text}", bold=True, size=24, align="right", spacing_after=220),
         ])
         if not short:
             elements.extend([
                 docx_paragraph("Призначення платежу", bold=True, size=24),
-                docx_paragraph(f"Оплата правової допомоги за справою №{case.number}.", spacing_after=160),
+                docx_paragraph(f"Оплата правової допомоги за справою №{case.number}. Рахунок сформовано CRM та прикріплено до папки «Фінансові документи».", spacing_after=160),
             ])
         if detailed:
             elements.extend([
                 docx_paragraph("Умови оплати", bold=True, size=24),
-                docx_paragraph("Оплата здійснюється на підставі цього рахунку. Документ сформовано CRM автоматично та може бути відредагований у ONLYOFFICE."),
+                docx_paragraph("Оплата здійснюється на підставі цього рахунку. Після надходження коштів CRM зменшує поточну заборгованість у фінансах справи."),
+                docx_paragraph("Документ можна відкрити та відредагувати в ONLYOFFICE перед надсиланням клієнту.", spacing_after=160),
             ])
+        if comment and not short:
+            elements.extend([docx_paragraph("Коментар", bold=True, size=24), docx_paragraphs(comment, spacing_after=80)])
     else:
         period = work_period or "період не вказано"
-        elements.extend([
+        elements = [
+            docx_paragraph(f"АКТ ВИКОНАНИХ РОБІТ № {doc_number}", bold=True, size=32, align="center", spacing_after=60),
+            docx_paragraph(f"від {date_value(date)}", size=22, align="center", spacing_after=220),
+            docx_table(party_rows, header=False, widths=[2400, 6600]),
+            docx_paragraph("", spacing_after=120),
             docx_paragraph(f"Період виконання робіт: {period}", bold=True),
-            docx_table(service_rows),
+            docx_table(service_rows, widths=[700, 5000, 900, 1500, 1500], aligns=["center", "left", "center", "right", "right"]),
             docx_paragraph(f"Загальна вартість послуг: {amount_text}", bold=True, size=24, align="right", spacing_after=160),
             docx_paragraph("Сторони підтверджують, що послуги надані належним чином, у погодженому обсязі та прийняті Замовником.", spacing_after=160),
-        ])
+        ]
         if detailed:
             elements.extend([
+                docx_paragraph("Зміст виконаних робіт", bold=True, size=24),
+                docx_paragraph(f"Юридичний супровід у справі №{case.number}: консультації, підготовка процесуальних матеріалів, аналіз документів та комунікація зі сторонами.", spacing_after=160),
                 docx_paragraph("Зауваження сторін", bold=True, size=24),
                 docx_paragraph("На момент підписання цього акта зауваження щодо строків, якості та обсягу наданих послуг відсутні."),
             ])
-    if comment and not short:
-        elements.extend([docx_paragraph("Коментар", bold=True, size=24), docx_paragraph(comment)])
+        if comment and not short:
+            elements.extend([docx_paragraph("Коментар", bold=True, size=24), docx_paragraphs(comment, spacing_after=80)])
     elements.extend([
         docx_paragraph("", spacing_after=240),
         docx_table([
             ["Виконавець", "Замовник"],
             ["________________________", "________________________"],
-            ["Advocates Bureau CRM", client_name],
-        ], header=False),
+            [bureau["signature"], client_name],
+        ], header=False, widths=[4500, 4500]),
     ])
     return elements
 
@@ -869,6 +962,14 @@ def create_finance_document(case, title, document_type, status, amount, date, co
     link_number = finance_link_number or document_number
     document_marker = f"Номер рахунку: {link_number}" if document_type == "Рахунок" and link_number else ""
     full_comment = "\n".join(part for part in [comment or "", document_marker] if part).strip()
+    finance_history = [{
+        "date": date_value(timezone.localdate()),
+        "kind": "finance_document",
+        "documentType": document_type,
+        "invoiceNumber": link_number if document_type == "Рахунок" else "",
+        "financeLinkNumber": link_number,
+        "text": f"Фінансовий документ створено CRM: {document_type}.",
+    }]
     document = CaseDocument.objects.create(
         case=case,
         title=f"{document_type}: {title} · №{case.number}.docx",
@@ -877,7 +978,7 @@ def create_finance_document(case, title, document_type, status, amount, date, co
         folder="Фінансові документи",
         submitted_at=date,
         comment=f"{full_comment} Сума: {money(amount):,.0f} грн.".strip(),
-        history=[],
+        history=finance_history,
     )
     content = docx_bytes(
         finance_document_elements(
@@ -1021,19 +1122,8 @@ def delete_finance_operation(operation_id):
             CaseDocument.objects.get(pk=raw_id, document_type="Рахунок", folder="Фінансові документи").delete()
             return
         case = item.case
-        CaseDocument.objects.filter(pk=raw_id, document_type="Рахунок", folder="Фінансові документи").delete()
-        CaseDocument.objects.filter(
-            case=case,
-            document_type="Рахунок",
-            folder="Фінансові документи",
-            comment__icontains=f"Номер рахунку: {item.number}",
-        ).delete()
-        CaseDocument.objects.filter(
-            case=case,
-            document_type="Рахунок",
-            folder="Фінансові документи",
-            title__icontains=item.number,
-        ).delete()
+        for document in finance_invoice_documents(item):
+            document.delete()
         case.income_amount = max(case.income_amount - item.amount, case.paid_amount)
         item.delete()
         recalculate_case_debt(case)
@@ -2539,9 +2629,9 @@ def document_detail_api(request, document_id):
         if forbidden:
             return forbidden
         if item.document_type == "Рахунок" and item.folder == "Фінансові документи":
-            match = re.search(r"Номер рахунку:\s*([^\n]+)", item.comment or "")
-            if match:
-                Invoice.objects.filter(case=item.case, number=match.group(1).strip()).delete()
+            invoice_number = invoice_number_from_finance_document(item)
+            if invoice_number:
+                Invoice.objects.filter(case=item.case, number=invoice_number).delete()
         log_crm_action(request, AuditLog.Action.DELETE, "document", item.id, item.title, f"Видалено документ {item.title}.")
         item.delete()
         return json_response({"deleted": document_id})

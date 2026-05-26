@@ -12,6 +12,7 @@ import { normalizeCase, normalizeFinanceOperation } from "../state.js";
 const DEFAULT_START = DEMO_START;
 const DEFAULT_END = DEMO_END;
 const FINANCE_PAGE_SIZE = 10;
+let financeOutsideMenuHandler = null;
 
 function financePageState(state) {
   state.financePages = state.financePages && typeof state.financePages === "object" ? state.financePages : {};
@@ -64,6 +65,13 @@ function financePaginationHtml(pagination, itemLabel = "записів") {
       </div>
     </div>
   `;
+}
+
+function financeOperationPaginationLabel(tab) {
+  if (tab === "payments") return "платежів";
+  if (tab === "invoices") return "рахунків";
+  if (tab === "acts") return "актів";
+  return "операцій";
 }
 
 function financeDisplayDate(daysAgo = 0) {
@@ -241,6 +249,81 @@ function openFinanceCase(ctx, caseId) {
   switchView("cases");
 }
 
+function findFinanceOperationDocumentTarget(ctx, operation = {}) {
+  const { caseById, caseFolders } = ctx;
+  const item = caseById(operation.caseId);
+  const documentId = String(operation.documentId || "").trim();
+  if (!item || !["Рахунок", "Акт"].includes(operation.type) && !documentId) return null;
+  const normalizedTitle = String(operation.title || "").trim().toLowerCase();
+  const byFinanceDocument = (entry = {}) => {
+    const entryId = String(entry.documentId || entry.id || "");
+    const entryType = String(entry.type || "");
+    const entryName = String(entry.name || entry.title || "").toLowerCase();
+    if (documentId && entryId === documentId) return true;
+    if (operation.type && entryType === operation.type) return true;
+    return Boolean(normalizedTitle && entryName.includes(normalizedTitle));
+  };
+  const docIndex = (item.documents || []).findIndex(byFinanceDocument);
+  const linkedDoc = docIndex >= 0 ? item.documents[docIndex] : null;
+  const folders = caseFolders(item);
+  const findFolderFile = (items = [], path = []) => {
+    for (let folderIndex = 0; folderIndex < items.length; folderIndex += 1) {
+      const folder = items[folderIndex];
+      const folderPath = [...path, folderIndex];
+      const fileIndex = (folder.files || []).findIndex(byFinanceDocument);
+      if (fileIndex >= 0) {
+        return { folder, folderPath, fileIndex, file: folder.files[fileIndex] };
+      }
+      const nested = findFolderFile(folder.children || [], folderPath);
+      if (nested) return nested;
+    }
+    return null;
+  };
+  const folderMatch = findFolderFile(folders);
+  const encoded = linkedDoc
+    ? `procedural:${docIndex}`
+    : folderMatch
+      ? folderMatch.folderPath.length > 1
+        ? `folderPath:${folderMatch.folderPath.join(".")}:${folderMatch.fileIndex}`
+        : `folder:${folderMatch.folderPath[0]}:${folderMatch.fileIndex}`
+      : "";
+  if (!encoded) return null;
+  return {
+    caseId: item.id,
+    clientId: String(item.clientId || "all"),
+    folderName: folderMatch?.folder?.name || linkedDoc?.folder || linkedDoc?.folderName || "",
+    key: `${item.id}|${encoded}`
+  };
+}
+
+function openFinanceOperationDocument(ctx, operationId) {
+  const { state, renderAll, switchView, showToast } = ctx;
+  const operation = findFinanceOperation(state, operationId);
+  const target = findFinanceOperationDocumentTarget(ctx, operation);
+  state.financeOperationMenuId = "";
+  if (!target) {
+    showToast?.("Документ для цієї фінансової дії не знайдено.", "warning");
+    renderAll?.();
+    return;
+  }
+  state.documentQuickFilter = "all";
+  state.documentQuery = "";
+  state.documentStatusFilter = "all";
+  state.documentTypeFilter = "all";
+  state.documentDueFilter = "all";
+  state.documentClientFilter = target.clientId;
+  state.documentCaseFilter = target.caseId;
+  state.documentArchiveScope = "cases";
+  state.documentArchiveClientId = target.clientId;
+  state.documentArchiveCaseId = target.caseId;
+  state.documentArchiveFolder = target.folderName;
+  state.selectedDocumentKeys = [];
+  state.selectedDocumentKey = target.key;
+  renderAll?.();
+  switchView("documents");
+  showToast?.("Відкрито документ фінансової дії.");
+}
+
 function dateFromAny(value) {
   if (!value) return null;
   const clean = String(value).split(" ")[0];
@@ -270,8 +353,110 @@ function inDateRange(value, startIso, endIso) {
 }
 
 function linePoints(values, max = 100, width = 560, height = 190) {
+  if (values.length <= 1) {
+    const value = values[0] || 0;
+    return `0,${Math.round(height - (value / max) * height)} ${width},${Math.round(height - (value / max) * height)}`;
+  }
   const step = width / (values.length - 1);
   return values.map((value, index) => `${Math.round(index * step)},${Math.round(height - (value / max) * height)}`).join(" ");
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function isoDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function shortDateLabel(date) {
+  return `${String(date.getDate()).padStart(2, "0")}.${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function financeAmountParts(operation = {}) {
+  const amount = Math.abs(Number(operation.amount) || 0);
+  if (!amount) return { income: 0, expenses: 0 };
+  if (operation.type === "Витрата" || Number(operation.amount) < 0) return { income: 0, expenses: amount };
+  if (operation.type === "Надходження") return { income: amount, expenses: 0 };
+  return { income: 0, expenses: 0 };
+}
+
+function financeLineChartData(operations, startIso, endIso, scale = "days") {
+  const start = dateFromAny(startIso) || new Date();
+  const end = dateFromAny(endIso) || start;
+  const buckets = [];
+  if (scale === "weeks") {
+    let cursor = new Date(start);
+    while (cursor <= end) {
+      const bucketStart = new Date(cursor);
+      const bucketEnd = addDays(bucketStart, 6);
+      if (bucketEnd > end) bucketEnd.setTime(end.getTime());
+      buckets.push({
+        key: isoDate(bucketStart),
+        start: bucketStart,
+        end: bucketEnd,
+        label: bucketStart.getTime() === bucketEnd.getTime()
+          ? shortDateLabel(bucketStart)
+          : `${shortDateLabel(bucketStart)}-${shortDateLabel(bucketEnd)}`,
+        income: 0,
+        expenses: 0
+      });
+      cursor = addDays(bucketEnd, 1);
+    }
+  } else {
+    let cursor = new Date(start);
+    while (cursor <= end) {
+      buckets.push({
+        key: isoDate(cursor),
+        start: new Date(cursor),
+        end: new Date(cursor),
+        label: shortDateLabel(cursor),
+        income: 0,
+        expenses: 0
+      });
+      cursor = addDays(cursor, 1);
+    }
+  }
+  operations.forEach((operation) => {
+    const date = dateFromAny(operation.date);
+    if (!date) return;
+    const bucket = buckets.find((item) => date >= item.start && date <= item.end);
+    if (!bucket) return;
+    const parts = financeAmountParts(operation);
+    bucket.income += parts.income;
+    bucket.expenses += parts.expenses;
+  });
+  const values = {
+    income: buckets.map((item) => item.income),
+    expenses: buckets.map((item) => item.expenses),
+    profit: buckets.map((item) => Math.max(item.income - item.expenses, 0))
+  };
+  const max = Math.max(1, ...values.income, ...values.expenses, ...values.profit);
+  return {
+    labels: buckets.map((item) => item.label),
+    values,
+    axis: [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round(max * ratio)),
+    max,
+    hasData: operations.some((operation) => financeAmountParts(operation).income || financeAmountParts(operation).expenses)
+  };
+}
+
+function financeDonutStyle(items = []) {
+  const values = items
+    .map((item) => ({ color: item[2], value: Number(item[3]) || 0 }))
+    .filter((item) => item.value > 0);
+  const total = values.reduce((sum, item) => sum + item.value, 0);
+  if (!total) return "";
+  let cursor = 0;
+  const segments = values.map((item, index) => {
+    const start = cursor;
+    const end = index === values.length - 1 ? 100 : cursor + (item.value / total) * 100;
+    cursor = end;
+    return `${item.color} ${start.toFixed(2)}% ${end.toFixed(2)}%`;
+  });
+  return `style="background: conic-gradient(${segments.join(", ")});"`;
 }
 
 function financeOperations(state) {
@@ -461,6 +646,82 @@ function financeOperationFilters(state, operations, icon) {
   `;
 }
 
+function financeCaseStatusKey(item) {
+  if ((Number(item.debt) || 0) > 0) return "debt";
+  if ((Number(item.total) || 0) > 0 || (Number(item.paid) || 0) > 0) return "paid";
+  return "empty";
+}
+
+function financeCaseMatchesFilters(item, query, statusFilter = "all") {
+  const status = financeCaseStatusKey(item);
+  if (statusFilter !== "all" && status !== statusFilter) return false;
+  const cleanQuery = String(query || "").trim().toLowerCase();
+  if (!cleanQuery) return true;
+  return [
+    item.id,
+    `№${item.id}`,
+    item.title,
+    item.client,
+    item.financeStatus,
+    item.total,
+    item.paid,
+    item.debt
+  ].some((value) => String(value || "").toLowerCase().includes(cleanQuery));
+}
+
+function financeCaseWorkspaceFilters(state, icon, rows) {
+  const query = state.financeCaseQuery || "";
+  const status = state.financeCaseStatusFilter || "all";
+  const counts = rows.reduce((acc, item) => {
+    const key = financeCaseStatusKey(item);
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  return `
+    <div class="finance-operation-filters finance-case-filters">
+      <label class="finance-operation-search">
+        ${icon("search")}
+        <input type="search" data-finance-case-search value="${escapeHtml(query)}" placeholder="Пошук справи, клієнта, суми...">
+      </label>
+      <label class="finance-filter-field">
+        <select data-finance-case-status aria-label="Фільтр справ за статусом">
+          <option value="all" ${status === "all" ? "selected" : ""}>Усі статуси · ${rows.length}</option>
+          <option value="debt" ${status === "debt" ? "selected" : ""}>Є борг · ${counts.debt || 0}</option>
+          <option value="paid" ${status === "paid" ? "selected" : ""}>Оплачено · ${counts.paid || 0}</option>
+          <option value="empty" ${status === "empty" ? "selected" : ""}>Не виставлено · ${counts.empty || 0}</option>
+        </select>
+      </label>
+      <button class="secondary compact" type="button" data-finance-case-reset>${icon("refresh")} Скинути</button>
+    </div>
+  `;
+}
+
+function financeClientDebtFilters(state, icon, debtRows) {
+  const query = state.financeClientDebtQuery || "";
+  const status = state.financeClientDebtStatusFilter || "all";
+  const counts = debtRows.reduce((acc, item) => {
+    const key = item.paid > 0 ? "partial" : "waiting";
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  return `
+    <div class="finance-operation-filters finance-client-debt-filters">
+      <label class="finance-operation-search">
+        ${icon("search")}
+        <input type="search" data-finance-client-debt-search value="${escapeHtml(query)}" placeholder="Пошук клієнта, справи, боргу...">
+      </label>
+      <label class="finance-filter-field">
+        <select data-finance-client-debt-status aria-label="Фільтр боргів">
+          <option value="all" ${status === "all" ? "selected" : ""}>Усі борги · ${debtRows.length}</option>
+          <option value="partial" ${status === "partial" ? "selected" : ""}>Частково оплачено · ${counts.partial || 0}</option>
+          <option value="waiting" ${status === "waiting" ? "selected" : ""}>Очікує оплату · ${counts.waiting || 0}</option>
+        </select>
+      </label>
+      <button class="secondary compact" type="button" data-finance-client-debt-reset>${icon("refresh")} Скинути</button>
+    </div>
+  `;
+}
+
 function financePaymentModeControl(state) {
   const modes = [
     ["income", "Надходження"],
@@ -478,7 +739,7 @@ function financePaymentModeControl(state) {
 }
 
 function closeFinanceSelectMenus(root, except = null) {
-  root.querySelectorAll(".finance-filter-field .document-custom-select.is-open, .finance-action-select-field .document-custom-select.is-open").forEach((shell) => {
+  root.querySelectorAll(".finance-filter-field .document-custom-select.is-open, .finance-action-select-field .document-custom-select.is-open, .salary-select-field .document-custom-select.is-open").forEach((shell) => {
     if (shell === except) return;
     shell.classList.remove("is-open");
     shell.querySelector(".document-custom-select-button")?.setAttribute("aria-expanded", "false");
@@ -662,7 +923,7 @@ function setFinanceActionMode(ctx, action, operation = null) {
 }
 
 function setupFinanceCustomSelects(root) {
-  root.querySelectorAll(".finance-filter-field > select, .finance-action-select-field > select, .finance-action-case-field:not(.is-locked) > select").forEach((select) => {
+  root.querySelectorAll(".finance-filter-field > select, .finance-action-select-field > select, .finance-action-case-field:not(.is-locked) > select, .salary-select-field > select").forEach((select) => {
     select.classList.add("document-native-select");
     select.tabIndex = -1;
     select.setAttribute("aria-hidden", "true");
@@ -671,7 +932,9 @@ function setupFinanceCustomSelects(root) {
       : null;
     if (!shell) {
       shell = document.createElement("div");
-      shell.className = `document-custom-select ${select.closest(".finance-action-select-field, .finance-action-case-field") ? "finance-modal-select" : "finance-filter-select"}`;
+      const isModalSelect = Boolean(select.closest(".finance-action-select-field, .finance-action-case-field"))
+        || Boolean(select.closest(".salary-select-field") && !select.closest(".salary-filter-field"));
+      shell.className = `document-custom-select ${isModalSelect ? "finance-modal-select" : "finance-filter-select"}`;
       shell.innerHTML = `
         <button class="document-custom-select-button" type="button" aria-haspopup="listbox" aria-expanded="false">
           <span data-document-select-value></span>
@@ -702,7 +965,7 @@ function setupFinanceCustomSelects(root) {
   if (!root.dataset.financeCustomSelectsBound) {
     root.dataset.financeCustomSelectsBound = "true";
     root.addEventListener("click", (event) => {
-      if (event.target.closest(".finance-filter-field .document-custom-select, .finance-action-select-field .document-custom-select")) return;
+      if (event.target.closest(".finance-filter-field .document-custom-select, .finance-action-select-field .document-custom-select, .salary-select-field .document-custom-select")) return;
       closeFinanceSelectMenus(root);
     });
     root.addEventListener("keydown", (event) => {
@@ -789,6 +1052,7 @@ function financeOperationRow(item, badge, icon, options = {}) {
   const amountText = item.amount
     ? `${item.amount < 0 ? "-" : ""}${new Intl.NumberFormat("uk-UA").format(Math.abs(item.amount))} грн`
     : "Документ";
+  const hasLinkedDocumentAction = Boolean(item.documentId);
   const caseCell = item.caseId
     ? `<button class="case-link-button" type="button" data-finance-open-case="${item.caseId}">№${item.caseId}</button>`
     : `<span class="muted">Без справи</span>`;
@@ -805,6 +1069,7 @@ function financeOperationRow(item, badge, icon, options = {}) {
         <button class="icon-button finance-row-menu ${menuId === item.id ? "is-open" : ""}" type="button" data-finance-operation-menu="${item.id}" aria-expanded="${menuId === item.id}" title="Дії">⋮</button>
         ${menuId === item.id ? `
           <div class="salary-row-menu finance-operation-menu">
+            ${hasLinkedDocumentAction ? `<button type="button" data-finance-operation-document="${item.id}">${icon("file")} До документа</button>` : ""}
             <button type="button" data-finance-operation-edit="${item.id}">${icon("edit")} Редагувати</button>
             <button class="danger" type="button" data-finance-operation-delete="${item.id}">${icon("trash")} Видалити</button>
           </div>
@@ -875,14 +1140,20 @@ function financeWorkspaceSummary(label, value, hint) {
   `;
 }
 
-function financeCaseWorkspace(state, rows, currencyText, badge) {
-  const pagination = paginateFinanceItems(state, "cases", rows);
+function financeCaseWorkspace(state, rows, currencyText, badge, icon) {
+  const filteredRows = rows.filter((item) => financeCaseMatchesFilters(
+    item,
+    state.financeCaseQuery,
+    state.financeCaseStatusFilter || "all"
+  ));
+  const pagination = paginateFinanceItems(state, "cases", filteredRows);
   return `
     <div class="finance-workspace-table case-finance-workspace">
+      ${financeCaseWorkspaceFilters(state, icon, rows)}
       <div class="finance-workspace-head">
         <span>Справа</span><span>Клієнт</span><span>Договір</span><span>Оплачено</span><span>Борг</span><span>Статус</span><span></span>
       </div>
-      ${pagination.items.map((item) => `
+      ${pagination.items.length ? pagination.items.map((item) => `
         <div class="finance-workspace-row">
           <button class="case-link-button" type="button" data-finance-open-case="${item.id}">№${item.id}</button>
           <span>${item.client}</span>
@@ -892,27 +1163,80 @@ function financeCaseWorkspace(state, rows, currencyText, badge) {
           ${badge(item.financeStatus, item.debt ? "red" : "green")}
           <button class="secondary compact" type="button" data-finance-work-case="${item.id}">Відкрити</button>
         </div>
-      `).join("")}
+      `).join("") : `<div class="finance-operation-empty">Справ за цим фільтром немає.</div>`}
       ${financePaginationHtml(pagination, "справ")}
     </div>
   `;
 }
 
-function financeClientWorkspace(state, rows, currencyText) {
+function financeClientWorkspace(state, rows, currencyText, icon) {
   const debtRows = rows.filter((item) => item.debt > 0);
   if (!debtRows.length) {
     return `<div class="finance-operation-empty">Активних боргів немає.</div>`;
   }
-  const pagination = paginateFinanceItems(state, "clients", debtRows);
+  const query = String(state.financeClientDebtQuery || "").trim().toLowerCase();
+  const statusFilter = state.financeClientDebtStatusFilter || "all";
+  const filteredRows = debtRows.filter((item) => {
+    const status = item.paid > 0 ? "partial" : "waiting";
+    if (statusFilter !== "all" && status !== statusFilter) return false;
+    if (!query) return true;
+    return [
+      item.id,
+      `№${item.id}`,
+      item.title,
+      item.client,
+      item.financeStatus,
+      item.total,
+      item.paid,
+      item.debt
+    ].some((value) => String(value || "").toLowerCase().includes(query));
+  });
+  const clients = new Map();
+  filteredRows.forEach((item) => {
+    const clientName = item.client || "Клієнт не вказаний";
+    if (!clients.has(clientName)) {
+      clients.set(clientName, {
+        name: clientName,
+        debt: 0,
+        paid: 0,
+        total: 0,
+        cases: []
+      });
+    }
+    const client = clients.get(clientName);
+    client.debt += Number(item.debt) || 0;
+    client.paid += Number(item.paid) || 0;
+    client.total += Number(item.total) || 0;
+    client.cases.push(item);
+  });
+  const clientGroups = [...clients.values()].sort((a, b) => b.debt - a.debt || a.name.localeCompare(b.name, "uk"));
+  const pagination = paginateFinanceItems(state, "clients", clientGroups);
   return `
-    <div class="finance-workspace-cards">
-      ${pagination.items.map((item) => `
-        <button class="finance-client-card" type="button" data-finance-open-case="${item.id}">
-          <span>${item.client}</span>
-          <strong>${currencyText(item.debt)}</strong>
-          <small>Справа №${item.id}</small>
-        </button>
-      `).join("")}
+    <div class="finance-workspace-table finance-client-debt-workspace">
+      ${financeClientDebtFilters(state, icon, debtRows)}
+      <div class="finance-workspace-head">
+        <span>Клієнт</span><span>Справи</span><span>Договір</span><span>Оплачено</span><span>Борг</span><span></span>
+      </div>
+      ${pagination.items.length ? pagination.items.map((client) => `
+        <div class="finance-client-debt-group">
+          <div class="finance-client-debt-cell">
+            <strong>${escapeHtml(client.name)}</strong>
+            <small>${client.cases.length} ${client.cases.length === 1 ? "справа" : "справ"} · борг ${currencyText(client.debt)}</small>
+          </div>
+          <div class="finance-client-debt-cases">
+            ${client.cases.sort((a, b) => b.debt - a.debt || String(a.id).localeCompare(String(b.id), "uk")).map((item) => `
+              <div class="finance-client-debt-row">
+                <button class="case-link-button" type="button" data-finance-open-case="${item.id}">№${escapeHtml(item.id)}</button>
+                <span>${escapeHtml(item.title || "Без назви")}</span>
+                <strong>${currencyText(item.total)}</strong>
+                <span>${currencyText(item.paid)}</span>
+                <b class="danger">${currencyText(item.debt)}</b>
+                <button class="secondary compact" type="button" data-finance-work-case="${item.id}">Відкрити</button>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      `).join("") : `<div class="finance-operation-empty">Боргів за цим фільтром немає.</div>`}
     </div>
     ${financePaginationHtml(pagination, "клієнтів")}
   `;
@@ -928,7 +1252,7 @@ function financeSalaryWorkspace(state, icon, currencyText) {
   const selectedEmployee = state.salaryFilter || "all";
   return `
     <div class="salary-toolbar">
-      <label>Співробітник
+      <label class="salary-select-field salary-filter-field">Співробітник
         <select data-salary-filter>
           <option value="all" ${selectedEmployee === "all" ? "selected" : ""}>Усі співробітники</option>
           ${employees.map((employee) => `
@@ -963,7 +1287,7 @@ function financeSalaryWorkspace(state, icon, currencyText) {
       </div>
     </div>
 
-    <div class="finance-workspace-table salary-workspace">
+    <div class="finance-workspace-table salary-workspace ${state.salaryMenuId ? "has-open-menu" : ""}">
       <div class="finance-workspace-head">
         <span>Співробітник</span><span>Роль</span><span>Ставка</span><span>Бонус</span><span>До виплати</span><span>Дата</span><span>Статус</span><span></span>
       </div>
@@ -980,9 +1304,9 @@ function financeSalaryWorkspace(state, icon, currencyText) {
           <span>${row.date}</span>
           <span class="status-pill ${statusPillTone(row.status)}">${row.status}</span>
           <div class="salary-action-cell">
-            <button class="icon-button finance-row-menu" type="button" aria-label="Дії зарплати" data-salary-menu="${row.id}">⋮</button>
+            <button class="icon-button finance-row-menu ${state.salaryMenuId === row.id ? "is-open" : ""}" type="button" aria-label="Дії зарплати" data-salary-menu="${row.id}" aria-expanded="${state.salaryMenuId === row.id}">⋮</button>
             ${state.salaryMenuId === row.id ? `
-              <div class="salary-row-menu">
+              <div class="salary-row-menu finance-operation-menu">
                 <button type="button" data-salary-edit="${row.id}">${icon("edit")} Редагувати</button>
                 <button type="button" data-salary-export-row="${row.id}">${icon("file")} Експорт</button>
                 <button class="danger" type="button" data-salary-delete="${row.id}">${icon("trash")} Видалити</button>
@@ -1045,6 +1369,7 @@ function financeWorkspace(ctx, rows, operations, visibleOperations, totals) {
     ? paginateFinanceItems(state, state.financeTab, visibleOperations)
     : null;
   const pageOperations = operationPagination?.items || visibleOperations;
+  const debtClientCount = new Set(rows.filter((item) => item.debt > 0).map((item) => item.client || "Клієнт не вказаний")).size;
 
   return `
     <section class="panel finance-workspace-panel">
@@ -1065,7 +1390,7 @@ function financeWorkspace(ctx, rows, operations, visibleOperations, totals) {
       </div>
 
       <div class="finance-workspace-metrics">
-        ${financeWorkspaceSummary("Записів", isCases ? rows.length : isClients ? rows.filter((item) => item.debt > 0).length : isSalary ? currentSalaryRows.length : isReports ? REPORT_ROWS.length : visibleOperations.length, "у цьому розділі")}
+        ${financeWorkspaceSummary(isCases ? "Справ" : isClients ? "Клієнтів" : "Записів", isCases ? rows.length : isClients ? debtClientCount : isSalary ? currentSalaryRows.length : isReports ? REPORT_ROWS.length : visibleOperations.length, "у цьому розділі")}
         ${financeWorkspaceSummary(isSalary ? "Ставка" : "Надходження", isSalary ? currencyText(currentSalaryTotals.base) : currencyText(income), isSalary ? "за вибраним фільтром" : "за вибраний період")}
         ${financeWorkspaceSummary(isSalary ? "Бонуси" : "Витрати", isSalary ? currencyText(currentSalaryTotals.bonus) : currencyText(expenses), isSalary ? "премії та доплати" : "за вибраний період")}
         ${financeWorkspaceSummary(isSalary ? "До виплати" : "Борг", isSalary ? currencyText(currentSalaryTotals.total) : currencyText(totals.debt), isSalary ? "поточний фонд" : "поточний контроль")}
@@ -1076,18 +1401,18 @@ function financeWorkspace(ctx, rows, operations, visibleOperations, totals) {
         : isReports
           ? financeReportsWorkspace(icon, totals, currencyText)
           : isCases
-            ? financeCaseWorkspace(state, rows, currencyText, badge)
+            ? financeCaseWorkspace(state, rows, currencyText, badge, icon)
             : isClients
-              ? financeClientWorkspace(state, rows, currencyText)
+              ? financeClientWorkspace(state, rows, currencyText, icon)
               : `
-                <div class="finance-workspace-table is-operations ${isPayments ? "is-payments" : ""}">
+                <div class="finance-workspace-table is-operations ${isPayments ? "is-payments" : ""} ${state.financeOperationMenuId ? "has-open-menu" : ""}">
                   ${isPayments ? financePaymentModeControl(state) : ""}
                   ${financeOperationFilters(state, operations, icon)}
                   <div class="finance-operation-head is-tree">
                     <span>Клієнт</span><span>Справа</span><span>Дата</span><span>Тип</span><span>Назва / Опис</span><span>Сума</span><span>Статус</span><span>Спосіб оплати</span><span></span>
                   </div>
                   <div class="finance-operation-list is-tree">${visibleOperations.length ? operationRows(pageOperations, badge, icon, { menuId: state.financeOperationMenuId, selectedId: state.selectedFinanceOperationId, caseTree: true }) : `<div class="finance-operation-empty">${currentMeta.empty}</div>`}</div>
-                  ${financePaginationHtml(operationPagination)}
+                  ${financePaginationHtml(operationPagination, financeOperationPaginationLabel(state.financeTab))}
                 </div>
               `}
     </section>
@@ -1306,7 +1631,7 @@ async function applyFinanceAction(ctx, formData) {
     item.paid = finance.paid;
     item.debt = Math.max(item.totalFee - item.paid, 0);
     item.nextPaymentDue = item.nextPaymentDue || formatDate(documentDue || dateIso);
-    addFinanceDocument(ctx, item, action, amount, documentTitle, date, comment, apiResult?.document);
+    operation.documentId = addFinanceDocument(ctx, item, action, amount, documentTitle, date, comment, apiResult?.document)?.documentId || operation.documentId || "";
   }
 
   if (action === "expense") {
@@ -1314,7 +1639,7 @@ async function applyFinanceAction(ctx, formData) {
   }
 
   if (action === "act") {
-    addFinanceDocument(ctx, item, action, amount, documentTitle, date, comment, apiResult?.document);
+    operation.documentId = addFinanceDocument(ctx, item, action, amount, documentTitle, date, comment, apiResult?.document)?.documentId || operation.documentId || "";
   }
 
   item.financeComment = comment || item.financeComment || "";
@@ -1434,6 +1759,8 @@ function openSalaryDialog(ctx, salaryId = "") {
   form.elements.date.value = row ? salaryDateInput(row.date) : isoToday();
   form.elements.status.value = row?.status || "Готово";
   form.elements.comment.value = row?.comment || "";
+  setupFinanceCustomSelects(form);
+  form.querySelectorAll(".salary-select-field > select").forEach(syncFinanceCustomSelect);
   document.querySelector("#salary-dialog-title").textContent = row ? "Редагувати зарплату" : "Нарахувати зарплату";
   document.querySelector("#salary-submit").textContent = row ? "Зберегти зміни" : "Додати зарплату";
   document.querySelector("#salary-dialog").showModal();
@@ -1595,6 +1922,7 @@ export function renderFinanceScreen(ctx) {
   state.financePaymentMode = state.financePaymentMode || "all";
   state.financeDateStart = state.financeDateStart || DEFAULT_START;
   state.financeDateEnd = state.financeDateEnd || DEFAULT_END;
+  state.financeChartScale = state.financeChartScale || "days";
   state.financeDatePickerOpen = Boolean(state.financeDatePickerOpen);
   bindFinanceActionDialog(ctx);
   bindSalaryDialog(ctx);
@@ -1606,7 +1934,10 @@ export function renderFinanceScreen(ctx) {
     ? tabOperations.filter((item) => operationMatchesPaymentMode(item, state.financePaymentMode))
     : tabOperations;
   const visibleOperations = modeOperations.filter((item) => operationMatchesFinanceFilters(item, state));
-  const recentOperations = operationsInRange.slice(0, 10);
+  const recentPagination = state.financeTab === "overview"
+    ? paginateFinanceItems(state, "overviewRecent", operationsInRange, FINANCE_PAGE_SIZE)
+    : null;
+  const recentOperations = recentPagination?.items || [];
   const selectedRecentOperation = recentOperations.find((item) => item.id === state.selectedFinanceOperationId);
   const totals = financeTotals(rows, operationsInRange, state);
   const insights = financeInsightsFromData(rows, operationsInRange);
@@ -1615,13 +1946,18 @@ export function renderFinanceScreen(ctx) {
   const hasFinanceData = operationsInRange.length > 0 || rows.some((item) => item.total > 0 || item.paid > 0 || item.debt > 0);
   const hasFinanceTotals = totals.income > 0 || totals.expenses > 0 || totals.profit > 0 || totals.expected > 0 || totals.debt > 0;
   const demoFinanceView = state.demoDataStatus?.enabled !== false && hasFinanceData;
-  const lineData = demoFinanceView ? FINANCE_LINE : EMPTY_FINANCE_LINE;
+  const realLineChart = financeLineChartData(operationsInRange, state.financeDateStart, state.financeDateEnd, state.financeChartScale);
+  const showDemoFinanceCharts = demoFinanceView && hasFinanceTotals && !realLineChart.hasData;
+  const showRealFinanceChart = realLineChart.hasData || showDemoFinanceCharts;
+  const lineData = showDemoFinanceCharts ? FINANCE_LINE : realLineChart.values;
+  const lineMax = showDemoFinanceCharts ? 100 : realLineChart.max;
+  const lineAxis = showDemoFinanceCharts ? ["0", "200k", "400k", "600k", "800k"] : realLineChart.axis.map((value) => currencyText(value));
+  const lineLabels = showDemoFinanceCharts ? chartDates : realLineChart.labels;
   const cashflowData = demoFinanceView ? CASHFLOW : CASHFLOW.map(([label]) => [label, 0, 0]);
   const hasIncomeStructure = insights.incomeStructure.length > 0;
   const accountBalance = totals.profit;
   const cashBalance = 0;
-  const supplierDebt = 0;
-  const availableBalance = Math.max(0, totals.profit - supplierDebt);
+  const availableBalance = Math.max(0, totals.profit);
   const emptyKpiDetail = "даних ще немає";
   const financeTrend = (value, trend, detail) => value > 0 && hasFinanceTotals
     ? { trend, detail }
@@ -1678,29 +2014,47 @@ export function renderFinanceScreen(ctx) {
             <article class="panel finance-chart-card finance-line-card">
               <div class="analytics-card-head">
                 <h2>Динаміка доходів та витрат</h2>
-                <select data-finance-chart-scale><option>По днях</option><option>По тижнях</option></select>
+                <label class="finance-filter-field finance-chart-scale-field">
+                  <select data-finance-chart-scale aria-label="Масштаб графіка">
+                    <option value="days" ${state.financeChartScale === "days" ? "selected" : ""}>По днях</option>
+                    <option value="weeks" ${state.financeChartScale === "weeks" ? "selected" : ""}>По тижнях</option>
+                  </select>
+                </label>
               </div>
               <div class="analytics-legend">
                 <span class="blue">Дохід</span>
                 <span class="red">Витрати</span>
                 <span class="green">Прибуток</span>
               </div>
-              <svg class="finance-line-chart" viewBox="0 0 620 250" role="img" aria-label="Динаміка доходів та витрат">
-                <g class="grid-lines">
-                  ${[0, 1, 2, 3, 4].map((line) => `<line x1="40" y1="${25 + line * 45}" x2="600" y2="${25 + line * 45}"></line>`).join("")}
-                </g>
-                ${["0", "200k", "400k", "600k", "800k"].map((value, index) => `<text x="10" y="${212 - index * 45}">${value}</text>`).join("")}
-                <polyline class="line blue-line" points="${linePoints(lineData.income)}" transform="translate(40 25)"></polyline>
-                <polyline class="line red-line" points="${linePoints(lineData.expenses)}" transform="translate(40 25)"></polyline>
-                <polyline class="line green-line" points="${linePoints(lineData.profit)}" transform="translate(40 25)"></polyline>
-                ${chartDates.map((date, index) => `<text class="axis" x="${42 + index * 78}" y="238">${date}</text>`).join("")}
-              </svg>
+              ${showRealFinanceChart ? `
+                <svg class="finance-line-chart" viewBox="0 0 620 250" role="img" aria-label="Динаміка доходів та витрат">
+                  <g class="grid-lines">
+                    ${[0, 1, 2, 3, 4].map((line) => `<line x1="40" y1="${25 + line * 45}" x2="600" y2="${25 + line * 45}"></line>`).join("")}
+                  </g>
+                  ${lineAxis.map((value, index) => `<text x="10" y="${212 - index * 45}">${value}</text>`).join("")}
+                  <polyline class="line blue-line" points="${linePoints(lineData.income, lineMax)}" transform="translate(40 25)"></polyline>
+                  <polyline class="line red-line" points="${linePoints(lineData.expenses, lineMax)}" transform="translate(40 25)"></polyline>
+                  <polyline class="line green-line" points="${linePoints(lineData.profit, lineMax)}" transform="translate(40 25)"></polyline>
+                  ${lineLabels.map((date, index) => {
+                    const step = lineLabels.length <= 1 ? 0 : 560 / (lineLabels.length - 1);
+                    const shouldShow = lineLabels.length <= 8 || index === 0 || index === lineLabels.length - 1 || index % Math.ceil(lineLabels.length / 7) === 0;
+                    const anchor = index === 0 ? "start" : index === lineLabels.length - 1 ? "end" : "middle";
+                    const x = index === lineLabels.length - 1 ? 600 : 42 + Math.round(index * step);
+                    return shouldShow ? `<text class="axis" x="${x}" y="238" text-anchor="${anchor}">${date}</text>` : "";
+                  }).join("")}
+                </svg>
+              ` : `
+                <div class="finance-chart-empty">
+                  <strong>Фінансової динаміки ще немає</strong>
+                  <span>Додайте кілька платежів у різні дні, і CRM побудує реальну картину без демо-графіка.</span>
+                </div>
+              `}
             </article>
 
             <article class="panel finance-chart-card">
               <h2>Структура доходів</h2>
                 <div class="finance-donut-wrap">
-                <div class="finance-income-donut${hasIncomeStructure ? "" : " is-empty"}"></div>
+                <div class="finance-income-donut${hasIncomeStructure ? "" : " is-empty"}" ${financeDonutStyle(insights.incomeStructure)}></div>
                 <div class="finance-donut-legend">
                   ${hasIncomeStructure ? insights.incomeStructure.map(([label, amount, color]) => `
                     <div><span style="--legend-color:${color}">${label}</span><strong>${amount}</strong></div>
@@ -1713,12 +2067,13 @@ export function renderFinanceScreen(ctx) {
           <article class="panel finance-operations-card">
             <div class="toolbar">
               <h2>Останні фінансові операції <small>Фінанси по справах</small></h2>
-              <span class="muted">${recentOperations.length} записів</span>
+              <span class="muted">${operationsInRange.length} записів</span>
             </div>
             <div class="finance-operation-head is-readonly is-tree">
               <span>Клієнт</span><span>Справа</span><span>Дата</span><span>Тип</span><span>Назва / Опис</span><span>Сума</span><span>Статус</span><span>Спосіб оплати</span>
             </div>
             <div class="finance-operation-list is-readonly is-tree">${operationRows(recentOperations, badge, icon, { showActions: false, clickable: true, selectedId: state.selectedFinanceOperationId, caseTree: true })}</div>
+            ${financePaginationHtml(recentPagination, "операцій")}
             <button class="case-link-button finance-view-all" type="button" data-finance-all-operations>Переглянути всі операції</button>
           </article>
 
@@ -1733,19 +2088,26 @@ export function renderFinanceScreen(ctx) {
             </article>
             <article class="panel finance-chart-card">
               <h2>Прогноз грошового потоку</h2>
-              <div class="finance-cashflow-legend">
-                <span class="green">Очікувані надходження</span>
-                <span class="red">Очікувані витрати</span>
-              </div>
-              <div class="finance-cashflow-chart">
-                ${cashflowData.map(([label, income, expense]) => `
-                  <div>
-                    <span class="green" style="height:${income}%"></span>
-                    <span class="red" style="height:${expense}%"></span>
-                    <em>${label}</em>
-                  </div>
-                `).join("")}
-              </div>
+              ${showDemoFinanceCharts ? `
+                <div class="finance-cashflow-legend">
+                  <span class="green">Очікувані надходження</span>
+                  <span class="red">Очікувані витрати</span>
+                </div>
+                <div class="finance-cashflow-chart">
+                  ${cashflowData.map(([label, income, expense]) => `
+                    <div>
+                      <span class="green" style="height:${income}%"></span>
+                      <span class="red" style="height:${expense}%"></span>
+                      <em>${label}</em>
+                    </div>
+                  `).join("")}
+                </div>
+              ` : `
+                <div class="finance-chart-empty is-compact">
+                  <strong>Прогноз ще не сформовано</strong>
+                  <span>Очікувані надходження та витрати з'являться після рахунків, актів і платежів.</span>
+                </div>
+              `}
             </article>
           </section>
         </div>
@@ -1757,8 +2119,7 @@ export function renderFinanceScreen(ctx) {
             ${[
               ["Всього на рахунках", currencyText(accountBalance)],
               ["Готівка в касі", currencyText(cashBalance)],
-              ["Заборгованість клієнтів", currencyText(totals.debt)],
-              ["Заборгованість постачальникам", currencyText(supplierDebt)]
+              ["Заборгованість клієнтів", currencyText(totals.debt)]
             ].map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("")}
             <div class="available"><span>Доступно до використання</span><strong>${currencyText(availableBalance)}</strong></div>
           </article>
@@ -1787,6 +2148,19 @@ export function renderFinanceScreen(ctx) {
     </div>
   `;
   setupFinanceCustomSelects($("#finance"));
+  if (financeOutsideMenuHandler) {
+    document.removeEventListener("click", financeOutsideMenuHandler);
+  }
+  financeOutsideMenuHandler = (event) => {
+    const financeRoot = $("#finance");
+    if (!financeRoot?.classList.contains("active")) return;
+    if (!state.financeOperationMenuId && !state.salaryMenuId) return;
+    if (event.target.closest("[data-finance-operation-menu], [data-salary-menu], .finance-operation-menu")) return;
+    state.financeOperationMenuId = "";
+    state.salaryMenuId = "";
+    rerender();
+  };
+  document.addEventListener("click", financeOutsideMenuHandler);
 
   const rerender = () => renderFinanceScreen(ctx);
 
@@ -1796,6 +2170,10 @@ export function renderFinanceScreen(ctx) {
     state.financeQuery = "";
     state.financeOperationClientFilter = "all";
     state.financeOperationCaseFilter = "all";
+    state.financeCaseQuery = "";
+    state.financeCaseStatusFilter = "all";
+    state.financeClientDebtQuery = "";
+    state.financeClientDebtStatusFilter = "all";
     resetFinancePage(state);
     rerender();
   }));
@@ -1852,6 +2230,38 @@ export function renderFinanceScreen(ctx) {
     state.financeOperationClientFilter = "all";
     state.financeOperationCaseFilter = "all";
     resetFinancePage(state);
+    rerender();
+  });
+  document.querySelector("[data-finance-case-search]")?.addEventListener("input", (event) => {
+    state.financeCaseQuery = event.currentTarget.value;
+    resetFinancePage(state, "cases");
+    rerender();
+  });
+  document.querySelector("[data-finance-case-status]")?.addEventListener("change", (event) => {
+    state.financeCaseStatusFilter = event.currentTarget.value || "all";
+    resetFinancePage(state, "cases");
+    rerender();
+  });
+  document.querySelector("[data-finance-case-reset]")?.addEventListener("click", () => {
+    state.financeCaseQuery = "";
+    state.financeCaseStatusFilter = "all";
+    resetFinancePage(state, "cases");
+    rerender();
+  });
+  document.querySelector("[data-finance-client-debt-search]")?.addEventListener("input", (event) => {
+    state.financeClientDebtQuery = event.currentTarget.value;
+    resetFinancePage(state, "clients");
+    rerender();
+  });
+  document.querySelector("[data-finance-client-debt-status]")?.addEventListener("change", (event) => {
+    state.financeClientDebtStatusFilter = event.currentTarget.value || "all";
+    resetFinancePage(state, "clients");
+    rerender();
+  });
+  document.querySelector("[data-finance-client-debt-reset]")?.addEventListener("click", () => {
+    state.financeClientDebtQuery = "";
+    state.financeClientDebtStatusFilter = "all";
+    resetFinancePage(state, "clients");
     rerender();
   });
   document.querySelectorAll("[data-finance-payment-mode]").forEach((button) => button.addEventListener("click", () => {
@@ -1923,6 +2333,9 @@ export function renderFinanceScreen(ctx) {
     }
     openFinanceActionDialog(ctx, financeActionForOperation(operation), operation.id);
   }));
+  document.querySelectorAll("[data-finance-operation-document]").forEach((button) => button.addEventListener("click", () => {
+    openFinanceOperationDocument(ctx, button.dataset.financeOperationDocument);
+  }));
   document.querySelectorAll("[data-finance-operation-delete]").forEach((button) => button.addEventListener("click", () => {
     deleteFinanceOperation(ctx, button.dataset.financeOperationDelete);
   }));
@@ -1973,6 +2386,9 @@ export function renderFinanceScreen(ctx) {
   });
   document.querySelector("[data-finance-all-debts]")?.addEventListener("click", () => {
     state.financeTab = "clients";
+    state.financeClientDebtQuery = "";
+    state.financeClientDebtStatusFilter = "all";
+    resetFinancePage(state, "clients");
     showToast("Показано клієнтів із заборгованістю.", "warning");
     rerender();
   });
@@ -1987,5 +2403,9 @@ export function renderFinanceScreen(ctx) {
     state.financeOperationCaseFilter = "all";
     rerender();
   });
-  document.querySelector("[data-finance-chart-scale]")?.addEventListener("change", () => showToast("Масштаб графіка змінено."));
+  document.querySelector("[data-finance-chart-scale]")?.addEventListener("change", (event) => {
+    state.financeChartScale = event.currentTarget.value || "days";
+    showToast("Масштаб графіка змінено.");
+    rerender();
+  });
 }

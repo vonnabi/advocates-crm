@@ -9,6 +9,7 @@ import {
   financeTotalsFromData,
   rowsWithPercent
 } from "../derived-data.js?v=live-demo-1";
+import { setupScreenCustomSelects } from "../custom-selects.js";
 
 const typeColors = ["#1f7ae0", "#27ae6f", "#f59e0b", "#7c5ce8", "#64748b", "#9aa7b7"];
 
@@ -242,6 +243,8 @@ export function renderAnalyticsScreen(ctx) {
     .filter((item) => inRange(item.date, state.analyticsDateStart, state.analyticsDateEnd));
   const financeStats = financeTotalsFromData(financeRows, financeOperations);
   const hasFinanceData = financeRows.length > 0 || financeOperations.length > 0;
+  const showAnalyticsLineChart = hasCaseData;
+  const showAnalyticsFinanceChart = hasFinanceData;
   const financeColumnRows = hasFinanceData
     ? [
       ["01-05.05", 82, 32, 58],
@@ -380,21 +383,28 @@ export function renderAnalyticsScreen(ctx) {
             <h2>Динаміка справ</h2>
             <select><option>По днях</option><option>По тижнях</option></select>
           </div>
-          <div class="analytics-legend">
-            <span class="blue">Нові справи</span>
-            <span class="green">Завершені справи</span>
-            <span class="amber">В роботі</span>
-          </div>
-          <svg class="analytics-line-chart" viewBox="0 0 620 250" role="img" aria-label="Динаміка справ по днях">
-            <g class="grid-lines">
-              ${[0, 1, 2, 3, 4].map((line) => `<line x1="40" y1="${25 + line * 45}" x2="600" y2="${25 + line * 45}"></line>`).join("")}
-            </g>
-            ${[0, 20, 40, 60, 80].map((value, index) => `<text x="12" y="${212 - index * 45}">${value}</text>`).join("")}
-            <polyline class="line blue-line" points="${linePoints(lines.newCases, lines.max)}" transform="translate(40 25)"></polyline>
-            <polyline class="line green-line" points="${linePoints(lines.closedCases, lines.max)}" transform="translate(40 25)"></polyline>
-            <polyline class="line amber-line" points="${linePoints(lines.inWork, lines.max)}" transform="translate(40 25)"></polyline>
-            ${dates.filter((_, index) => index % 2 === 0).map((date, index) => `<text class="axis" x="${42 + index * 80}" y="238">${date}</text>`).join("")}
-          </svg>
+          ${showAnalyticsLineChart ? `
+            <div class="analytics-legend">
+              <span class="blue">Нові справи</span>
+              <span class="green">Завершені справи</span>
+              <span class="amber">В роботі</span>
+            </div>
+            <svg class="analytics-line-chart" viewBox="0 0 620 250" role="img" aria-label="Динаміка справ по днях">
+              <g class="grid-lines">
+                ${[0, 1, 2, 3, 4].map((line) => `<line x1="40" y1="${25 + line * 45}" x2="600" y2="${25 + line * 45}"></line>`).join("")}
+              </g>
+              ${[0, 20, 40, 60, 80].map((value, index) => `<text x="12" y="${212 - index * 45}">${value}</text>`).join("")}
+              <polyline class="line blue-line" points="${linePoints(lines.newCases, lines.max)}" transform="translate(40 25)"></polyline>
+              <polyline class="line green-line" points="${linePoints(lines.closedCases, lines.max)}" transform="translate(40 25)"></polyline>
+              <polyline class="line amber-line" points="${linePoints(lines.inWork, lines.max)}" transform="translate(40 25)"></polyline>
+              ${dates.filter((_, index) => index % 2 === 0).map((date, index) => `<text class="axis" x="${42 + index * 80}" y="238">${date}</text>`).join("")}
+            </svg>
+          ` : `
+            <div class="analytics-chart-empty">
+              <strong>Динаміки справ ще немає</strong>
+              <span>Створіть перші справи, і CRM побудує графік по реальних датах відкриття.</span>
+            </div>
+          `}
         </article>
 
         <article class="panel analytics-chart-card">
@@ -442,16 +452,23 @@ export function renderAnalyticsScreen(ctx) {
             <div><span>Витрати</span><strong>${currency(financeStats.expenses)}</strong><em class="${hasFinanceData ? "danger" : ""}">${financeSummaryLabels.expenses}</em></div>
             <div><span>Чистий прибуток</span><strong>${currency(financeStats.profit)}</strong><em>${financeSummaryLabels.profit}</em></div>
           </div>
-          <div class="analytics-column-chart">
-            ${financeColumnRows.map(([label, income, expense, profit]) => `
-              <div class="analytics-column-group">
-                <span style="height:${income}%"></span>
-                <span class="red" style="height:${expense}%"></span>
-                <span class="green" style="height:${profit}%"></span>
-                <em>${label}</em>
-              </div>
-            `).join("")}
-          </div>
+          ${showAnalyticsFinanceChart ? `
+            <div class="analytics-column-chart">
+              ${financeColumnRows.map(([label, income, expense, profit]) => `
+                <div class="analytics-column-group">
+                  <span style="height:${income}%"></span>
+                  <span class="red" style="height:${expense}%"></span>
+                  <span class="green" style="height:${profit}%"></span>
+                  <em>${label}</em>
+                </div>
+              `).join("")}
+            </div>
+          ` : `
+            <div class="analytics-chart-empty is-compact">
+              <strong>Фінансової аналітики ще немає</strong>
+              <span>Додайте рахунок, акт або платіж, щоб побачити реальні колонки.</span>
+            </div>
+          `}
         </article>
 
         <article class="panel analytics-chart-card">
@@ -466,6 +483,7 @@ export function renderAnalyticsScreen(ctx) {
   `;
 
   const rerender = () => renderAnalyticsScreen(ctx);
+  setupScreenCustomSelects($("#analytics"), ".analytics-filter-card select, .analytics-card-head select");
   document.querySelector("[data-analytics-period]")?.addEventListener("change", (event) => {
     state.analyticsPeriod = event.currentTarget.value;
   });
