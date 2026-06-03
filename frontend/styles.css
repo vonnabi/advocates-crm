@@ -3662,12 +3662,9 @@ button {
 }
 
 .dashboard-status-icon .ui-icon {
-  position: absolute;
-  top: 50%;
-  left: 50%;
   width: 12px;
   height: 12px;
-  transform: translate(-50%, -50%) translateY(0.75px);
+  display: block;
 }
 
 .dashboard-status-icon::after {
