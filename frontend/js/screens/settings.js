@@ -166,11 +166,12 @@ function buildProjectReadiness(state, activeIntegrations, integrationsCount, act
     + (eSignReady ? 4 : 0)
     + 6
   );
-  const pilotScore = Math.min(84,
+  const pilotScore = Math.min(92,
     (apiReady ? 64 : 48)
     + (backupReady ? 8 : 0)
     + (auditReady ? 5 : 0)
     + (noDemoResetMode ? 7 : 0)
+    + 8 // хардненинг безпеки реалізований: CSRF, SSRF-guard, сесійна авторизація, гейтинг прав
   );
   const items = [
     {
@@ -182,17 +183,17 @@ function buildProjectReadiness(state, activeIntegrations, integrationsCount, act
     },
     {
       title: "Backend і збереження",
-      score: apiReady ? 88 : 64,
+      score: apiReady ? 92 : 64,
       status: apiReady ? "Працює через API" : "Статичний режим",
-      detail: apiReady ? "Django API, база, ролі, журнал дій, файли документів і Render-запуск уже підключені." : "Без API зміни залишаються демонстраційними.",
-      next: apiReady ? "Перед пілотом лишається зафіксувати правила резервних копій." : "Для пілота потрібно відкривати CRM через Render/API, а не статичну сторінку."
+      detail: apiReady ? "Django API, база, ролі, журнал дій, файли документів, CSRF-захист і Render-запуск уже підключені." : "Без API зміни залишаються демонстраційними.",
+      next: apiReady ? "Перед пілотом лишається зафіксувати правила резервних копій БД." : "Для пілота потрібно відкривати CRM через Render/API, а не статичну сторінку."
     },
     {
       title: "Користувачі та доступ",
-      score: activeUsers > 1 ? 82 : 64,
+      score: activeUsers > 1 ? 88 : 64,
       status: `${activeUsers} користувачів`,
-      detail: "Є ролі, права, доступ до справ, вибір кількох справ клієнта і попередження при видаленні користувача.",
-      next: "Залишився практичний прогін ролей: помічник, бухгалтер, адвокат."
+      detail: "Ролі, права й розмежування доступу перевірені на backend: фінанси й список користувачів не віддаються тим, кому не можна.",
+      next: "Залишився практичний UI-прогін під ролями: помічник, бухгалтер, адвокат."
     },
     {
       title: "Інтеграції",
@@ -216,8 +217,8 @@ function buildProjectReadiness(state, activeIntegrations, integrationsCount, act
       title: "Пілот і безпека",
       score: pilotScore,
       status: noDemoResetMode ? "Можна готувати пілот" : "Потребує фінального режиму",
-      detail: "Є smoke-тести, backend-тести, журнал дій, JSON-копії CRM і відновлення копії на сервер.",
-      next: noDemoResetMode ? "Залишилось скласти коротку інструкцію для замовника." : "Перед реальними даними потрібно вимкнути демо-скидання і домовитись про графік копій."
+      detail: "Smoke/golden-тести, журнал дій, JSON-копії CRM, а також CSRF-захист, SSRF-guard, сесійна авторизація і гейтинг прав (за флагами для прода).",
+      next: noDemoResetMode ? "Лишилось: увімкнути auth/CORS на проді, графік бекапів, інструкція замовнику." : "Перед реальними даними: вимкнути демо-скидання, увімкнути auth/CORS, домовитись про графік копій."
     }
   ];
   const overall = Math.round(items.reduce((sum, item) => sum + item.score, 0) / items.length);
@@ -297,6 +298,45 @@ function buildPilotChecklist(state, providerStatusByChannel, activeUsers) {
   ];
 }
 
+function buildRemainingWork() {
+  // Явний список недоробок — те, що ще лишилось зробити до бойового пілоту.
+  // tag: "ключі" — потрібні зовнішні токени/доступи; "код" — наша розробка;
+  //      "конфіг" — увімкнути на проді; "перевірка"/"процес"/"док" — організаційне.
+  return [
+    { area: "Інтеграції", title: "Бойова відправка Telegram / SMS / Email", note: "Зараз mock-провайдер. Потрібні токени бота / ключ SMS / SMTP і тестова відправка.", tag: "потрібні ключі", tone: "red" },
+    { area: "Інтеграції", title: "КЕП (е-підпис) — реальне підписання", note: "UI і статуси є; потрібна інтеграція з сервісом КЕП.", tag: "потрібні ключі", tone: "red" },
+    { area: "AI", title: "AI-помічник на реальному LLM", note: "Зараз інтерфейс/заглушки (без LLM). Потрібен API-ключ і рішення по бюджету.", tag: "ключ + рішення", tone: "red" },
+    { area: "Безпека", title: "Валідація значень полів (choices/типи)", note: "Битий JSON вже → 400. Лишилась акуратна перевірка значень у backend upsert.", tag: "код", tone: "blue" },
+    { area: "Безпека", title: "Увімкнути auth/CORS на бойовому сервері", note: "Готово за флагами CRM_REQUIRE_AUTH / CRM_ALLOWED_ORIGINS — лишається ввімкнути на проді.", tag: "конфіг", tone: "amber" },
+    { area: "Backend", title: "Правила резервних копій БД", note: "Зафіксувати графік і місце зберігання бекапів перед реальними даними.", tag: "процес", tone: "amber" },
+    { area: "Пілот", title: "Рольовий UI-прогін", note: "Backend-розмежування прав перевірено (адвокат/помічник/бухгалтер). Лишився прогін інтерфейсу під кожною роллю.", tag: "перевірка", tone: "amber" },
+    { area: "Документи", title: "Реальні DOCX/PDF клієнта в ONLYOFFICE", note: "Перевірити відкриття/редагування справжніх файлів і форматів.", tag: "перевірка", tone: "amber" },
+    { area: "Пілот", title: "Коротка інструкція для замовника", note: "1-2 сторінки: як вести клієнта, справу, документи й фінанси.", tag: "док", tone: "amber" },
+    { area: "Дрібниці", title: "Хвости честності даних", note: "Декоративні select в аналітиці, сегмент-фільтри розсилки, мертвий код OSINT/analytics.", tag: "код", tone: "blue" },
+  ];
+}
+
+function renderRemainingWork(items, badge) {
+  return `
+    <div class="settings-pilot-checklist settings-remaining-work">
+      <div class="settings-pilot-head">
+        <strong>Що залишилось зробити</strong>
+        <span>${items.length} пунктів</span>
+      </div>
+      <div class="settings-pilot-grid">
+        ${items.map((item) => `<article class="needs-work">
+          <div>
+            <strong>${item.title}</strong>
+            ${badge(item.tag, item.tone)}
+          </div>
+          <em>${item.area}</em>
+          <p>${item.note}</p>
+        </article>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
 function renderPilotChecklist(checklist, badge) {
   return `
     <div class="settings-pilot-checklist">
@@ -348,6 +388,7 @@ function renderReadinessSection(readiness, checklist, badge, focused) {
         <strong>Найслабші місця зараз</strong>
         <span>${readiness.weakItems.map((item) => `${item.title} ${item.score}%`).join(" · ")}</span>
       </div>
+      ${renderRemainingWork(buildRemainingWork(), badge)}
       ${renderPilotChecklist(checklist, badge)}
     </section>
   `;
