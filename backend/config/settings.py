@@ -37,6 +37,12 @@ CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
 if render_hostname:
     CSRF_TRUSTED_ORIGINS.append(f"https://{render_hostname}")
 
+# Sprint 5 (pre-production) hardening — OFF by default to preserve the demo.
+# CRM_REQUIRE_AUTH: reject anonymous /api/ requests (no more anonymous-as-admin).
+# CRM_ALLOWED_ORIGINS: CORS allow-list for credentialed requests.
+CRM_REQUIRE_AUTH = env_bool("CRM_REQUIRE_AUTH", default=False)
+CRM_ALLOWED_ORIGINS = env_list("CRM_ALLOWED_ORIGINS")
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -62,6 +68,8 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "config.middleware.RequireApiAuthMiddleware",
+    "config.middleware.ApiCorsMiddleware",
 ]
 
 if not DEBUG:

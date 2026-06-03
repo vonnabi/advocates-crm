@@ -1,8 +1,11 @@
 import json
 import hmac
+import ipaddress
 import re
 import os
+import socket
 import urllib.request
+from urllib.parse import urlsplit
 from datetime import datetime, time, timedelta
 from decimal import Decimal
 from hashlib import sha1
@@ -12,6 +15,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from django.contrib.auth import authenticate, get_user_model, login as auth_login, logout as auth_logout, update_session_auth_hash
 from django.conf import settings
+from django.core.exceptions import BadRequest
 from django.core.files.base import ContentFile
 from django.core.management import call_command
 from django.db import transaction
@@ -30,26 +34,17 @@ from apps.cases.models import Case, CaseDocument, CaseMember
 from apps.clients.models import Client, ClientCommunication
 from apps.communications.models import AutomationRule, Campaign, MessageDelivery, MessageTemplate
 from apps.communications.providers import provider_status_payload, send_delivery_with_provider, test_provider_channel
-from apps.finance.models import Expense, Invoice, Payment
+from apps.finance.models import Expense, Invoice, Payment, Salary
 from apps.tasks.models import Task
 
 
 def json_response(payload, status=200):
-    response = JsonResponse(payload, status=status)
-    response["Access-Control-Allow-Origin"] = "*"
-    response["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-    response["Access-Control-Allow-Headers"] = "Content-Type"
-    response["Access-Control-Allow-Credentials"] = "true"
-    return response
+    # CORS headers are applied centrally by ApiCorsMiddleware (origin allow-list).
+    return JsonResponse(payload, status=status)
 
 
 def empty_response(status=204):
-    response = HttpResponse(status=status)
-    response["Access-Control-Allow-Origin"] = "*"
-    response["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-    response["Access-Control-Allow-Headers"] = "Content-Type"
-    response["Access-Control-Allow-Credentials"] = "true"
-    return response
+    return HttpResponse(status=status)
 
 
 def file_response(response):
@@ -63,7 +58,38 @@ def file_response(response):
 def parse_body(request):
     if not request.body:
         return {}
-    return json.loads(request.body.decode("utf-8"))
+    try:
+        data = json.loads(request.body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise BadRequest("Невірний формат запиту: очікується коректний JSON.") from exc
+    if not isinstance(data, dict):
+        raise BadRequest("Тіло запиту має бути JSON-об'єктом.")
+    return data
+
+
+def is_safe_fetch_url(url):
+    """Block SSRF: only http(s) to public hosts. Rejects file://, localhost,
+    link-local metadata (169.254.x), and private/reserved ranges."""
+    try:
+        parts = urlsplit(str(url or ""))
+    except ValueError:
+        return False
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        return False
+    try:
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+        infos = socket.getaddrinfo(parts.hostname, port, proto=socket.IPPROTO_TCP)
+    except (socket.gaierror, ValueError):
+        return False
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return False
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            return False
+    return True
 
 
 def clean_string_map(source, defaults, max_lengths=None):
@@ -640,6 +666,40 @@ def serialize_finance_expense(item):
     }
 
 
+def serialize_salary(item):
+    base = money(item.base)
+    bonus = money(item.bonus)
+    return {
+        "id": f"salary-{item.id}",
+        "name": item.employee_name,
+        "role": item.role or "Співробітник",
+        "base": base,
+        "bonus": bonus,
+        "total": base + bonus,
+        "status": item.status or "Готово",
+        "date": item.accrued_on.strftime("%d.%m.%Y") if item.accrued_on else "",
+        "comment": item.comment or "",
+        "custom": True,
+    }
+
+
+def upsert_salary(data, item=None):
+    item = item or Salary()
+    item.employee_name = data.get("name") or item.employee_name or ""
+    item.role = data.get("role") or item.role or ""
+    item.base = decimal_value(data.get("base"))
+    item.bonus = decimal_value(data.get("bonus"))
+    item.status = data.get("status") or "Готово"
+    item.accrued_on = parse_date(data.get("date")) or item.accrued_on or timezone.localdate()
+    item.comment = data.get("comment") or ""
+    item.save()
+    return item
+
+
+def salary_pk_from_id(salary_id):
+    return str(salary_id).split("salary-", 1)[-1]
+
+
 def finance_document_links_invoice(document, invoice_number):
     needle = str(invoice_number or "").strip()
     if not needle:
@@ -1025,8 +1085,10 @@ def create_finance_operation(data):
             method=method,
             comment=finance_note(title, comment),
         )
-        case.income_amount = max(case.income_amount, case.paid_amount + payment.amount)
-        case.paid_amount = min(case.paid_amount + payment.amount, case.income_amount)
+        # Record the payment honestly: paid grows by the amount, the agreed fee
+        # (income) is NOT bumped to absorb it. Overpayment is now possible and
+        # debt stops being forced to zero (see recalculate_case_debt).
+        case.paid_amount = case.paid_amount + payment.amount
         case.finance_comment = comment or case.finance_comment
         history.insert(0, {"date": date_value(timezone.localdate()), "text": f"Додано надходження: {title} на {money(payment.amount):,.0f} грн."})
         case.history = history
@@ -1124,7 +1186,9 @@ def delete_finance_operation(operation_id):
         case = item.case
         for document in finance_invoice_documents(item):
             document.delete()
-        case.income_amount = max(case.income_amount - item.amount, case.paid_amount)
+        # Drop the invoice from the agreed fee without clamping to paid — if that
+        # leaves paid > income, recalculate_case_debt surfaces it as overpayment.
+        case.income_amount = max(case.income_amount - item.amount, 0)
         item.delete()
         recalculate_case_debt(case)
         return
@@ -1302,6 +1366,7 @@ def serialize_case(item, include_finance=True):
         "income": money(item.income_amount),
         "paid": money(item.paid_amount),
         "debt": money(item.debt_amount),
+        "overpaid": max(money(item.paid_amount) - money(item.income_amount), 0),
         "firstPaymentDate": date_value(item.first_payment_at),
         "nextPaymentDue": date_value(item.next_payment_due_at),
         "financeComment": item.finance_comment,
@@ -1309,6 +1374,7 @@ def serialize_case(item, include_finance=True):
         "income": 0,
         "paid": 0,
         "debt": 0,
+        "overpaid": 0,
         "firstPaymentDate": "",
         "nextPaymentDue": "",
         "financeComment": "",
@@ -1424,6 +1490,7 @@ def serialize_crm_settings(settings=None):
         "integrations": clean_bool_map(settings.integrations, CRMSettings.DEFAULT_INTEGRATIONS),
         "integrationSettings": clean_nested_string_map(settings.integration_settings, CRMSettings.DEFAULT_INTEGRATION_SETTINGS),
         "notifications": clean_bool_map(settings.notifications, CRMSettings.DEFAULT_NOTIFICATIONS),
+        "documentArchiveFolders": settings.document_archive_folders or [],
     }
 
 
@@ -2205,6 +2272,10 @@ def system_users_queryset():
 def current_demo_user(request):
     if request.user.is_authenticated:
         return request.user
+    # Secured mode: no anonymous-as-admin fallback. permissions_for_user(None) is empty,
+    # so every require_permission/accessible_* check denies anonymous callers.
+    if getattr(settings, "CRM_REQUIRE_AUTH", False):
+        return None
     User = get_user_model()
     return (
         User.objects.select_related("crm_profile").filter(crm_profile__role="admin", crm_profile__is_active_member=True, is_active=True).order_by("id").first()
@@ -2451,11 +2522,18 @@ def client_detail_api(request, client_id):
         forbidden = require_permission(request, "manage_clients", "Клієнтами можуть керувати адміністратор або адвокат.")
         if forbidden:
             return forbidden
-        Task.objects.filter(client=client).delete()
-        CalendarEvent.objects.filter(client=client).delete()
-        client.cases.all().delete()
-        log_crm_action(request, AuditLog.Action.DELETE, "client", client.id, client.full_name, f"Видалено клієнта {client.full_name}.")
-        client.delete()
+        client_name = client.full_name
+        case_ids = list(client.cases.values_list("id", flat=True))
+        with transaction.atomic():
+            Payment.objects.filter(Q(client=client) | Q(case_id__in=case_ids)).delete()
+            Invoice.objects.filter(Q(client=client) | Q(case_id__in=case_ids)).delete()
+            Expense.objects.filter(Q(client=client) | Q(case_id__in=case_ids)).delete()
+            Task.objects.filter(Q(client=client) | Q(case_id__in=case_ids)).delete()
+            CalendarEvent.objects.filter(Q(client=client) | Q(case_id__in=case_ids)).delete()
+            ClientCommunication.objects.filter(Q(client=client) | Q(case_id__in=case_ids)).delete()
+            Case.objects.filter(id__in=case_ids).delete()
+            client.delete()
+        log_crm_action(request, AuditLog.Action.DELETE, "client", client_id, client_name, f"Видалено клієнта {client_name}.")
         return json_response({"deleted": client_id})
     forbidden = require_permission(request, "manage_clients", "Клієнтами можуть керувати адміністратор або адвокат.")
     if forbidden:
@@ -2556,10 +2634,17 @@ def case_detail_api(request, case_number):
         forbidden = require_permission(request, "manage_cases", "Справами можуть керувати адміністратор або адвокат.")
         if forbidden:
             return forbidden
-        Task.objects.filter(case=item).delete()
-        CalendarEvent.objects.filter(case=item).delete()
-        log_crm_action(request, AuditLog.Action.DELETE, "case", item.number, item.title, f"Видалено справу №{item.number}: {item.title}.")
-        item.delete()
+        with transaction.atomic():
+            Task.objects.filter(case=item).delete()
+            CalendarEvent.objects.filter(case=item).delete()
+            # Invoice.case / Payment.case are PROTECT — remove them explicitly,
+            # otherwise item.delete() raises ProtectedError (500). Expense is SET_NULL
+            # but we drop it too so no orphaned finance tail survives the case.
+            Payment.objects.filter(case=item).delete()
+            Invoice.objects.filter(case=item).delete()
+            Expense.objects.filter(case=item).delete()
+            log_crm_action(request, AuditLog.Action.DELETE, "case", item.number, item.title, f"Видалено справу №{item.number}: {item.title}.")
+            item.delete()
         return json_response({"deleted": case_number})
     forbidden = require_permission(request, "manage_cases", "Справами можуть керувати адміністратор або адвокат.")
     if forbidden:
@@ -2695,6 +2780,8 @@ def document_onlyoffice_callback_api(request, document_id):
         payload = parse_body(request)
         status = int(payload.get("status", 0))
         if status in {2, 6} and payload.get("url"):
+            if not is_safe_fetch_url(payload["url"]):
+                return json_response({"error": 1, "message": "Недопустиме посилання на документ."}, status=400)
             with urllib.request.urlopen(payload["url"], timeout=30) as response:
                 content = response.read()
             file_name = safe_document_upload_name(item, f"{item.title}.docx")
@@ -2863,6 +2950,64 @@ def finance_summary_api(request):
     if forbidden:
         return forbidden
     return json_response(finance_summary_payload(finance_cases_scope(request)))
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST", "OPTIONS"])
+def salaries_api(request):
+    if request.method == "OPTIONS":
+        return empty_response()
+    if request.method == "POST":
+        forbidden = require_permission(request, "manage_finance", "Фінансами можуть керувати адміністратор або бухгалтер.")
+        if forbidden:
+            return forbidden
+        item = upsert_salary(parse_body(request))
+        log_crm_action(request, AuditLog.Action.CREATE, "salary", item.id, item.employee_name, f"Нараховано зарплату: {item.employee_name}.")
+        return json_response(serialize_salary(item))
+    forbidden = require_permission(request, "view_finance", "Фінанси доступні адміністратору або бухгалтеру.")
+    if forbidden:
+        return forbidden
+    return json_response({"results": [serialize_salary(item) for item in Salary.objects.all()]})
+
+
+@csrf_exempt
+@require_http_methods(["PUT", "PATCH", "DELETE", "OPTIONS"])
+def salary_detail_api(request, salary_id):
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_finance", "Фінансами можуть керувати адміністратор або бухгалтер.")
+    if forbidden:
+        return forbidden
+    try:
+        item = Salary.objects.get(pk=salary_pk_from_id(salary_id))
+    except (Salary.DoesNotExist, ValueError) as exc:
+        raise Http404("Salary not found") from exc
+    if request.method == "DELETE":
+        name = item.employee_name
+        item.delete()
+        log_crm_action(request, AuditLog.Action.DELETE, "salary", salary_id, name, f"Видалено нарахування зарплати: {name}.")
+        return json_response({"deleted": salary_id})
+    updated = upsert_salary(parse_body(request), item)
+    log_crm_action(request, AuditLog.Action.UPDATE, "salary", updated.id, updated.employee_name, f"Оновлено зарплату: {updated.employee_name}.")
+    return json_response(serialize_salary(updated))
+
+
+@csrf_exempt
+@require_http_methods(["GET", "PUT", "POST", "OPTIONS"])
+def document_archive_folders_api(request):
+    if request.method == "OPTIONS":
+        return empty_response()
+    settings = crm_settings_instance()
+    if request.method == "GET":
+        return json_response({"folders": settings.document_archive_folders or []})
+    forbidden = require_permission(request, "manage_documents", "Документами можуть керувати адміністратор, адвокат або помічник.")
+    if forbidden:
+        return forbidden
+    payload = parse_body(request)
+    folders = payload.get("folders")
+    settings.document_archive_folders = folders if isinstance(folders, list) else []
+    settings.save(update_fields=["document_archive_folders", "updated_at"])
+    return json_response({"folders": settings.document_archive_folders})
 
 
 @require_GET
@@ -3178,7 +3323,9 @@ def settings_provider_status_api(request):
 @require_GET
 def bootstrap_api(_request):
     current_user = current_demo_user(_request)
-    can_see_finance = "view_finance" in permissions_for_user(current_user)
+    user_permissions = permissions_for_user(current_user)
+    can_see_finance = "view_finance" in user_permissions
+    can_manage_users = "manage_users" in user_permissions
     clients = accessible_client_queryset(_request).prefetch_related("communications", "cases").order_by("full_name")
     cases = accessible_case_queryset(_request).select_related("client", "responsible").prefetch_related(
         "documents",
@@ -3192,12 +3339,16 @@ def bootstrap_api(_request):
     return json_response({
         "session": session_payload(_request),
         "currentUser": serialize_system_user(current_user) if current_user else None,
-        "settingsUsers": [serialize_system_user(user) for user in system_users_queryset()],
+        # Don't ship the full staff directory to non-admins — only their own profile.
+        "settingsUsers": [serialize_system_user(user) for user in system_users_queryset()]
+            if can_manage_users
+            else ([serialize_system_user(current_user)] if current_user else []),
         "clients": [serialize_client(item) for item in clients],
         "cases": [serialize_case(item, include_finance=can_see_finance) for item in cases],
         "tasks": [serialize_task(item) for item in tasks],
         "events": [serialize_event(item) for item in events],
         "financeOperations": finance_operations_payload(finance_cases) if can_see_finance else [],
+        "salaries": [serialize_salary(item) for item in Salary.objects.all()] if can_see_finance else [],
         "finance": finance_summary_payload(finance_cases) if can_see_finance else empty_finance_summary_payload(),
         "mailing": mailing_payload() if "manage_mailings" in permissions_for_user(current_user) else {},
         "settings": serialize_crm_settings(),

@@ -6,7 +6,7 @@ import {
   syncTopbarNotifications
 } from "./js/chrome.js?v=preserve-manual-demo-1";
 import { createDialogOpeners } from "./js/dialog-openers.js?v=document-delete-path-3";
-import { setupDialogControls } from "./js/dialogs.js?v=document-delete-path-3";
+import { setupDialogControls, persistSnapshotState } from "./js/dialogs.js?v=document-delete-path-3";
 import { setupCaseDetailForms } from "./js/forms/case-details.js?v=finance-operation-menu-1";
 import { setupCaseItemForms } from "./js/forms/case-items.js";
 import { setupCaseForm } from "./js/forms/cases.js";
@@ -105,6 +105,26 @@ const titles = {
 const $ = (selector) => document.querySelector(selector);
 const viewNodes = [...document.querySelectorAll(".view")];
 const navNodes = [...document.querySelectorAll(".nav-item")];
+const mobileMenuButton = document.querySelector("[data-mobile-menu]");
+const sidebarOverlay = document.querySelector("[data-sidebar-overlay]");
+const sidebarCloseButton = document.querySelector("[data-sidebar-close]");
+const mobileNavigationQuery = window.matchMedia("(max-width: 1023px)");
+
+function setMobileSidebarOpen(open) {
+  document.body.classList.toggle("sidebar-drawer-open", open);
+  mobileMenuButton?.setAttribute("aria-expanded", String(open));
+  if (sidebarOverlay) {
+    sidebarOverlay.hidden = !open;
+  }
+}
+
+function closeMobileSidebar() {
+  setMobileSidebarOpen(false);
+}
+
+function isMobileNavigation() {
+  return mobileNavigationQuery.matches;
+}
 
 function syncSidebarNavIcons() {
   navNodes.forEach((node) => {
@@ -376,7 +396,17 @@ function applyPermissionControls(root = document) {
 
 function showToast(message, type = "success") {
   const stack = $("#toast-stack");
-  if (stack) stack.replaceChildren();
+  if (!stack || !message) return;
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  toast.setAttribute("role", type === "danger" ? "alert" : "status");
+  toast.textContent = message;
+  stack.appendChild(toast);
+  requestAnimationFrame(() => requestAnimationFrame(() => toast.classList.add("visible")));
+  window.setTimeout(() => {
+    toast.classList.remove("visible");
+    window.setTimeout(() => toast.remove(), 220);
+  }, 3600);
 }
 
 function closeTopbarPanels() {
@@ -607,6 +637,9 @@ function renderAll() {
   renderSettings();
   bindViewLinks();
   applyPermissionControls();
+  // Persist after every mutation render so snapshot mode survives reload — the
+  // form create/edit paths all call renderAll(). No-op outside snapshot mode.
+  persistSnapshotState(state);
   requestAnimationFrame(syncNavigationState);
 }
 
@@ -750,7 +783,10 @@ function scrollActiveViewTop() {
 
 function bindViewLinks() {
   document.querySelectorAll("[data-view-link]").forEach((button) => {
-    button.addEventListener("click", () => switchView(button.dataset.viewLink));
+    button.addEventListener("click", () => {
+      switchView(button.dataset.viewLink);
+      if (isMobileNavigation()) closeMobileSidebar();
+    });
   });
 }
 
@@ -761,7 +797,15 @@ navNodes.forEach((button) => {
       renderCases();
     }
     switchView(button.dataset.view);
+    if (isMobileNavigation()) closeMobileSidebar();
   });
+});
+
+mobileMenuButton?.addEventListener("click", () => setMobileSidebarOpen(true));
+sidebarCloseButton?.addEventListener("click", closeMobileSidebar);
+sidebarOverlay?.addEventListener("click", closeMobileSidebar);
+mobileNavigationQuery.addEventListener?.("change", (event) => {
+  if (!event.matches) closeMobileSidebar();
 });
 
 $("#topbar-back")?.addEventListener("click", goBack);
@@ -770,6 +814,11 @@ setupTopbarControls({ $, state, switchView, saveNavigationState, showToast, onSe
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
+  if (document.body.classList.contains("sidebar-drawer-open")) {
+    event.preventDefault();
+    closeMobileSidebar();
+    return;
+  }
   if (isTopbarPanelOpen()) {
     event.preventDefault();
     closeTopbarPanels();

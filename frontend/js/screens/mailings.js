@@ -306,6 +306,7 @@ export function renderMailingsScreen(ctx) {
             <div class="forecast-row ${state.mailingChannels.SMS ? "green" : "muted"}"><span>SMS доставлено</span><strong>${forecastText("SMS", smsDelivered)}</strong></div>
             <div class="forecast-row ${state.mailingChannels.Email ? "green" : "muted"}"><span>Email доставлено</span><strong>${forecastText("Email", emailDelivered)}</strong></div>
             <div class="forecast-total"><span>Ориентировочный охват</span><strong>${totalMessagesText}</strong></div>
+            <p class="muted" style="margin:8px 0 0;font-size:12px;">Оцінка за усередненими коефіцієнтами (демо). Реальний месенджер-провайдер не підключено — фактична доставка не відстежується.</p>
           </section>
           <section class="panel mailing-tips-card">
             <h2>Советы</h2>

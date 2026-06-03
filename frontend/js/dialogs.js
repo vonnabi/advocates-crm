@@ -90,7 +90,7 @@ function findDocumentInFolders(folders = [], documentId = "", fallbackName = "")
   return null;
 }
 
-function persistSnapshotState(state) {
+export function persistSnapshotState(state) {
   if (state.dataSource !== "snapshot") return;
   try {
     const current = JSON.parse(localStorage.getItem(SNAPSHOT_STORAGE_KEY) || "{}");
@@ -122,24 +122,47 @@ async function confirmDelete(ctx) {
     showToast("Немає вибраного елемента для видалення.", "danger");
     return;
   }
-  const item = caseById(pending.caseId);
-  if (!item) {
+  const needsCaseContext = !["client", "clients", "calendarEvent"].includes(pending.type);
+  const item = needsCaseContext ? caseById(pending.caseId) : null;
+  if (needsCaseContext && !item) {
     showToast("Не вдалося знайти справу для видалення.", "danger");
     return;
   }
-  item.history = item.history || [];
+  if (item) item.history = item.history || [];
   const today = new Date().toLocaleDateString("uk-UA");
   let deleted;
+  let deletedCount = 0;
   const documentApiId = (document) => {
     const id = document?.id || document?.documentId;
     const number = Number(id);
     return Number.isInteger(number) && number > 0 ? number : "";
   };
+  const deleteClientsFromState = (clientIds = []) => {
+    const idSet = new Set(clientIds.map((id) => String(id)).filter(Boolean));
+    const deletedClients = state.clients.filter((client) => idSet.has(String(client.id)));
+    const deletedCaseIds = new Set(
+      state.cases
+        .filter((caseItem) => idSet.has(String(caseItem.clientId)))
+        .map((caseItem) => String(caseItem.id))
+    );
+    state.clients = state.clients.filter((client) => !idSet.has(String(client.id)));
+    state.cases = state.cases.filter((caseItem) => !idSet.has(String(caseItem.clientId)));
+    state.events = state.events.filter((event) => !idSet.has(String(event.clientId)) && !deletedCaseIds.has(String(event.caseId)));
+    state.financeOperations = (state.financeOperations || [])
+      .filter((operation) => !idSet.has(String(operation.clientId)) && !deletedCaseIds.has(String(operation.caseId)));
+    state.selectedClientKeys = (state.selectedClientKeys || []).filter((id) => !idSet.has(String(id)));
+    if (idSet.has(String(state.selectedClientId))) state.selectedClientId = state.clients[0]?.id || 0;
+    if (deletedCaseIds.has(String(state.selectedCaseId))) state.selectedCaseId = state.cases[0]?.id || "";
+    const pageSize = Number(state.clientPageSize || 10) || 10;
+    const maxPage = Math.max(1, Math.ceil((state.clients.length || 0) / pageSize));
+    state.clientPage = Math.min(Math.max(1, Number(state.clientPage || 1) || 1), maxPage);
+    state.caseScreen = "list";
+    return deletedClients;
+  };
   try {
   if (pending.type === "client") {
     const clientId = Number(pending.clientId);
-    const clientIndex = state.clients.findIndex((client) => client.id === clientId);
-    if (clientIndex < 0) return;
+    if (!state.clients.some((client) => String(client.id) === String(clientId))) return;
     if (shouldUseApi(state)) {
       try {
         await deleteClientFromApi(clientId);
@@ -148,16 +171,23 @@ async function confirmDelete(ctx) {
         return;
       }
     }
-    deleted = state.clients.splice(clientIndex, 1)[0];
-    const deletedCaseIds = new Set(state.cases.filter((caseItem) => caseItem.clientId === clientId).map((caseItem) => caseItem.id));
-    if (deletedCaseIds.size) {
-      state.cases = state.cases.filter((caseItem) => !deletedCaseIds.has(caseItem.id));
-      state.events = state.events.filter((event) => event.clientId !== clientId && !deletedCaseIds.has(event.caseId));
-      state.financeOperations = (state.financeOperations || []).filter((operation) => !deletedCaseIds.has(operation.caseId));
+    const deletedClients = deleteClientsFromState([clientId]);
+    deleted = deletedClients[0];
+    deletedCount = deletedClients.length;
+  } else if (pending.type === "clients") {
+    const clientIds = (pending.clientIds || []).map(Number).filter(Boolean);
+    if (!clientIds.length) return;
+    if (shouldUseApi(state)) {
+      try {
+        await Promise.all(clientIds.map((clientId) => deleteClientFromApi(clientId)));
+      } catch (_error) {
+        showToast("Не вдалося видалити вибраних клієнтів з бази.", "danger");
+        return;
+      }
     }
-    state.selectedClientId = state.clients[0]?.id || 0;
-    state.selectedCaseId = state.cases[0]?.id || "";
-    state.caseScreen = "list";
+    const deletedClients = deleteClientsFromState(clientIds);
+    deleted = deletedClients[0];
+    deletedCount = deletedClients.length;
   } else if (pending.type === "case") {
     const caseIndex = state.cases.findIndex((caseItem) => caseItem.id === pending.caseId);
     if (caseIndex < 0) return;
@@ -171,6 +201,7 @@ async function confirmDelete(ctx) {
     }
     deleted = state.cases.splice(caseIndex, 1)[0];
     state.financeOperations = (state.financeOperations || []).filter((operation) => operation.caseId !== pending.caseId);
+    state.events = (state.events || []).filter((event) => event.caseId !== pending.caseId);
     state.selectedCaseId = state.cases[0]?.id || "";
     state.caseScreen = "list";
   } else if (pending.type === "procedural") {
@@ -263,7 +294,7 @@ async function confirmDelete(ctx) {
     removeDocumentEverywhere(item, caseFolders, apiId || file?.documentId || linkedDoc?.documentId || pending.documentId, file?.name || linkedDoc?.name || pending.documentName);
     (directMatch?.folder || folder || {}).updated = today;
   }
-  if (pending.type !== "case" && pending.type !== "calendarEvent" && pending.type !== "client") {
+  if (item && pending.type !== "case" && pending.type !== "calendarEvent" && pending.type !== "client" && pending.type !== "clients") {
     const deletedName = deleted?.name || deleted?.title || pending.documentName || "Елемент";
     item.history.unshift({
       date: today,
@@ -299,8 +330,10 @@ async function confirmDelete(ctx) {
       ? "Справу видалено."
       : pending.type === "calendarEvent"
         ? "Подію видалено з календаря."
-        : pending.type === "client"
-          ? `Клієнта ${deleted.name} видалено.`
+        : pending.type === "clients"
+          ? `Видалено ${deletedCount} клієнтів.`
+          : pending.type === "client"
+            ? `Клієнта ${deleted?.name || "клієнта"} видалено.`
           : "Елемент видалено.",
     "danger"
   );

@@ -41,7 +41,13 @@ export function setupCaseForm({ state, $, caseById, formatDate, renderAll, switc
     }
 
     const currentYear = new Date().getFullYear();
-    const nextNumber = String(state.cases.length + 1112).padStart(4, "0");
+    // Derive the next number from the highest existing case number, not from the
+    // list length — otherwise deleting a case rolls the counter back and a new
+    // case can collide with an existing id (the primary key all relations hang on).
+    const existingNumbers = state.cases
+      .map((caseItem) => Number(String(caseItem.id).split("/")[1]))
+      .filter(Number.isFinite);
+    const nextNumber = String((existingNumbers.length ? Math.max(...existingNumbers) : 1111) + 1).padStart(4, "0");
     const nextId = `${currentYear}/${nextNumber}`;
     const newCase = {
       id: nextId,

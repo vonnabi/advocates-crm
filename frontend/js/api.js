@@ -265,3 +265,19 @@ export function saveFinanceOperationToApi(operation) {
 export function deleteFinanceOperationFromApi(operationId) {
   return apiRequest(`/api/finance/operations/${encodeURIComponent(operationId)}/`, { method: "DELETE" });
 }
+
+export function saveSalaryToApi(salary) {
+  const hasId = salary.id !== undefined && salary.id !== null && salary.id !== "";
+  return apiRequest(hasId ? `/api/finance/salaries/${encodeURIComponent(salary.id)}/` : "/api/finance/salaries/", {
+    method: hasId ? "PUT" : "POST",
+    body: salary
+  });
+}
+
+export function deleteSalaryFromApi(salaryId) {
+  return apiRequest(`/api/finance/salaries/${encodeURIComponent(salaryId)}/`, { method: "DELETE" });
+}
+
+export function saveArchiveFoldersToApi(folders) {
+  return apiRequest("/api/documents/archive-folders/", { method: "PUT", body: { folders } });
+}

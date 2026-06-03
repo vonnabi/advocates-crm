@@ -151,6 +151,7 @@ crm-prototype/
 - `materials/README.md` — исходные материалы проекта: ТЗ и картинки.
 - `docs/PROJECT_MAP.md` — карта папок проекта.
 - `docs/MODULES.md` — описание модулей CRM.
+- `docs/READINESS_AUDIT.md` — актуальный аудит готовности по меню и следующий рабочий фокус.
 - `docs/CLIENTS_MODULE.md` — описание раздела клиентов и будущей модели.
 - `docs/CASES_MODULE.md` — описание раздела дел и будущей модели.
 - `docs/ROADMAP.md` — общий план разработки.

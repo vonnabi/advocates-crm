@@ -1,19 +1,9 @@
-import { saveDocumentToApi, shouldUseApi, uploadDocumentFileToApi } from "../api.js";
+import { saveArchiveFoldersToApi, saveDocumentToApi, shouldUseApi, uploadDocumentFileToApi } from "../api.js";
 import { normalizeDocument } from "../state.js";
+import { inferCaseDocumentFolder } from "../case-documents.js";
 
-const CASE_DOCUMENT_FOLDER_NAMES = ["Позови", "Клопотання", "Запити", "Відповіді та ухвали", "Інші документи"];
 const PROCEDURAL_DOCUMENT_FOLDERS = new Set(["Позови", "Клопотання", "Запити", "Відповіді та ухвали"]);
 const TECHNICAL_DOCUMENT_TYPES = new Set(["doc", "docx", "pdf", "txt", "rtf", "odt", "google docs", "google drive", "crm файл"]);
-
-function inferCaseDocumentFolder(doc = {}, fallback = "Інші документи") {
-  const haystack = [doc.type, doc.name, doc.folder, fallback].map((value) => String(value || "").toLowerCase()).join(" ");
-  if (/клопотан|клопа/.test(haystack)) return "Клопотання";
-  if (/адвокатськ.*запит|запит|витребуван/.test(haystack)) return "Запити";
-  if (/ухвал|відповід|рішенн|постанова/.test(haystack)) return "Відповіді та ухвали";
-  if (/позов|позовн|заява/.test(haystack)) return "Позови";
-  if (fallback && !CASE_DOCUMENT_FOLDER_NAMES.includes(fallback)) return fallback;
-  return CASE_DOCUMENT_FOLDER_NAMES.includes(fallback) ? "Інші документи" : fallback || "Інші документи";
-}
 
 function isProceduralCaseDocument(doc = {}, folderName = "") {
   const type = String(doc.type || "").trim().toLowerCase();
@@ -63,6 +53,13 @@ export function setupDocumentForm({
   openOfficeEditor,
   showToast
 }) {
+  // Persist the archive-folder tree to the backend (fire-and-forget) after it changes.
+  function persistArchiveFolders() {
+    if (shouldUseApi(state)) {
+      saveArchiveFoldersToApi(state.documentArchiveFolders || []).catch(() => {});
+    }
+  }
+
   function numericId(value) {
     const number = Number(value);
     return Number.isInteger(number) && number > 0 ? number : "";
@@ -262,8 +259,8 @@ export function setupDocumentForm({
   <meta charset="utf-8">
   <title>${escapeHtml(name || "Документ")}</title>
   <style>
-    body { font-family: Arial, sans-serif; color: #111827; line-height: 1.45; }
-    h1 { font-size: 20px; margin: 0 0 12px; }
+    body { font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; color: #111827; line-height: 1.45; }
+    h1 { font-size: 14px; line-height: 1.2; margin: 0 0 12px; }
     .meta { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
     .meta td { border: 1px solid #d9e2ef; padding: 7px 9px; font-size: 12px; }
     .meta td:first-child { width: 170px; color: #5b6b82; font-weight: 700; }
@@ -587,6 +584,7 @@ export function setupDocumentForm({
         added: today
       };
       addDocumentToArchive(targetArchiveFolder, createdDocument, savedDocument ? item : null, today, form.get("comment"));
+      persistArchiveFolders();
       $("#document-dialog").close();
       renderAll();
       switchView("documents");
@@ -716,6 +714,7 @@ export function setupDocumentForm({
       } else {
         removeDocumentFromArchive(updatedDocument.documentId);
       }
+      persistArchiveFolders();
       item.history.unshift({
         date: today,
         text: targetMode === "archive"

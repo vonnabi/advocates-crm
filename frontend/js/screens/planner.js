@@ -100,9 +100,9 @@ export function renderPlannerScreen(ctx) {
       items: planItems.filter((task) => ["Низький", "Плановий"].includes(task.priority))
     }
   ];
-  const completed = tasks.filter((task) => task.completed).length;
-  const productivityBase = Math.max(1, planItems.length);
-  const productivityDone = Math.min(productivityBase, Math.max(completed, Math.max(0, productivityBase - 3)));
+  // Honest completion rate: really-done tasks over the real total, no inflation hack.
+  const productivityBase = Math.max(1, tasks.length);
+  const productivityDone = tasks.filter((task) => task.completed).length;
   const productivity = Math.round((productivityDone / productivityBase) * 100);
   const teamPlannerGroups = [...new Set(planItems.map((task) => task.responsible).filter(Boolean))].map((name) => ({
     name,

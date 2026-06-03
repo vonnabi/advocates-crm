@@ -1,4 +1,4 @@
-import { deleteClientFromApi, saveClientCommunicationToApi, saveClientToApi, shouldUseApi } from "../api.js";
+import { saveClientCommunicationToApi, saveClientToApi, shouldUseApi } from "../api.js";
 import { normalizeClient, normalizeClientCommunication } from "../state.js";
 
 export function renderClientsScreen(ctx) {
@@ -54,7 +54,7 @@ export function renderClientsScreen(ctx) {
           <h2 data-clients-count>Клієнти (${totalClients})</h2>
           <table class="clients-table">
             <thead>
-              <tr><th><input type="checkbox" data-select-client-page aria-label="Обрати всіх клієнтів" /></th><th><span class="client-title-head"><span class="client-title-label">ПІБ клієнта</span><span class="tasks-bulk-bar clients-bulk-bar" data-client-bulk-bar aria-label="Масові дії клієнтів"></span></span></th><th>Телефон</th><th>Email</th><th>Суть звернення</th><th>Дата додавання</th><th>Telegram</th><th>Дії</th></tr>
+              <tr><th><input type="checkbox" data-select-client-page aria-label="Обрати всіх клієнтів" /></th><th><span class="client-title-head"><span class="client-title-label">ПІБ клієнта</span><span class="tasks-bulk-bar clients-bulk-bar" data-client-bulk-bar aria-label="Масові дії клієнтів"></span></span></th><th>Телефон</th><th>Email</th><th>Суть звернення</th><th>Дата додавання</th><th>Telegram / Дії</th></tr>
             </thead>
             <tbody id="clients-table"></tbody>
           </table>
@@ -71,21 +71,24 @@ export function renderClientsScreen(ctx) {
           <div class="telegram-connect">
             <h3>Підключення Telegram</h3>
             <p class="muted">Підключіть свій Telegram-акаунт для спілкування з клієнтами та розсилки повідомлень.</p>
-            <div class="side-row"><span class="status-line">${icon("check")} Telegram підключено</span><button class="secondary" type="button" data-client-telegram-settings>Налаштування</button></div>
+            <div class="side-row telegram-connection-row">
+              <span class="status-line telegram-status-icon" title="Telegram активний" aria-label="Telegram активний">${icon("telegram")}</span>
+              <button class="secondary" type="button" data-client-telegram-settings>Налаштування</button>
+            </div>
           </div>
         </div>
         <div class="panel side-card" data-client-mailing-panel>
           <h2>Інформаційна розсилка</h2>
           <div class="mailing-grid">
             <div><span class="muted">Одержувачі</span><strong data-client-mailing-recipient-count>${clientCountLabel(totalClients)}</strong></div>
-            <label class="client-select-field">
+            <div class="client-select-field">
               <span class="muted">Тип розсилки</span>
-              <select data-client-select>
+              <select data-client-select aria-label="Тип розсилки">
                 <option value="info">Інформаційна</option>
                 <option value="legal">Юридичне повідомлення</option>
                 <option value="reminder">Нагадування</option>
               </select>
-            </label>
+            </div>
           </div>
           <label class="message-label"><span class="muted">Повідомлення</span><textarea id="client-mailing-text" rows="8">${state.mailingText}</textarea></label>
           <p class="muted">Кількість символів: <span id="client-mailing-count">0</span></p>
@@ -181,20 +184,22 @@ export function renderClientRows(ctx) {
         </td>
         <td>${client.phone}</td>
         <td>${client.email}</td>
-        <td>${client.request.slice(0, 44)}...</td>
+        <td>${(client.request || "").slice(0, 44)}...</td>
         <td>${client.added}</td>
-        <td>${client.telegram ? `<span class="connected-text">Підключено</span>` : `<span class="telegram-icon">${icon("telegram")}</span>`}</td>
-        <td class="clients-row-actions">
+        <td class="clients-telegram-actions">
+          <div class="clients-telegram-actions-inner">
+          <span class="telegram-icon${client.telegram ? " telegram-icon-active" : ""}" title="${client.telegram ? "Telegram активний" : "Telegram не заповнено"}">${icon("telegram")}</span>
           ${actionMenu([
             { label: "Відкрити", icon: "eye", attrs: { "data-open-client": client.id } },
             { label: "Редагувати", icon: "edit", attrs: { "data-edit-client-row": client.id, "aria-label": `Редагувати ${client.name}` } },
             { label: "Видалити клієнта", icon: "trash", danger: true, attrs: { "data-delete-client": client.id, "aria-label": `Видалити ${client.name}` } }
           ], { label: "Дії клієнта", className: "clients-actions-menu" })}
+          </div>
         </td>
       </tr>
     `)
     .join("");
-  $("#clients-table").innerHTML = rows || `<tr><td colspan="8">Клієнтів не знайдено</td></tr>`;
+  $("#clients-table").innerHTML = rows || `<tr><td colspan="7">Клієнтів не знайдено</td></tr>`;
   updateClientFooter(ctx, filteredClients, pageStart, pageSize, pageCount);
   updateClientBulkHeader(ctx, visibleClients);
   bindActionMenus?.($("#clients-table"));
@@ -471,7 +476,7 @@ function updateClientBulkHeader(ctx, filteredClients) {
 }
 
 async function handleClientBulkAction(ctx, action) {
-  const { state, renderAll, switchView, showToast } = ctx;
+  const { state, renderAll, switchView, showToast, openDeleteDocumentConfirm } = ctx;
   const selectedIds = new Set((state.selectedClientKeys || []).map(String));
   if (action === "clear") {
     state.selectedClientKeys = [];
@@ -523,24 +528,15 @@ async function handleClientBulkAction(ctx, action) {
     return;
   }
   if (action === "delete") {
-    if (shouldUseApi(state)) {
-      try {
-        await Promise.all([...selectedIds].map((id) => deleteClientFromApi(id)));
-      } catch (_error) {
-        showToast?.("Не вдалося видалити вибраних клієнтів з бази.", "danger");
-        return;
-      }
+    if (typeof openDeleteDocumentConfirm !== "function") {
+      showToast?.("Не вдалося відкрити підтвердження видалення.", "danger");
+      return;
     }
-    const remainingCaseIds = new Set(state.cases.filter((item) => !selectedIds.has(String(item.clientId))).map((item) => item.id));
-    const deletedCount = state.clients.filter((client) => selectedIds.has(String(client.id))).length;
-    state.clients = state.clients.filter((client) => !selectedIds.has(String(client.id)));
-    state.cases = state.cases.filter((item) => !selectedIds.has(String(item.clientId)));
-    state.events = state.events.filter((event) => remainingCaseIds.has(event.caseId));
-    state.selectedClientKeys = [];
-    state.selectedClientId = state.clients[0]?.id || "";
-    renderAll?.();
-    switchView?.("clients");
-    showToast?.(`Видалено ${deletedCount} клієнтів.`, "danger");
+    openDeleteDocumentConfirm({
+      type: "clients",
+      clientIds: [...selectedIds].map(Number).filter(Boolean),
+      returnView: "clients"
+    });
   }
 }
 

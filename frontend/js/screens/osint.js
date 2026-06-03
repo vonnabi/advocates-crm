@@ -53,6 +53,14 @@ const OSINT_SOURCE_SPLIT = [
   ["Інше", 3, 37, "#cbd5e1"]
 ];
 
+const OSINT_SOURCE_COLORS = new Map(OSINT_SOURCE_SPLIT.map(([label, , , color]) => [label, color]));
+OSINT_SOURCE_COLORS.set("Telegram", "#1f7ae0");
+OSINT_SOURCE_COLORS.set("Facebook", "#2f80d0");
+OSINT_SOURCE_COLORS.set("Opendatabot", "#27ae6f");
+OSINT_SOURCE_COLORS.set("Судовий реєстр", "#7c5ce8");
+OSINT_SOURCE_COLORS.set("Новини", "#f59e0b");
+OSINT_SOURCE_COLORS.set("YouControl", "#16a34a");
+
 const OSINT_MENTIONS = [
   { source: "Facebook", title: "Згадка у Facebook", text: "Олександр Петренко згаданий у коментарях до публікації", caseId: demoCaseId("2024/12345"), time: demoDateTime("16.05", "09:20"), tone: "red", status: "Негативна" },
   { source: "Opendatabot", title: "Зміна в компанії", text: "ТОВ «Альфа» змінило кінцевого бенефіціара", caseId: demoCaseId("2024/9012"), time: demoDateTime("16.05", "09:10"), tone: "blue", status: "Нейтральна" },
@@ -115,6 +123,61 @@ function osintDate(value) {
   return String(value || OSINT_DEFAULT_START).split("-").reverse().join(".");
 }
 
+function osintDayKey(value) {
+  const text = String(value || "");
+  const localMatch = text.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+  if (localMatch) return `${localMatch[3]}-${localMatch[2]}-${localMatch[1]}`;
+  const isoMatch = text.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  return new Date().toISOString().slice(0, 10);
+}
+
+function osintDayLabel(key) {
+  const [, month, day] = String(key).split("-");
+  return `${day}.${month}`;
+}
+
+function osintCaseSequence(value) {
+  const match = String(value || "").match(/(\d+)$/);
+  return match ? Number(match[1]) : 0;
+}
+
+function sourceDistribution(state) {
+  const counts = new Map();
+  osintMentions(state).forEach((item) => {
+    const source = item.source || "Інше";
+    counts.set(source, (counts.get(source) || 0) + 1);
+  });
+  (state.osintChecks || []).forEach((check) => {
+    (check.sources || []).forEach((source) => counts.set(source, (counts.get(source) || 0) + 1));
+  });
+  const total = Array.from(counts.values()).reduce((sum, value) => sum + value, 0);
+  if (!total) return [];
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([label, count], index) => ({
+      label,
+      count,
+      percent: Math.max(1, Math.round((count / total) * 100)),
+      color: OSINT_SOURCE_COLORS.get(label) || OSINT_SOURCE_SPLIT[index % OSINT_SOURCE_SPLIT.length][3]
+    }));
+}
+
+function osintDataTypes(state) {
+  const documentCount = state.cases.reduce((sum, item) => sum + (item.documents?.length || 0), 0);
+  const taskCount = state.cases.reduce((sum, item) => sum + (item.tasks?.length || 0), 0);
+  const riskCount = state.cases.filter((item) => item.priority === "Високий" || Number(item.debt || 0) > 0).length
+    + (state.osintChecks || []).reduce((sum, item) => sum + (item.risks?.length || 0), 0);
+  return [
+    ["Справи", state.cases.length, "#1f7ae0"],
+    ["Документи", documentCount, "#27ae6f"],
+    ["Задачі", taskCount, "#f59e0b"],
+    ["OSINT перевірки", (state.osintChecks || []).length, "#7c5ce8"],
+    ["Ризики", riskCount, "#ef4444"]
+  ].filter(([, value]) => value > 0);
+}
+
 function filteredChecks(state) {
   const query = (state.osintQuery || "").trim().toLowerCase();
   return state.osintChecks.filter((check) => {
@@ -136,6 +199,81 @@ function osintMetrics(state) {
     { action: "monitoring", label: "Моніторинг активний", value: summary.monitoring, trend: trend(summary.monitoring, "справ / людей / подій"), icon: "refresh", tone: "blue" },
     { action: "sources", label: "Джерел у роботі", value: summary.sources, trend: trend(summary.sources, "підключено"), icon: "search", tone: "blue" }
   ];
+}
+
+function selectedOsintCase(state) {
+  const selected = (state.cases || []).find((item) => item.id === state.selectedCaseId);
+  if (selected) return selected;
+  const selectedCheck = (state.osintChecks || []).find((check) => check.id === state.selectedOsintId);
+  return (state.cases || []).find((item) => item.id === selectedCheck?.caseId) || state.cases?.[0] || null;
+}
+
+function osintPersonQuery(state, caseItem = selectedOsintCase(state)) {
+  if (!caseItem) return "";
+  const name = clientName(state, caseItem);
+  return name === "Клієнт не вказаний" ? "" : name;
+}
+
+function osintCompanyQuery(caseItem) {
+  const candidates = [
+    caseItem?.court,
+    caseItem?.organ,
+    caseItem?.opponent,
+    caseItem?.title,
+    ...(caseItem?.documents || []).map((item) => item.name || item.title || "")
+  ].filter(Boolean);
+  return candidates.find((value) => /тов|тцк|суд|банк|компан|орган|установ|фоп|пп/i.test(value)) || "";
+}
+
+function ensureOsintChecks(state) {
+  state.osintChecks = Array.isArray(state.osintChecks) ? state.osintChecks : [];
+  return state.osintChecks;
+}
+
+function createOsintReport(state) {
+  const caseItem = selectedOsintCase(state);
+  const caseId = caseItem?.id || "";
+  const next = {
+    id: `osint-${Date.now()}`,
+    title: "OSINT звіт по справі",
+    caseId,
+    object: `Автоматична перевірка відкритих джерел${caseItem ? `: ${caseItem.title}` : ""}`,
+    sources: ["YouControl", "Opendatabot", "Судовий реєстр", "Соцмережі"],
+    risks: ["Потрібно переглянути негативні згадки"],
+    status: "Звіт готовий"
+  };
+  ensureOsintChecks(state).unshift(next);
+  state.osintReports = Array.isArray(state.osintReports) ? state.osintReports : [];
+  state.osintReports.unshift({
+    title: `OSINT звіт №${caseId || "новий"}`,
+    description: "Автоматично сформований звіт з відкритих джерел, ризиків, згадок і реєстрів.",
+    created: new Date().toLocaleString("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
+  });
+  state.selectedOsintId = next.id;
+  state.osintTab = "reports";
+  return next;
+}
+
+function startOsintMonitoring(state) {
+  const caseItem = selectedOsintCase(state);
+  if (!caseItem) return null;
+  const checks = ensureOsintChecks(state);
+  const existing = checks.find((check) => check.caseId === caseItem.id && /моніторинг/i.test(check.title));
+  const next = existing || {
+    id: `osint-monitor-${Date.now()}`,
+    title: `Моніторинг справи №${caseItem.id}`,
+    caseId: caseItem.id,
+    object: caseItem.title,
+    sources: ["Opendatabot", "Судовий реєстр", "Telegram"],
+    risks: [],
+    status: "Активний моніторинг"
+  };
+  if (!existing) checks.unshift(next);
+  state.selectedOsintId = next.id;
+  state.selectedCaseId = caseItem.id;
+  state.osintTab = "monitoring";
+  state.osintMetricFocus = "monitoring";
+  return next;
 }
 
 function osintMentions(state) {
@@ -167,7 +305,11 @@ function osintMentions(state) {
     tone: check.risks?.length ? "amber" : "blue",
     status: check.risks?.length ? "Важлива" : "Нейтральна"
   }));
-  return [...fromChecks, ...fromCases];
+  return [...fromChecks, ...fromCases].sort((a, b) => {
+    const byCase = osintCaseSequence(b.caseId) - osintCaseSequence(a.caseId);
+    if (byCase) return byCase;
+    return osintDayKey(b.time).localeCompare(osintDayKey(a.time));
+  });
 }
 
 function filteredMentions(state) {
@@ -176,7 +318,7 @@ function filteredMentions(state) {
   const bySubtab = osintMentions(state).filter((item) => {
     if (subtab === "risks") return item.tone === "red" || item.tone === "amber";
     if (subtab === "registries") return item.source === "Opendatabot" || item.source === "Судовий реєстр";
-    if (subtab === "people") return item.text.includes("Петренко") || item.text.includes("бенефіціара");
+    if (subtab === "people") return true;
     if (subtab === "events") return item.source === "Telegram" || item.source === "Новини" || item.status === "Важлива";
     return true;
   });
@@ -194,7 +336,7 @@ function openOsintCase(ctx, caseId) {
 }
 
 function points(values, max = 1500, width = 590, height = 190) {
-  const step = width / (values.length - 1);
+  const step = values.length > 1 ? width / (values.length - 1) : 0;
   return values.map((value, index) => `${Math.round(index * step)},${Math.round(height - (value / max) * height)}`).join(" ");
 }
 
@@ -226,30 +368,62 @@ function metricCard(item, icon, activeAction = "overview") {
   `;
 }
 
-function osintLineChart() {
-  const all = [610, 720, 760, 950, 920, 1020, 1230, 1120, 1160, 980, 1010, 910, 1130, 1310, 1200, 1150, 990, 1110, 1005];
-  const negative = [290, 360, 340, 430, 380, 390, 520, 440, 510, 420, 490, 380, 430, 590, 450, 390, 350, 430, 370];
-  const positive = [145, 180, 160, 220, 190, 210, 300, 240, 290, 220, 240, 190, 220, 290, 250, 230, 210, 250, 205];
-  const neutral = [175, 180, 260, 300, 350, 420, 410, 440, 360, 340, 280, 340, 480, 430, 500, 530, 430, 430, 430];
+function osintLineSeries(state) {
+  const bucket = new Map();
+  osintMentions(state).forEach((item) => {
+    const key = osintDayKey(item.time);
+    const row = bucket.get(key) || { all: 0, negative: 0, positive: 0, neutral: 0 };
+    row.all += 1;
+    if (item.tone === "red") row.negative += 1;
+    else if (item.tone === "green") row.positive += 1;
+    else row.neutral += 1;
+    bucket.set(key, row);
+  });
+  const labels = Array.from(bucket.keys()).sort().slice(-10);
+  const rows = labels.map((key) => bucket.get(key));
+  return {
+    labels: labels.map(osintDayLabel),
+    all: rows.map((item) => item.all),
+    negative: rows.map((item) => item.negative),
+    positive: rows.map((item) => item.positive),
+    neutral: rows.map((item) => item.neutral)
+  };
+}
+
+function osintLineChart(state) {
+  const series = osintLineSeries(state);
+  const max = Math.max(1, ...series.all, ...series.negative, ...series.positive, ...series.neutral);
+  const axisMax = Math.max(5, Math.ceil(max / 5) * 5);
+  if (!series.labels.length) {
+    return `<div class="osint-chart-empty">OSINT-згадок за вибраний період ще немає.</div>`;
+  }
   return `
     <svg class="osint-line-chart" viewBox="0 0 650 230" role="img" aria-label="Динаміка згадок">
       ${[0, 1, 2, 3, 4].map((line) => `<path class="grid-line" d="M36 ${20 + line * 40}H630"></path>`).join("")}
-      <polyline points="${points(all)}" transform="translate(36 20)" class="line all"></polyline>
-      <polyline points="${points(negative)}" transform="translate(36 20)" class="line negative"></polyline>
-      <polyline points="${points(positive)}" transform="translate(36 20)" class="line positive"></polyline>
-      <polyline points="${points(neutral)}" transform="translate(36 20)" class="line neutral"></polyline>
-      ${["01.05", "03.05", "05.05", "07.05", "09.05", "11.05", "13.05", "16.05"].map((label, index) => `<text x="${52 + index * 80}" y="222">${label}</text>`).join("")}
-      ${[0, 500, 1000, 1500].map((label, index) => `<text x="0" y="${184 - index * 54}">${label}</text>`).join("")}
+      <polyline points="${points(series.all, axisMax)}" transform="translate(36 20)" class="line all"></polyline>
+      <polyline points="${points(series.negative, axisMax)}" transform="translate(36 20)" class="line negative"></polyline>
+      <polyline points="${points(series.positive, axisMax)}" transform="translate(36 20)" class="line positive"></polyline>
+      <polyline points="${points(series.neutral, axisMax)}" transform="translate(36 20)" class="line neutral"></polyline>
+      ${series.labels.map((label, index) => `<text x="${52 + index * (560 / Math.max(1, series.labels.length - 1))}" y="222">${label}</text>`).join("")}
+      ${[0, 1, 2, 3].map((step) => `<text x="0" y="${184 - step * 54}">${Math.round((axisMax / 3) * step)}</text>`).join("")}
     </svg>
   `;
 }
 
-function sourceDonut() {
+function sourceDonut(state) {
+  const rows = sourceDistribution(state);
+  if (!rows.length) return `<div class="osint-chart-empty">Джерела з'являться після першої OSINT-перевірки.</div>`;
+  let current = 0;
+  const gradient = rows.map((row) => {
+    const start = current;
+    current += row.percent;
+    return `${row.color} ${start}% ${Math.min(100, current)}%`;
+  }).join(", ");
   return `
     <div class="osint-donut-wrap">
-      <div class="osint-donut"></div>
+      <div class="osint-donut" style="background: conic-gradient(${gradient});"></div>
       <div class="osint-legend">
-        ${OSINT_SOURCE_SPLIT.map(([label, percent, count, color]) => `
+        ${rows.map(({ label, percent, count, color }) => `
           <span><i style="background:${color}"></i>${label}<b>${percent}% (${count})</b></span>
         `).join("")}
       </div>
@@ -266,11 +440,13 @@ function mentionIconMeta(source) {
   return { tone: "blue", iconName: "search" };
 }
 
-function mentionList(badge, icon, state) {
+function mentionList(badge, icon, state, limit = 0) {
   const mentions = filteredMentions(state);
+  const visibleMentions = limit ? mentions.slice(0, limit) : mentions;
+  const hiddenCount = Math.max(0, mentions.length - visibleMentions.length);
   return `
     <div class="osint-mentions-list">
-      ${mentions.map((item) => {
+      ${visibleMentions.map((item) => {
         const meta = mentionIconMeta(item.source);
         return `
         <button class="osint-mention-row" type="button" data-open-osint-case="${item.caseId}">
@@ -285,6 +461,7 @@ function mentionList(badge, icon, state) {
         </button>
       `;
       }).join("") || `<div class="finance-operation-empty">Згадок за пошуком не знайдено.</div>`}
+      ${hiddenCount ? `<div class="osint-list-hint">+${hiddenCount} згадок у повному списку</div>` : ""}
     </div>
   `;
 }
@@ -309,11 +486,13 @@ function relationshipGraph() {
   `;
 }
 
-function dataTypeBars() {
-  const max = Math.max(...OSINT_DATA_TYPES.map(([, value]) => value));
+function dataTypeBars(state) {
+  const rows = osintDataTypes(state);
+  const max = Math.max(1, ...rows.map(([, value]) => value));
+  if (!rows.length) return `<div class="osint-chart-empty">Типи даних з'являться після додавання справ, задач або документів.</div>`;
   return `
     <div class="osint-bar-list">
-      ${OSINT_DATA_TYPES.map(([label, value, color]) => `
+      ${rows.map(([label, value, color]) => `
         <div>
           <span>${label}</span>
           <em><i style="width:${Math.round((value / max) * 100)}%;background:${color}"></i></em>
@@ -338,10 +517,12 @@ function activeCasesList(state, badge) {
       updated: item.history?.[0]?.date || demoDateTime("16.05", "09:15"),
       tone
     };
-  });
+  }).sort((a, b) => osintCaseSequence(b.caseId) - osintCaseSequence(a.caseId));
+  const visibleRows = rows.slice(0, 5);
+  const hiddenCount = Math.max(0, rows.length - visibleRows.length);
   return `
     <div class="osint-active-list">
-      ${rows.map((item) => `
+      ${visibleRows.map((item) => `
         <button type="button" data-open-osint-case="${item.caseId}">
           <span>
             <strong>№${item.caseId}</strong>
@@ -356,6 +537,7 @@ function activeCasesList(state, badge) {
           <em><i style="width:${item.progress}%"></i></em>
         </button>
       `).join("")}
+      ${hiddenCount ? `<div class="osint-list-hint">+${hiddenCount} справ у повному списку</div>` : ""}
     </div>
   `;
 }
@@ -496,12 +678,12 @@ function overviewWorkspace(state, badge, icon) {
           <span class="green">Позитивні</span>
           <span class="neutral">Нейтральні</span>
         </div>
-        ${osintLineChart()}
+        ${osintLineChart(state)}
       </article>
 
       <article class="panel osint-chart-card osint-source-panel">
         <h2>Розподіл згадок за джерелами</h2>
-        ${sourceDonut()}
+        ${sourceDonut(state)}
       </article>
 
       <section class="panel osint-lower-composite">
@@ -512,7 +694,7 @@ function overviewWorkspace(state, badge, icon) {
         </nav>
         <div class="osint-lower-columns">
           <article class="osint-mentions-column">
-            ${mentionList(badge, icon, state)}
+            ${mentionList(badge, icon, state, 6)}
             <button class="ghost osint-list-more" type="button" data-osint-sync>Переглянути всі згадки</button>
           </article>
 
@@ -529,7 +711,7 @@ function overviewWorkspace(state, badge, icon) {
 
           <article class="osint-types-column">
             <h2>Розподіл за типами даних</h2>
-            ${dataTypeBars()}
+            ${dataTypeBars(state)}
           </article>
         </div>
       </section>
@@ -592,7 +774,7 @@ function secondaryWorkspace(state, badge, icon) {
         </article>
         <article class="panel osint-small-card osint-graph-card">
           <h2>${tab === "people" ? "Граф зв'язків" : "Типи подій"}</h2>
-          ${tab === "people" ? relationshipGraph() : dataTypeBars()}
+          ${tab === "people" ? relationshipGraph() : dataTypeBars(state)}
           ${tab === "people" ? `
             <div class="osint-graph-legend">
               <span><i class="person"></i>Фізична особа</span>
@@ -692,6 +874,9 @@ export function renderOSINTScreen(ctx) {
   $("#osint").innerHTML = `
     <div class="osint-screen osint-reference">
       <span class="sr-only">OSINT перевірки</span>
+      <div class="osint-demo-note" role="note" style="margin:0 0 12px;padding:10px 14px;border:1px solid #f5dc9f;border-left:4px solid #f59e0b;border-radius:8px;background:rgba(245,158,11,0.08);color:#92400e;font-size:13px;font-weight:700;">
+        Демонстраційний модуль: згадки, реєстри та граф зв'язків — приклади. Зовнішні джерела не підключені, дані не оновлюються в реальному часі.
+      </div>
       <div class="osint-topbar">
         <nav class="osint-tabs" aria-label="OSINT розділи">
           ${OSINT_TABS.map(([tab, label]) => `<button class="${state.osintTab === tab ? "active" : ""}" type="button" data-osint-tab="${tab}">${label}</button>`).join("")}
@@ -767,24 +952,7 @@ export function renderOSINTScreen(ctx) {
     renderOSINTScreen(ctx);
   }));
   document.querySelectorAll("[data-create-osint]").forEach((button) => button.addEventListener("click", () => {
-    const caseId = state.selectedCaseId || state.cases[0]?.id || "";
-    const next = {
-      id: `osint-${Date.now()}`,
-      title: "OSINT звіт по справі",
-      caseId,
-      object: "Автоматична перевірка відкритих джерел",
-      sources: ["YouControl", "Opendatabot", "Судовий реєстр", "Соцмережі"],
-      risks: ["Потрібно переглянути негативні згадки"],
-      status: "Звіт готовий"
-    };
-    state.osintChecks.unshift(next);
-    state.osintReports.unshift({
-      title: `OSINT звіт №${caseId || "новий"}`,
-      description: "Автоматично сформований звіт з відкритих джерел, ризиків, згадок і реєстрів.",
-      created: new Date().toLocaleString("uk-UA", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
-    });
-    state.selectedOsintId = next.id;
-    state.osintTab = "reports";
+    createOsintReport(state);
     showToast("OSINT звіт створено.");
     renderOSINTScreen(ctx);
   }));
@@ -798,8 +966,8 @@ export function renderOSINTScreen(ctx) {
   }));
   document.querySelectorAll("[data-osint-export]").forEach((button) => button.addEventListener("click", () => exportOsintReport(ctx)));
   document.querySelectorAll("[data-osint-monitor]").forEach((button) => button.addEventListener("click", () => {
-    state.osintTab = "monitoring";
-    showToast("Моніторинг OSINT додано до активних перевірок.");
+    const monitor = startOsintMonitoring(state);
+    showToast(monitor ? "Моніторинг справи запущено." : "Спочатку додайте справу для моніторингу.", monitor ? "success" : "warning");
     renderOSINTScreen(ctx);
   }));
   document.querySelectorAll("[data-osint-show-all]").forEach((button) => button.addEventListener("click", () => {
@@ -863,8 +1031,19 @@ export function renderOSINTScreen(ctx) {
     control.addEventListener("change", () => showToast("Параметри OSINT оновлено."));
   });
   document.querySelectorAll("[data-osint-quick]").forEach((button) => button.addEventListener("click", () => {
-    state.osintQuery = button.dataset.osintQuick === "person" ? "Петренко" : "ТОВ";
-    showToast("Швидкий пошук запущено.");
+    const caseItem = selectedOsintCase(state);
+    if (button.dataset.osintQuick === "person") {
+      state.osintQuery = osintPersonQuery(state, caseItem);
+      state.osintTab = "people";
+      state.osintMetricFocus = "people";
+      showToast(state.osintQuery ? `Пошук по людині: ${state.osintQuery}.` : "Пошук по людях відкрито.");
+    } else {
+      state.osintQuery = osintCompanyQuery(caseItem);
+      state.osintTab = "overview";
+      state.osintSubtab = "registries";
+      state.osintMetricFocus = "mentions";
+      showToast(state.osintQuery ? `Пошук по організації: ${state.osintQuery}.` : "Реєстровий пошук відкрито.");
+    }
     renderOSINTScreen(ctx);
   }));
 }

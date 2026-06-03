@@ -131,6 +131,24 @@ async function cleanupGoldenMatter(request, created) {
   }
 }
 
+async function cleanupMailingArtifacts(request, matcher) {
+  const bootstrap = await apiJson(await request.get("/api/bootstrap/"), "GET /api/bootstrap/");
+  const mailing = bootstrap.mailing || {};
+  for (const campaign of mailing.campaigns || []) {
+    if (matcher(campaign)) await apiDelete(request, `/api/mailings/campaigns/${campaign.id}/`);
+  }
+  for (const template of mailing.templates || []) {
+    if (matcher(template)) await apiDelete(request, `/api/mailings/templates/${template.id}/`);
+  }
+}
+
+async function cleanupSettingsUsers(request, matcher) {
+  const bootstrap = await apiJson(await request.get("/api/bootstrap/"), "GET /api/bootstrap/");
+  for (const user of bootstrap.settingsUsers || []) {
+    if (user.id && matcher(user)) await apiDelete(request, `/api/users/${user.id}/`);
+  }
+}
+
 test("current CRM menu screens render in API mode", async ({ page }) => {
   await openApp(page);
 
@@ -155,7 +173,9 @@ test("empty API mode does not show demo charts or static counts", async ({ page 
   });
 
   await page.goto("/");
-  await expect(page.locator(".dashboard-kpi-grid")).toContainText("Без даних");
+  // KPI grid renders real labels/zeros and no longer fabricates a "+12%" trend.
+  await expect(page.locator(".dashboard-kpi-grid")).toContainText("Активних справ");
+  await expect(page.locator(".dashboard-kpi-grid")).not.toContainText("%");
   await expect(page.locator("#dashboard")).not.toContainText("демо-справ");
   await expect(page.locator("#dashboard")).not.toContainText("демо-CRM");
 
@@ -280,6 +300,101 @@ test("golden workflow creates and persists client, case, task, event, document a
   }
 });
 
+test("client and case UI forms persist edits after reload", async ({ page, request }) => {
+  const created = {};
+  const label = stamp();
+  const clientEmail = `ui-client-${label}@example.com`;
+  const clientName = `UI Client ${label}`;
+  const updatedClientName = `UI Client Updated ${label}`;
+  const caseTitle = `UI Case ${label}`;
+  const updatedCaseTitle = `UI Case Updated ${label}`;
+
+  try {
+    await openApp(page);
+
+    await page.locator('.nav-item[data-view="clients"]').click();
+    await expect(page.locator("#clients")).toHaveClass(/active/);
+    await page.locator("#add-client").click();
+    await expect(page.locator("#client-dialog")).toHaveJSProperty("open", true);
+    await page.locator('#client-form input[name="name"]').fill(clientName);
+    await page.locator('#client-form input[name="phone"]').fill("+380 67 555 12 34");
+    await page.locator('#client-form input[name="email"]').fill(clientEmail);
+    await page.locator('#client-form input[name="address"]').fill("м. Київ, вул. UI smoke, 10");
+    await page.locator('#client-form input[name="telegramUsername"]').fill(`@ui_${label.replaceAll("-", "_")}`);
+    await page.locator('#client-form textarea[name="request"]').fill("UI smoke: первинне звернення клієнта.");
+    await page.locator('#client-form select[name="source"]').selectOption("Сайт", { force: true });
+    await page.locator('#client-form select[name="status"]').selectOption("Активний", { force: true });
+    await page.locator('#client-form select[name="manager"]').selectOption({ label: "Admin" }, { force: true });
+    await page.locator('#client-form button[type="submit"]').click();
+    await expect(page.locator("#client-dialog")).not.toHaveJSProperty("open", true);
+
+    let bootstrap = await apiJson(await request.get("/api/bootstrap/"), "GET /api/bootstrap/");
+    created.client = bootstrap.clients.find((client) => client.email === clientEmail);
+    expect(created.client, "client should be created through UI form").toBeTruthy();
+
+    await page.locator("#client-filter").fill(clientName);
+    await expect(page.locator("#clients-table")).toContainText(clientName);
+    await page.locator(`[data-edit-client="${created.client.id}"]`).click();
+    await expect(page.locator("#client-dialog")).toHaveJSProperty("open", true);
+    await page.locator('#client-form input[name="name"]').fill(updatedClientName);
+    await page.locator('#client-form textarea[name="request"]').fill("UI smoke: звернення оновлено через форму.");
+    await page.locator('#client-form button[type="submit"]').click();
+    await expect(page.locator("#client-dialog")).not.toHaveJSProperty("open", true);
+
+    await page.locator('.nav-item[data-view="cases"]').click();
+    await expect(page.locator("#cases")).toHaveClass(/active/);
+    await page.locator("#create-case-from-list").click();
+    await expect(page.locator("#case-dialog")).toHaveJSProperty("open", true);
+    await page.locator('#case-form select[name="clientId"]').selectOption(String(created.client.id), { force: true });
+    await page.locator('#case-form input[name="title"]').fill(caseTitle);
+    await page.locator('#case-form select[name="type"]').selectOption("Цивільна", { force: true });
+    await page.locator('#case-form input[name="stage"]').fill("Первинний аналіз");
+    await page.locator('#case-form select[name="status"]').selectOption("В роботі", { force: true });
+    await page.locator('#case-form select[name="priority"]').selectOption("Високий", { force: true });
+    await page.locator('#case-form input[name="deadline"]').fill("2026-06-30");
+    await page.locator('#case-form select[name="responsible"]').selectOption({ label: "Admin" }, { force: true });
+    await page.locator("#case-submit-button").click();
+    await expect(page.locator("#case-dialog")).not.toHaveJSProperty("open", true);
+
+    bootstrap = await apiJson(await request.get("/api/bootstrap/"), "GET /api/bootstrap/");
+    created.client = bootstrap.clients.find((client) => client.email === clientEmail);
+    created.matter = bootstrap.cases.find((item) => item.clientId === created.client.id && item.title === caseTitle);
+    expect(created.matter, "case should be created through UI form").toBeTruthy();
+
+    await page.locator("#back-to-case-list").click();
+    await page.locator("#case-search").fill(caseTitle);
+    await expect(page.locator("#case-detail")).toContainText(caseTitle);
+    await page.locator(`.case-preview-card [data-edit-case-row="${created.matter.id}"]`).click();
+    await expect(page.locator("#case-dialog")).toHaveJSProperty("open", true);
+    await page.locator('#case-form input[name="title"]').fill(updatedCaseTitle);
+    await page.locator('#case-form input[name="stage"]').fill("Підготовка документів");
+    await page.locator('#case-form select[name="status"]').selectOption("Очікує відповідь", { force: true });
+    await page.locator("#case-submit-button").click();
+    await expect(page.locator("#case-dialog")).not.toHaveJSProperty("open", true);
+
+    await openApp(page);
+    await page.locator('.nav-item[data-view="clients"]').click();
+    await page.locator("#client-filter").fill(updatedClientName);
+    await expect(page.locator("#clients-table")).toContainText(updatedClientName);
+    await expect(page.locator("#clients-table")).not.toContainText(clientName);
+
+    await page.locator('.nav-item[data-view="cases"]').click();
+    if (await page.locator("#back-to-case-list").isVisible().catch(() => false)) {
+      await page.locator("#back-to-case-list").click();
+    }
+    await page.locator("#case-search").fill(updatedCaseTitle);
+    await expect(page.locator("#case-detail")).toContainText(updatedCaseTitle);
+    await expect(page.locator("#case-detail")).toContainText(updatedClientName);
+    await expect(page.locator("#case-detail")).toContainText("Підготовка документів");
+    await expect(page.locator("#case-detail")).not.toContainText(caseTitle);
+  } finally {
+    const bootstrap = await apiJson(await request.get("/api/bootstrap/"), "GET /api/bootstrap/");
+    created.client = created.client || bootstrap.clients.find((client) => client.email === clientEmail);
+    created.matter = created.matter || bootstrap.cases.find((item) => item.title === caseTitle || item.title === updatedCaseTitle);
+    await cleanupGoldenMatter(request, created);
+  }
+});
+
 test("finance invoice and act create documents and clean them up on delete", async ({ request }) => {
   const created = { operationIds: [], documentIds: [] };
   const label = stamp();
@@ -336,6 +451,254 @@ test("finance invoice and act create documents and clean them up on delete", asy
     expect(bootstrap.financeOperations.map((item) => item.id)).not.toContain(act.operation.id);
     created.documentIds = [];
   } finally {
+    await cleanupGoldenMatter(request, created);
+  }
+});
+
+test("documents send and ONLYOFFICE actions open from the document registry", async ({ page, request }) => {
+  const created = { operationIds: [], documentIds: [] };
+  const label = stamp();
+  const invoiceTitle = `Document action invoice ${label}`;
+
+  try {
+    Object.assign(created, await createGoldenMatter(request, label));
+    const invoice = await apiPost(request, "/api/finance/operations/", {
+      caseId: created.matter.id,
+      action: "invoice",
+      title: invoiceTitle,
+      amount: 1900,
+      date: "2026-06-05",
+      status: "Очікується",
+      method: "Документ",
+      documentNumber: `INV-DOC-${label}`,
+      documentDue: "2026-06-12",
+      documentTemplate: "Основний шаблон",
+      comment: "Golden smoke: document actions should stay connected."
+    });
+    created.operationIds.push(invoice.operation.id);
+    created.documentIds.push(invoice.document.id);
+
+    await page.route("**/web-apps/apps/api/documents/api.js", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/javascript",
+        body: `
+          window.DocsAPI = {
+            DocEditor: function DocEditor(id, config) {
+              window.__onlyOfficeSmoke = { id: id, config: config };
+              this.destroyEditor = function() {};
+              this.resizeEditor = function() {};
+            }
+          };
+        `
+      });
+    });
+
+    await openApp(page);
+    await page.locator('.nav-item[data-view="documents"]').click();
+    await page.locator("[data-document-query]").fill(invoiceTitle);
+    const docRow = page.locator(".documents-table tbody tr", { hasText: invoiceTitle }).first();
+    await expect(docRow).toBeVisible();
+    const documentPanel = page.locator(".documents-side", { hasText: invoiceTitle });
+    await expect(documentPanel).toBeVisible();
+
+    await documentPanel.locator("[data-send-global-document]").click();
+    await expect(page.locator("#document-send-dialog")).toHaveJSProperty("open", true);
+    await expect(page.locator("#document-send-recipient-preview")).toContainText("@golden_");
+    await expect(page.locator('#document-send-form textarea[name="message"]')).toHaveValue(new RegExp(invoiceTitle));
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#document-send-dialog")).not.toHaveJSProperty("open", true);
+
+    await documentPanel.locator("[data-office-global-document]").click();
+    await expect(page.locator("#office-editor-dialog")).toHaveJSProperty("open", true);
+    await expect(page.locator("#office-editor-title")).toContainText(invoiceTitle);
+    await expect(page.locator("#onlyoffice-editor-container")).toBeVisible();
+    const officeConfig = await page.evaluate(() => window.__onlyOfficeSmoke?.config || null);
+    expect(officeConfig?.document?.url, "ONLYOFFICE should receive a document URL").toContain("/api/documents/");
+    await page.locator("#office-editor-close").click();
+  } finally {
+    await cleanupGoldenMatter(request, created);
+  }
+});
+
+test("tasks calendar and planner stay linked after reload", async ({ page, request }) => {
+  const created = { taskIds: [], eventIds: [] };
+  const label = stamp();
+  const taskTitle = `Planner linked task ${label}`;
+  const eventTitle = `Calendar linked event ${label}`;
+
+  async function expectLinkedViews() {
+    await page.locator('.nav-item[data-view="tasks"]').click();
+    await expect(page.locator("#tasks")).toHaveClass(/active/);
+    await page.locator("#task-search").fill(taskTitle);
+    await expect(page.locator("#tasks [data-task-key]", { hasText: taskTitle })).toBeVisible();
+
+    await page.locator('.nav-item[data-view="calendar"]').click();
+    await expect(page.locator("#calendar")).toHaveClass(/active/);
+    await expect(page.locator("#calendar")).toContainText(eventTitle);
+    await expect(page.locator("#calendar")).toContainText(taskTitle);
+
+    await page.locator('.nav-item[data-view="planner"]').click();
+    await expect(page.locator("#planner")).toHaveClass(/active/);
+    await expect(page.locator(".planner-item", { hasText: taskTitle })).toBeVisible();
+  }
+
+  try {
+    Object.assign(created, await createGoldenMatter(request, label));
+
+    const task = await apiPost(request, "/api/tasks/", {
+      caseId: created.matter.id,
+      clientId: created.client.id,
+      title: taskTitle,
+      status: "Нова",
+      priority: "Високий",
+      responsible: "Іваненко А.Ю.",
+      due: "2026-05-27 09:30",
+      description: "Golden smoke: задача має бути в задачах, календарі та планері.",
+      showInCalendar: true,
+      plannerManual: true,
+      plannerImportant: true,
+      plannerDate: "2026-05-27",
+      plannerTime: "09:30",
+      reminderEnabled: true,
+      reminderBefore: "За 1 день",
+      reminderChannel: "CRM",
+      subtasks: [
+        { title: "Підготувати матеріали", status: "Нова", responsible: "Іваненко А.Ю.", due: "27.05.2026" }
+      ]
+    });
+    created.taskIds.push(task.id);
+
+    const event = await apiPost(request, "/api/calendar/events/", {
+      title: eventTitle,
+      type: "Судове засідання",
+      date: "2026-05-28",
+      time: "10:00",
+      endTime: "11:00",
+      clientId: created.client.id,
+      caseId: created.matter.id,
+      authority: "Golden court",
+      location: "Київ",
+      responsible: "Іваненко А.Ю.",
+      status: "Заплановано",
+      reminderEnabled: true,
+      reminderBefore: "За 1 день",
+      reminderChannels: "CRM",
+      reminderRecipients: "Відповідальний юрист"
+    });
+    created.eventIds.push(event.id);
+
+    const bootstrap = await apiJson(await request.get("/api/bootstrap/"), "GET /api/bootstrap/");
+    const persistedCase = bootstrap.cases.find((item) => item.id === created.matter.id);
+    expect(persistedCase.tasks.map((item) => item.title)).toContain(taskTitle);
+    expect(bootstrap.events.map((item) => item.title)).toContain(eventTitle);
+
+    await openApp(page);
+    await expectLinkedViews();
+    await page.reload();
+    await expect(page.locator(".nav-item[data-view='dashboard']")).toBeVisible();
+    await expect(page.locator("#dashboard")).toHaveClass(/active/);
+    await expectLinkedViews();
+  } finally {
+    await cleanupGoldenMatter(request, created);
+  }
+});
+
+test("calendar-created event stays a calendar event after reload", async ({ page, request }) => {
+  const created = { eventIds: [] };
+  const label = stamp();
+  const eventTitle = `Calendar manual event ${label}`;
+  const eventDate = "2026-05-29";
+
+  try {
+    Object.assign(created, await createGoldenMatter(request, label));
+
+    await openApp(page);
+    await page.locator('.nav-item[data-view="calendar"]').click();
+    await expect(page.locator("#calendar")).toHaveClass(/active/);
+    await page.locator("#add-event").click();
+    await expect(page.locator("#event-dialog")).toHaveJSProperty("open", true);
+    await page.locator('#event-form input[name="title"]').fill(eventTitle);
+    await page.locator('#event-form select[name="client"]').selectOption(String(created.client.id));
+    await page.locator('#event-form select[name="caseId"]').selectOption(created.matter.id);
+    await page.locator('#event-form select[name="type"]').selectOption("Зустріч з клієнтом");
+    await page.locator('#event-form input[name="date"]').fill(eventDate);
+    await page.locator('#event-form input[name="time"]').fill("14:30");
+    await page.locator('#event-form input[name="endTime"]').fill("15:00");
+    await page.locator('#event-form input[name="authority"]').fill("Golden meeting room");
+    await page.locator('#event-form textarea[name="description"]').fill("Golden smoke: подія створена з календаря, не з блоку процесуальних дій.");
+    await page.locator("#event-submit-button").click();
+    await expect(page.locator("#event-dialog")).not.toHaveJSProperty("open", true);
+
+    let bootstrap = await apiJson(await request.get("/api/bootstrap/"), "GET /api/bootstrap/");
+    const createdEvent = bootstrap.events.find((item) => item.title === eventTitle);
+    expect(createdEvent, "calendar UI should create a real calendar event").toBeTruthy();
+    expect(createdEvent.proceduralAction, "calendar event should not be marked as procedural action").not.toBeTruthy();
+    created.eventIds.push(createdEvent.id);
+    await expect(page.locator("#calendar")).toContainText(eventTitle);
+
+    const persistedCase = bootstrap.cases.find((item) => item.id === created.matter.id);
+    const proceduralTitles = (persistedCase?.proceduralActions || []).map((item) => item.action || item.title);
+    expect(proceduralTitles).not.toContain(eventTitle);
+
+    await page.reload();
+    await expect(page.locator(".nav-item[data-view='dashboard']")).toBeVisible();
+    await page.locator('.nav-item[data-view="calendar"]').click();
+    await expect(page.locator("#calendar")).toContainText(eventTitle);
+
+    bootstrap = await apiJson(await request.get("/api/bootstrap/"), "GET /api/bootstrap/");
+    expect(bootstrap.events.some((item) => item.id === createdEvent.id && item.title === eventTitle)).toBeTruthy();
+  } finally {
+    await cleanupGoldenMatter(request, created);
+  }
+});
+
+test("mailing preview templates and scheduled campaigns use live recipients", async ({ page, request }) => {
+  const created = {};
+  const label = stamp();
+  const signature = `mailing-smoke-${label}`;
+  const message = `Шановний {{client_name}}!\n\nПовідомлення ${signature}: перевірка Telegram, SMS та Email.\n\nЗ повагою,\nAdvocates Bureau`;
+
+  try {
+    Object.assign(created, await createGoldenMatter(request, label));
+
+    await openApp(page);
+    await page.locator('.nav-item[data-view="mailings"]').click();
+    await expect(page.locator("#mailings")).toHaveClass(/active/);
+    await expect(page.locator(".coverage-row")).toContainText("Клиенты");
+    await expect(page.locator(".forecast-card")).toContainText("Всего получателей");
+
+    await page.locator("#mailing-text").fill(message);
+    await expect(page.locator("#mail-preview")).toContainText(signature);
+    await expect(page.locator("#mail-preview")).toContainText("Шановні клієнти!");
+    await expect(page.locator("#mailing-char-count")).toHaveText(String(message.length));
+
+    await page.locator('[data-preview-channel="SMS"]').click();
+    await expect(page.locator("#mail-preview")).toContainText(signature);
+    await page.locator('[data-preview-channel="Email"]').click();
+    await expect(page.locator("#mail-preview")).toContainText("Тема: Важливе повідомлення");
+    await expect(page.locator("#mail-preview")).toContainText(signature);
+
+    await page.locator("[data-save-mailing-template]").click();
+    await expect(page.locator("#mailings")).toContainText("Шаблон сохранён");
+    await page.locator('[data-mailing-main-tab="templates"]').click();
+    await expect(page.locator(".template-library-list")).toContainText(signature);
+
+    await page.locator('[data-mailing-main-tab="new"]').click();
+    await page.locator("#mailing-text").fill(message);
+    await page.locator('input[name="send-time"][value="later"]').check();
+    await page.locator("[data-mailing-schedule-date]").fill("2026-06-22");
+    await page.locator("[data-mailing-schedule-time]").fill("11:30");
+    await page.locator('[data-mailing-action="schedule"]').click();
+    await expect(page.locator(".mailing-history-list")).toContainText("Информационное сообщение клиентам");
+    await expect(page.locator(".mailing-history-list")).toContainText("Запланирована");
+    await expect(page.locator(".mailing-history-list")).toContainText("22.06.2026 11:30");
+
+    const bootstrap = await apiJson(await request.get("/api/bootstrap/"), "GET /api/bootstrap/");
+    expect((bootstrap.mailing?.templates || []).some((item) => String(item.text || "").includes(signature))).toBeTruthy();
+    expect((bootstrap.mailing?.campaigns || []).some((item) => String(item.text || "").includes(signature))).toBeTruthy();
+  } finally {
+    await cleanupMailingArtifacts(request, (item) => String(item.text || "").includes(signature));
     await cleanupGoldenMatter(request, created);
   }
 });
@@ -497,6 +860,174 @@ test("finance payment workspace paginates dense operation lists without resizing
     await page.locator(".finance-pagination button", { hasText: "2" }).click();
     await expect(page.locator(".finance-operation-row")).toHaveCount(2);
     await expect(page.locator(".finance-pagination")).toContainText("Показано 11-12 з 12 платежів");
+  } finally {
+    await cleanupGoldenMatter(request, created);
+  }
+});
+
+test("settings readiness users and integrations stay consistent after reload", async ({ page, request }) => {
+  const label = stamp();
+  const userName = `Settings Smoke ${label}`;
+  const userEmail = `settings-${label}@example.com`;
+  let createdUserId = null;
+
+  try {
+    await cleanupSettingsUsers(request, (user) => user.email === userEmail || user.name === userName);
+    const before = await apiJson(await request.get("/api/bootstrap/"), "GET /api/bootstrap/");
+    const initialActiveUsers = (before.settingsUsers || []).filter((user) => user.role !== "Видалений").length;
+
+    await openApp(page);
+    await page.locator('.nav-item[data-view="settings"]').click();
+    await expect(page.locator("#settings")).toHaveClass(/active/);
+    await expect(page.locator("[data-settings-section='readiness']")).toContainText("Аудит готовності");
+    await expect(page.locator("[data-settings-section='integrations']")).toContainText("ONLYOFFICE");
+    await expect(page.locator("[data-settings-section='integrations']")).toContainText("Email");
+    await expect(page.locator("[data-settings-section='audit']")).toContainText("Журнал змін");
+    await expect(page.locator('[data-settings-focus="users"] strong')).toHaveText(String(initialActiveUsers));
+
+    const summaryReadiness = (await page.locator('[data-settings-focus="readiness"] strong').innerText()).trim();
+    const auditReadiness = (await page.locator(".settings-readiness-total strong").innerText()).trim();
+    expect(summaryReadiness).toBe(auditReadiness);
+
+    await page.locator('[data-settings-focus="users"]').click();
+    await page.locator('[data-settings-action="invite"]').click();
+    await expect(page.locator("#settings-invite-dialog")).toHaveJSProperty("open", true);
+    await page.locator('#settings-invite-form input[name="name"]').fill(userName);
+    await page.locator('#settings-invite-form input[name="email"]').fill(userEmail);
+    await page.locator('#settings-invite-form input[name="photo"]').fill("SS");
+    await page.locator('#settings-invite-form input[name="password"]').fill("Smoke12345");
+    await page.locator('#settings-invite-form select[name="role"]').selectOption("Бухгалтер", { force: true });
+    await page.locator('#settings-invite-form select[name="access"]').selectOption("Фінанси та звіти", { force: true });
+    await page.locator("[data-settings-user-submit]").click();
+    await expect(page.locator("#settings-invite-dialog")).not.toHaveJSProperty("open", true);
+
+    let bootstrap = await apiJson(await request.get("/api/bootstrap/"), "GET /api/bootstrap/");
+    let createdUser = (bootstrap.settingsUsers || []).find((user) => user.email === userEmail);
+    expect(createdUser, "settings user should be saved through UI").toBeTruthy();
+    createdUserId = createdUser.id;
+    expect(createdUser.role).toBe("Бухгалтер");
+    expect(createdUser.access).toBe("Фінанси та звіти");
+
+    await openApp(page);
+    await page.locator('.nav-item[data-view="settings"]').click();
+    await page.locator('[data-settings-focus="users"]').click();
+    await expect(page.locator('[data-settings-focus="users"] strong')).toHaveText(String(initialActiveUsers + 1));
+    const createdRow = page.locator(".settings-user-row").filter({ hasText: userEmail });
+    await expect(createdRow).toContainText(userName);
+    await expect(createdRow).toContainText("Бухгалтер");
+    await expect(createdRow).toContainText("Фінанси та звіти");
+
+    await createdRow.locator("[data-settings-user-menu]").click();
+    await expect(createdRow.locator(".settings-user-menu")).toBeVisible();
+    await createdRow.locator("[data-settings-user-delete]").click();
+    await expect(page.locator("#settings-user-delete-dialog")).toHaveJSProperty("open", true);
+    await page.locator("#settings-user-delete-dialog [data-settings-delete-user-confirm]").click();
+    await expect(page.locator("#settings-user-delete-dialog")).not.toHaveJSProperty("open", true);
+    await expect(page.locator(".settings-user-row").filter({ hasText: userEmail })).toHaveCount(0);
+    await expect(page.locator('[data-settings-focus="users"] strong')).toHaveText(String(initialActiveUsers));
+
+    bootstrap = await apiJson(await request.get("/api/bootstrap/"), "GET /api/bootstrap/");
+    createdUser = (bootstrap.settingsUsers || []).find((user) => user.email === userEmail);
+    expect(createdUser).toBeFalsy();
+    createdUserId = null;
+  } finally {
+    if (createdUserId) await apiDelete(request, `/api/users/${createdUserId}/`);
+    await cleanupSettingsUsers(request, (user) => user.email === userEmail || user.name === userName);
+  }
+});
+
+test("OSINT uses live cases for search, monitoring, reports and case navigation", async ({ page, request }) => {
+  const created = { documentIds: [], taskIds: [], operationIds: [] };
+  const label = stamp();
+  const clientName = `OSINT Client ${label}`;
+  const caseTitle = `OSINT Risk Case ${label}`;
+  const taskTitle = `OSINT Monitor Task ${label}`;
+  const documentName = `OSINT Registry Evidence ${label}.pdf`;
+
+  try {
+    const client = await apiPost(request, "/api/clients/", {
+      name: clientName,
+      phone: "+380 67 100 90 80",
+      email: `osint-${label}@example.com`,
+      telegramUsername: `@osint_${label.replaceAll("-", "_")}`,
+      request: "OSINT smoke: перевірити відкриті джерела по клієнту.",
+      status: "Активний",
+      source: "Автотест",
+      manager: "Іваненко А.Ю."
+    });
+    const matter = await apiPost(request, "/api/cases/", {
+      clientId: client.id,
+      title: caseTitle,
+      type: "Господарська",
+      stage: "OSINT моніторинг",
+      status: "В роботі",
+      priority: "Високий",
+      responsible: "Іваненко А.Ю.",
+      deadline: "2026-06-20",
+      description: "OSINT smoke: справа з високим ризиком для перевірки моніторингу."
+    });
+    created.client = client;
+    created.matter = matter;
+
+    const task = await apiPost(request, "/api/tasks/", {
+      caseId: matter.id,
+      clientId: client.id,
+      title: taskTitle,
+      status: "Нова",
+      priority: "Високий",
+      responsible: "Іваненко А.Ю.",
+      due: "2026-06-12 12:00",
+      description: "OSINT smoke: задача під моніторинг відкритих джерел."
+    });
+    created.taskIds.push(task.id);
+
+    const document = await apiPost(request, "/api/documents/", {
+      caseId: matter.id,
+      name: documentName,
+      type: "Доказ",
+      folder: "Інші документи",
+      status: "Подано",
+      submitted: "2026-06-02",
+      responseDue: "2026-06-16",
+      responsible: "Іваненко А.Ю.",
+      comment: "OSINT smoke: документ має дати згадку у відкритих джерелах."
+    });
+    created.documentIds.push(document.id);
+
+    await openApp(page);
+    await page.locator('.nav-item[data-view="osint"]').click();
+    await expect(page.locator("#osint")).toHaveClass(/active/);
+    await expect(page.locator("#osint .osint-kpi-card").first()).not.toContainText("Без даних");
+    await expect(page.locator("#osint")).toContainText(caseTitle);
+
+    await page.locator("[data-osint-query]").fill(clientName);
+    await expect(page.locator(".osint-mention-row")).toHaveCount(1);
+    await expect(page.locator(".osint-mention-row")).toContainText(caseTitle);
+    await expect(page.locator(".osint-mention-row")).toContainText(clientName);
+
+    await page.locator('[data-osint-metric="risks"]').click();
+    await expect(page.locator('[data-osint-subtab="risks"]')).toHaveClass(/active/);
+    await expect(page.locator(".osint-mention-row")).toContainText(caseTitle);
+
+    await page.locator('[data-osint-metric="monitoring"]').click();
+    await expect(page.locator('[data-osint-tab="monitoring"]')).toHaveClass(/active/);
+    await expect(page.locator("#osint")).toContainText("Активний моніторинг");
+    await expect(page.locator("#osint")).toContainText(caseTitle);
+
+    await page.locator('[data-osint-metric="sources"]').click();
+    await expect(page.locator(".osint-source-manager")).toBeVisible();
+    await expect(page.locator(".osint-source-manager")).toContainText("Керування джерелами");
+
+    await page.locator("[data-create-osint]").first().click();
+    await expect(page.locator('[data-osint-tab="reports"]')).toHaveClass(/active/);
+    await expect(page.locator("#osint")).toContainText("OSINT звіт №");
+
+    await page.locator('[data-osint-tab="overview"]').click();
+    await page.locator("[data-osint-query]").fill(clientName);
+    await page.locator(".osint-mention-row").first().click();
+    await expect(page.locator("#cases")).toHaveClass(/active/);
+    await expect(page.locator("#case-detail")).toContainText(`Справа № ${matter.id}`);
+    await expect(page.locator("#case-detail")).toContainText(clientName);
   } finally {
     await cleanupGoldenMatter(request, created);
   }

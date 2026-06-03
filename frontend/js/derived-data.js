@@ -249,17 +249,26 @@ export function rowsWithPercent(rows, colors = typeColors) {
 }
 
 export function analyticsLineSeries(cases) {
-  const labels = Array.from({ length: 15 }, (_, index) => `${String(index + 1).padStart(2, "0")}.05`);
+  // Anchor the 15-day window to the actual data, not a hardcoded May —
+  // demo dates are shifted to "today", so fixed "DD.05" labels matched nothing.
+  const allDates = cases
+    .flatMap((item) => [dateFromAny(item.opened), dateFromAny(item.deadline)])
+    .filter(Boolean);
+  const start = allDates.length
+    ? new Date(Math.min(...allDates.map((date) => date.getTime())))
+    : new Date();
+  const dayDates = Array.from({ length: 15 }, (_, index) =>
+    new Date(start.getFullYear(), start.getMonth(), start.getDate() + index));
+  const labels = dayDates.map((date) =>
+    `${String(date.getDate()).padStart(2, "0")}.${String(date.getMonth() + 1).padStart(2, "0")}`);
   const opened = labels.map((label) => cases.filter((item) => String(item.opened || "").startsWith(label)).length);
   const deadlines = labels.map((label) => cases.filter((item) => String(item.deadline || "").startsWith(label)).length);
-  const active = labels.map((label, index) => {
-    const day = index + 1;
-    return cases.filter((item) => {
-      const openedDay = dateFromAny(item.opened)?.getDate() || 1;
-      const deadlineDay = dateFromAny(item.deadline)?.getDate() || 31;
-      return openedDay <= day && deadlineDay >= day;
-    }).length;
-  });
+  const active = dayDates.map((dayDate) => cases.filter((item) => {
+    const opened = dateFromAny(item.opened);
+    const deadline = dateFromAny(item.deadline);
+    if (!opened) return false;
+    return opened.getTime() <= dayDate.getTime() && (!deadline || deadline.getTime() >= dayDate.getTime());
+  }).length);
   const scale = Math.max(1, ...opened, ...deadlines, ...active);
   return {
     labels,

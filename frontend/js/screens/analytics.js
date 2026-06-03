@@ -96,6 +96,29 @@ function isoFromDate(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+// Real income/expense/profit columns from finance operations, split into 3 time
+// buckets and scaled to bar-height percentages — replaces the hardcoded May numbers.
+function analyticsFinanceColumns(operations) {
+  const sorted = [...operations].sort((a, b) => (dateFromAny(a.date)?.getTime() || 0) - (dateFromAny(b.date)?.getTime() || 0));
+  const bucketCount = 3;
+  const size = Math.max(1, Math.ceil(sorted.length / bucketCount));
+  const dayMonth = (value) => {
+    const date = dateFromAny(value);
+    return date ? `${String(date.getDate()).padStart(2, "0")}.${String(date.getMonth() + 1).padStart(2, "0")}` : "";
+  };
+  const buckets = Array.from({ length: bucketCount }, (_, index) => sorted.slice(index * size, (index + 1) * size));
+  const raw = buckets.map((items) => {
+    const income = items.filter((o) => o.type === "Надходження").reduce((sum, o) => sum + Math.max(0, Number(o.amount) || 0), 0);
+    const expense = Math.abs(items.filter((o) => o.type === "Витрата").reduce((sum, o) => sum + (Number(o.amount) || 0), 0));
+    const first = dayMonth(items[0]?.date);
+    const last = dayMonth(items[items.length - 1]?.date);
+    const label = !items.length ? "—" : first === last ? first : `${first}-${last}`;
+    return { income, expense, profit: Math.max(0, income - expense), label };
+  });
+  const max = Math.max(1, ...raw.flatMap((r) => [r.income, r.expense, r.profit]));
+  return raw.map((r) => [r.label, Math.round((r.income / max) * 100), Math.round((r.expense / max) * 100), Math.round((r.profit / max) * 100)]);
+}
+
 function offsetIso(iso, days) {
   const date = dateFromAny(iso) || new Date();
   date.setDate(date.getDate() + days);
@@ -229,12 +252,13 @@ export function renderAnalyticsScreen(ctx) {
   const statusRows = rowsWithPercent(countBy(filteredCases, (item) => item.status || "В роботі"));
   const typeRows = countBy(filteredCases, (item) => item.type || "Інші").map(([label, value], index) => [label, value, typeColors[index % typeColors.length]]);
   const practiceRows = countBy(filteredCases, (item) => `${item.type || "Інші"} право`).map(([label, value], index) => [label, value, typeColors[index % typeColors.length]]);
-  const lawyerRows = countBy(filteredCases, (item) => item.responsible || "Не вказано").map(([name, value]) => {
+  const lawyerRows = countBy(filteredCases, (item) => item.responsible || "Не вказано").map(([name]) => {
     const tasks = filteredCases
       .filter((item) => item.responsible === name)
       .flatMap((item) => item.tasks || []);
     const done = tasks.filter((task) => ["Готово", "Виконано", "Завершено"].includes(task.status)).length;
-    const percent = tasks.length ? Math.round((done / tasks.length) * 100) : Math.max(45, 90 - value * 8);
+    // No invented fallback — without tasks the completion rate is honestly 0, not a made-up 45-90%.
+    const percent = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
     return [name, percent];
   });
   const lines = analyticsLineSeries(filteredCases);
@@ -246,16 +270,8 @@ export function renderAnalyticsScreen(ctx) {
   const showAnalyticsLineChart = hasCaseData;
   const showAnalyticsFinanceChart = hasFinanceData;
   const financeColumnRows = hasFinanceData
-    ? [
-      ["01-05.05", 82, 32, 58],
-      ["06-10.05", 88, 34, 64],
-      ["11-15.05", 95, 42, 68]
-    ]
-    : [
-      ["01-05.05", 0, 0, 0],
-      ["06-10.05", 0, 0, 0],
-      ["11-15.05", 0, 0, 0]
-    ];
+    ? analyticsFinanceColumns(financeOperations)
+    : [["—", 0, 0, 0], ["—", 0, 0, 0], ["—", 0, 0, 0]];
   const financeSummaryLabels = hasFinanceData
     ? {
       income: "з фінансів",

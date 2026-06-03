@@ -92,6 +92,7 @@ class CRMSettings(models.Model):
     integrations = models.JSONField(default=dict, blank=True)
     integration_settings = models.JSONField(default=dict, blank=True)
     notifications = models.JSONField(default=dict, blank=True)
+    document_archive_folders = models.JSONField(default=list, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

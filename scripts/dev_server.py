@@ -10,7 +10,7 @@ PORT = 8001
 
 
 def asset_version():
-    files = list(ROOT.glob("app.js")) + list((ROOT / "js").rglob("*.js")) + [ROOT / "styles.css"]
+    files = list(ROOT.glob("app.js")) + list((ROOT / "js").rglob("*.js")) + [ROOT / "styles.css", ROOT / "design-tokens.css"]
     return str(int(max(path.stat().st_mtime for path in files if path.exists())))
 
 
@@ -29,6 +29,7 @@ def version_js_imports(source):
 def version_html(source):
     version = asset_version()
     source = re.sub(r'src="app\.js(?:\?[^"]*)?"', f'src="app.js?v={version}"', source)
+    source = re.sub(r'href="design-tokens\.css(?:\?[^"]*)?"', f'href="design-tokens.css?v={version}"', source)
     return re.sub(r'href="styles\.css(?:\?[^"]*)?"', f'href="styles.css?v={version}"', source)
 
 

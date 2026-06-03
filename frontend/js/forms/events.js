@@ -20,12 +20,17 @@ export function setupEventForm({
     const due = form.get("due");
     const eventId = form.get("eventId");
     const actionIndex = form.get("actionIndex") === "" ? null : Number(form.get("actionIndex"));
+    const isCaseProceduralContext = event.currentTarget.dataset.caseProceduralContext === "true";
     const nextId = Math.max(0, ...state.events.map((item) => Number(item.id) || 0)) + 1;
     const selectedCaseId = form.get("caseId");
     const reminderEnabled = Boolean(form.get("reminderEnabled"));
     const caseItem = selectedCaseId
       ? caseById(selectedCaseId)
       : state.cases.find((item) => item.clientId === Number(form.get("client"))) || state.cases[0];
+    if (!caseItem) {
+      showToast("Спочатку створіть справу, щоб додати подію.", "warning");
+      return;
+    }
     const status = form.get("status") || "Заплановано";
     const eventPayload = (id = "") => ({
       ...(id ? { id } : {}),
@@ -46,7 +51,7 @@ export function setupEventForm({
       reminderChannels: reminderEnabled ? form.get("reminderChannels") : "",
       reminderRecipients: reminderEnabled ? form.get("reminderRecipients") : "",
       description: form.get("description"),
-      proceduralAction: Boolean(selectedCaseId && !eventId),
+      proceduralAction: Boolean(isCaseProceduralContext && !eventId),
       status
     });
 
@@ -117,7 +122,7 @@ export function setupEventForm({
     }
     state.events.push(createdEvent);
 
-    if (selectedCaseId) {
+    if (isCaseProceduralContext && selectedCaseId) {
       caseItem.proceduralActions = caseProceduralItems(caseItem);
       caseItem.proceduralActions.unshift({
         action: form.get("title"),
@@ -145,10 +150,10 @@ export function setupEventForm({
 
     state.selectedEventId = `event-${createdEvent.id}`;
     state.selectedCaseId = caseItem.id;
-    state.openCaseSection = "events";
+    if (isCaseProceduralContext) state.openCaseSection = "events";
     $("#event-dialog").close();
     renderAll();
-    switchView(selectedCaseId ? "cases" : "calendar");
-    showToast(selectedCaseId ? "Процесуальну дію додано." : "Подію додано до календаря.");
+    switchView(isCaseProceduralContext ? "cases" : "calendar");
+    showToast(isCaseProceduralContext ? "Процесуальну дію додано." : "Подію додано до календаря.");
   });
 }

@@ -119,6 +119,7 @@ function displayDateTime(value, fallback = "") {
 export function normalizeClient(client) {
   return {
     ...client,
+    request: client.request || "",
     added: displayDate(client.added, client.added || ""),
     lastContact: displayDate(client.lastContact, client.lastContact || ""),
     communications: (client.communications || []).map(normalizeClientCommunication)
@@ -186,6 +187,18 @@ export function normalizeFinanceOperation(operation) {
   };
 }
 
+export function normalizeSalary(salary) {
+  const base = Number(salary.base || 0);
+  const bonus = Number(salary.bonus || 0);
+  return {
+    ...salary,
+    base,
+    bonus,
+    total: Number(salary.total || base + bonus),
+    custom: true
+  };
+}
+
 export function normalizeAuditLog(item) {
   return {
     ...item,
@@ -228,6 +241,7 @@ function normalizeBackendPayload(payload) {
     cases: payload.cases.map(normalizeCase),
     events: payload.events.map(normalizeEvent),
     financeOperations: (payload.financeOperations || []).map(normalizeFinanceOperation),
+    salaryRows: (payload.salaries || []).map(normalizeSalary),
     finance: payload.finance || {},
     mailing: payload.mailing || {},
     settings: payload.settings || {},
@@ -242,7 +256,8 @@ function mergeSettings(fallback, incoming = {}) {
     bureau: { ...(fallback?.bureau || {}), ...(incoming?.bureau || {}) },
     integrations: { ...(fallback?.integrations || {}), ...(incoming?.integrations || {}) },
     integrationSettings: { ...(fallback?.integrationSettings || {}), ...(incoming?.integrationSettings || {}) },
-    notifications: { ...(fallback?.notifications || {}), ...(incoming?.notifications || {}) }
+    notifications: { ...(fallback?.notifications || {}), ...(incoming?.notifications || {}) },
+    documentArchiveFolders: incoming?.documentArchiveFolders || fallback?.documentArchiveFolders || []
   };
 }
 
@@ -476,10 +491,12 @@ export async function createInitialState() {
     documentArchiveCaseId: "all",
     documentArchiveFolder: "",
     documentStorageArchiveFolderId: "all",
-    documentArchiveFolders: [
-      { id: "finished", name: "Завершені документи", documents: [], children: [] },
-      { id: "saved", name: "На зберіганні", documents: [], children: [] }
-    ],
+    documentArchiveFolders: demoData.settings?.documentArchiveFolders?.length
+      ? demoData.settings.documentArchiveFolders
+      : [
+        { id: "finished", name: "Завершені документи", documents: [], children: [] },
+        { id: "saved", name: "На зберіганні", documents: [], children: [] }
+      ],
     selectedDocumentKeys: [],
     selectedDocumentKey: "",
     documentDialogReturnView: "cases",
@@ -502,7 +519,7 @@ export async function createInitialState() {
     financeDatePickerOpen: false,
     financeOperations: demoData.financeOperations || [],
     auditLogs: demoData.auditLogs || [],
-    salaryRows: [],
+    salaryRows: demoData.salaryRows || [],
     salaryFilter: "all",
     salaryMenuId: "",
     editingSalaryId: "",

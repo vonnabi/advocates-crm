@@ -517,8 +517,8 @@ export function createDialogOpeners({
   <meta charset="utf-8">
   <title>${escapeHtml(title)}</title>
   <style>
-    body { font-family: Arial, sans-serif; color: #111827; line-height: 1.45; }
-    h1 { font-size: 20px; margin: 0 0 12px; }
+    body { font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; color: #111827; line-height: 1.45; }
+    h1 { font-size: 14px; line-height: 1.2; margin: 0 0 12px; }
     .meta { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
     .meta td { border: 1px solid #d9e2ef; padding: 7px 9px; font-size: 12px; }
     .meta td:first-child { width: 160px; color: #5b6b82; font-weight: 700; }
@@ -1631,6 +1631,7 @@ export function createDialogOpeners({
   function openEventDialog(context = {}, actionIndex = null) {
     const form = $("#event-form");
     form.reset();
+    form.dataset.caseProceduralContext = Boolean(context.caseId && !context.eventId) ? "true" : "false";
     $("#event-client").innerHTML = state.clients.map((client) => `<option value="${client.id}">${client.name}</option>`).join("");
     $("#event-case").innerHTML = state.cases.map((item) => `<option value="${item.id}">№${item.id} · ${item.title}</option>`).join("");
     const initialCaseId = context.caseId || state.selectedCaseId || state.cases[0]?.id || "";
@@ -1788,8 +1789,25 @@ export function createDialogOpeners({
       state.pendingDocumentDelete = payload;
       $("#delete-document-title").textContent = "Видалити клієнта?";
       $("#delete-document-text").textContent = relatedCases.length
-        ? `Клієнт «${client.name}» має ${relatedCases.length} пов'язані справи. Разом із клієнтом буде видалено ці демо-справи та події.`
+        ? `Клієнт «${client.name}» має ${relatedCases.length} пов'язані справи. Разом із клієнтом буде видалено пов'язані справи, події, документи та фінансові записи.`
         : `Ви впевнені, що хочете видалити клієнта «${client.name}»?`;
+      $("#delete-document-confirm").textContent = "Так, видалити";
+      $("#delete-document-dialog").showModal();
+      return;
+    }
+    if (payload.type === "clients") {
+      const selectedIds = new Set((payload.clientIds || []).map((id) => String(id)));
+      const clients = state.clients.filter((client) => selectedIds.has(String(client.id)));
+      if (!clients.length) return;
+      const relatedCases = state.cases.filter((caseItem) => selectedIds.has(String(caseItem.clientId)));
+      state.pendingDocumentDelete = {
+        ...payload,
+        clientIds: clients.map((client) => client.id)
+      };
+      $("#delete-document-title").textContent = "Видалити клієнтів?";
+      $("#delete-document-text").textContent = relatedCases.length
+        ? `Ви вибрали ${clients.length} клієнтів. Разом із ними буде видалено ${relatedCases.length} пов'язаних справ, події, документи та фінансові записи цих справ.`
+        : `Ви впевнені, що хочете видалити ${clients.length} клієнтів?`;
       $("#delete-document-confirm").textContent = "Так, видалити";
       $("#delete-document-dialog").showModal();
       return;

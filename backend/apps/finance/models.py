@@ -45,5 +45,23 @@ class Expense(models.Model):
         return f"{self.category}: {self.amount}"
 
 
+class Salary(models.Model):
+    employee_name = models.CharField(max_length=255)
+    role = models.CharField(max_length=128, blank=True)
+    base = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    bonus = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    status = models.CharField(max_length=64, default="Готово")
+    accrued_on = models.DateField(null=True, blank=True)
+    comment = models.TextField(blank=True)
+    is_demo = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-accrued_on", "-id"]
+
+    def __str__(self):
+        return f"{self.employee_name}: {self.base + self.bonus}"
+
+
 def case_debt(total, paid):
     return max(Decimal("0.00"), total - paid)

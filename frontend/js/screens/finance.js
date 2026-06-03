@@ -1,4 +1,4 @@
-import { deleteFinanceOperationFromApi, saveCaseToApi, saveFinanceOperationToApi, shouldUseApi } from "../api.js";
+import { deleteFinanceOperationFromApi, deleteSalaryFromApi, saveCaseToApi, saveFinanceOperationToApi, saveSalaryToApi, shouldUseApi } from "../api.js";
 import {
   buildFinanceOperations,
   DEMO_END,
@@ -7,7 +7,7 @@ import {
   financeRowsFromCases,
   financeTotalsFromData
 } from "../derived-data.js?v=finance-real-data-1";
-import { normalizeCase, normalizeFinanceOperation } from "../state.js";
+import { normalizeCase, normalizeFinanceOperation, normalizeSalary } from "../state.js";
 
 const DEFAULT_START = DEMO_START;
 const DEFAULT_END = DEMO_END;
@@ -90,27 +90,6 @@ const FINANCE_TABS = [
   ["salary", "Зарплата"],
   ["reports", "Звіти"]
 ];
-
-const CASHFLOW = [
-  ["16-22 трав", 88, 52],
-  ["23-29 трав", 82, 51],
-  ["30 трав - 05 черв", 74, 52],
-  ["06-12 черв", 69, 48]
-];
-
-const FINANCE_LINE = {
-  income: [55, 70, 76, 72, 72, 82, 73, 86, 72, 80, 81, 76, 88, 97],
-  expenses: [12, 15, 18, 19, 18, 24, 19, 26, 20, 26, 27, 22, 27, 29],
-  profit: [29, 38, 41, 35, 34, 42, 37, 47, 41, 45, 46, 42, 51, 56]
-};
-
-const EMPTY_FINANCE_LINE = {
-  income: FINANCE_LINE.income.map(() => 0),
-  expenses: FINANCE_LINE.expenses.map(() => 0),
-  profit: FINANCE_LINE.profit.map(() => 0)
-};
-
-const chartDates = ["01.05", "03.05", "05.05", "07.05", "09.05", "11.05", "13.05", "15.05"];
 
 const FINANCE_ACTIONS = {
   income: {
@@ -215,12 +194,6 @@ const SALARY_ROWS = [
 ];
 
 const SALARY_MONTHS = ["Черв", "Лип", "Серп", "Вер", "Жов", "Лис", "Гру", "Січ", "Лют", "Бер", "Квіт", "Трав"];
-
-const REPORT_ROWS = [
-  ["Фінансовий звіт за період", "Доходи, витрати, прибуток і борги", "CSV"],
-  ["Звіт по заборгованості", "Клієнти, суми боргу і прострочки", "PDF"],
-  ["Реєстр рахунків та актів", "Документи, статуси і пов'язані справи", "XLSX"]
-];
 
 function escapeHtml(value = "") {
   return String(value)
@@ -335,6 +308,21 @@ function dateFromAny(value) {
   return new Date(year, month - 1, day);
 }
 
+function debtOverdueLabel(item) {
+  // Real overdue from the payment due date (fallback: case deadline), not the row index.
+  const due = dateFromAny(item.nextPaymentDue) || dateFromAny(item.deadline);
+  if (!due) return "Термін оплати не вказано";
+  const today = dateFromAny(isoToday());
+  const days = Math.floor((today.getTime() - due.getTime()) / 86400000);
+  if (days <= 0) return "Без прострочки";
+  const noun = days % 10 === 1 && days % 100 !== 11
+    ? "день"
+    : days % 10 >= 2 && days % 10 <= 4 && (days % 100 < 10 || days % 100 >= 20)
+      ? "дні"
+      : "днів";
+  return `${days} ${noun} прострочки`;
+}
+
 function financeDate(value) {
   const clean = String(value || DEFAULT_START);
   if (clean.includes("-")) {
@@ -440,6 +428,65 @@ function financeLineChartData(operations, startIso, endIso, scale = "days") {
     axis: [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round(max * ratio)),
     max,
     hasData: operations.some((operation) => financeAmountParts(operation).income || financeAmountParts(operation).expenses)
+  };
+}
+
+function financeCashflowData(operations, startIso, endIso) {
+  const start = dateFromAny(startIso) || new Date();
+  const end = dateFromAny(endIso) || start;
+  const totalDays = Math.max(1, Math.round((end - start) / 86400000) + 1);
+  const bucketSize = Math.max(1, Math.ceil(totalDays / 4));
+  const buckets = [];
+  let cursor = new Date(start);
+  while (cursor <= end && buckets.length < 4) {
+    const bucketStart = new Date(cursor);
+    const bucketEnd = addDays(bucketStart, bucketSize - 1);
+    if (bucketEnd > end) bucketEnd.setTime(end.getTime());
+    buckets.push({
+      start: bucketStart,
+      end: bucketEnd,
+      label: bucketStart.getTime() === bucketEnd.getTime()
+        ? shortDateLabel(bucketStart)
+        : `${shortDateLabel(bucketStart)}-${shortDateLabel(bucketEnd)}`,
+      expectedIncome: 0,
+      expectedExpenses: 0
+    });
+    cursor = addDays(bucketEnd, 1);
+  }
+  while (buckets.length < 4) {
+    const previousEnd = buckets.at(-1)?.end || start;
+    const bucketStart = addDays(previousEnd, 1);
+    const bucketEnd = addDays(bucketStart, bucketSize - 1);
+    buckets.push({
+      start: bucketStart,
+      end: bucketEnd,
+      label: bucketStart.getTime() === bucketEnd.getTime()
+        ? shortDateLabel(bucketStart)
+        : `${shortDateLabel(bucketStart)}-${shortDateLabel(bucketEnd)}`,
+      expectedIncome: 0,
+      expectedExpenses: 0
+    });
+  }
+  operations.forEach((operation) => {
+    const date = dateFromAny(operation.date);
+    if (!date) return;
+    const bucket = buckets.find((item) => date >= item.start && date <= item.end);
+    if (!bucket) return;
+    const amount = Math.abs(Number(operation.amount) || 0);
+    if (!amount) return;
+    if (operation.type === "Рахунок") bucket.expectedIncome += amount;
+    if (operation.type === "Витрата") bucket.expectedExpenses += amount;
+  });
+  const max = Math.max(1, ...buckets.flatMap((item) => [item.expectedIncome, item.expectedExpenses]));
+  return {
+    rows: buckets.map((item) => [
+      item.label,
+      item.expectedIncome ? Math.max(5, Math.round((item.expectedIncome / max) * 100)) : 0,
+      item.expectedExpenses ? Math.max(5, Math.round((item.expectedExpenses / max) * 100)) : 0,
+      item.expectedIncome,
+      item.expectedExpenses
+    ]),
+    hasData: buckets.some((item) => item.expectedIncome > 0 || item.expectedExpenses > 0)
   };
 }
 
@@ -551,7 +598,7 @@ function operationMatchesTab(operation, tab) {
   if (tab === "payments") return ["Надходження", "Витрата"].includes(operation.type);
   if (tab === "invoices") return operation.type === "Рахунок";
   if (tab === "acts") return operation.type === "Акт";
-  if (tab === "clients") return operation.status === "Частково" || operation.status === "Очікується";
+  if (tab === "clients") return ["Частково", "Очікується"].includes(financeStatusLabel(operation.status));
   return true;
 }
 
@@ -559,6 +606,27 @@ function operationMatchesPaymentMode(operation, mode = "all") {
   if (mode === "income") return operation.type === "Надходження";
   if (mode === "expense") return operation.type === "Витрата";
   return true;
+}
+
+function financeStatusLabel(status = "") {
+  const key = String(status || "").trim().toLowerCase();
+  return {
+    paid: "Оплачено",
+    partial: "Частково",
+    waiting: "Очікується",
+    pending: "Очікується",
+    overdue: "Прострочено",
+    draft: "Чернетка",
+    unpaid: "Не оплачено"
+  }[key] || status || "Без статусу";
+}
+
+function financeStatusTone(status = "") {
+  const label = financeStatusLabel(status);
+  if (["Частково", "Прострочено", "Не оплачено"].includes(label)) return "red";
+  if (label === "Очікується") return "amber";
+  if (label === "Чернетка") return "blue";
+  return "green";
 }
 
 function financeOperationCaseLabel(state, caseId) {
@@ -1017,6 +1085,63 @@ function operationRows(operations, badge, icon, options = {}) {
   }).join("");
 }
 
+function financeRecentOperationRows(operations, badge) {
+  if (!operations.length) {
+    return `<div class="finance-operation-empty">Фінансових операцій за обраний період не знайдено.</div>`;
+  }
+  const grouped = operations.reduce((clients, operation) => {
+    const clientName = operation.client || "Клієнт не вказаний";
+    if (!clients.has(clientName)) clients.set(clientName, new Map());
+    const clientCases = clients.get(clientName);
+    const caseKey = operation.caseId || "none";
+    if (!clientCases.has(caseKey)) clientCases.set(caseKey, []);
+    clientCases.get(caseKey).push(operation);
+    return clients;
+  }, new Map());
+
+  return [...grouped.entries()].map(([client, caseMap]) => {
+    const clientCount = [...caseMap.values()].reduce((sum, items) => sum + items.length, 0);
+    return `
+      <section class="finance-recent-client">
+        <div class="finance-recent-client-cell">
+          <strong>${escapeHtml(client)}</strong>
+          <small>${clientCount} ${clientCount === 1 ? "операція" : "операції"}</small>
+        </div>
+        <div class="finance-recent-case-list">
+          ${[...caseMap.entries()].map(([caseId, items]) => `
+            <div class="finance-recent-case">
+              <div class="finance-recent-case-cell">
+                ${caseId !== "none"
+                  ? `<button class="case-link-button" type="button" data-finance-open-case="${escapeHtml(caseId)}">№${escapeHtml(caseId)}</button>`
+                  : `<span class="muted">Без справи</span>`}
+                <small>${items.length} ${items.length === 1 ? "дія" : "дії"}</small>
+              </div>
+              <div class="finance-recent-rows">
+                ${items.map((item) => {
+                  const statusTone = financeStatusTone(item.status);
+                  const amountText = item.amount
+                    ? `${item.amount < 0 ? "-" : ""}${new Intl.NumberFormat("uk-UA").format(Math.abs(item.amount))} грн`
+                    : "Документ";
+                  return `
+                    <div class="finance-recent-row ${item.amount < 0 ? "is-expense" : ""}" role="button" tabindex="0" data-finance-select-operation="${escapeHtml(item.id)}" data-finance-open-operation="${escapeHtml(item.id)}">
+                      <span>${escapeHtml(item.date || "-")}</span>
+                      <strong class="${item.type === "Витрата" ? "danger" : "success"}">${escapeHtml(item.type || "-")}</strong>
+                      <em>${escapeHtml(item.title || "Фінансова операція")}</em>
+                      <b class="${item.amount < 0 ? "danger" : ""}">${amountText}</b>
+                      ${badge(financeStatusLabel(item.status), statusTone)}
+                      <small>${escapeHtml(item.method || "-")}</small>
+                    </div>
+                  `;
+                }).join("")}
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      </section>
+    `;
+  }).join("");
+}
+
 function financeOperationCaseTreeRows(items, badge, icon, options = {}) {
   const { menuId = "", showActions = true, clickable = false, selectedId = "" } = options;
   const grouped = items.reduce((groups, item) => {
@@ -1042,13 +1167,7 @@ function financeOperationCaseTreeRows(items, badge, icon, options = {}) {
 
 function financeOperationRow(item, badge, icon, options = {}) {
   const { menuId = "", showActions = true, clickable = false, selectedId = "", tree = false } = options;
-  const statusTone = item.status === "Частково"
-      ? "red"
-      : item.status === "Очікується"
-        ? "amber"
-        : item.status === "Чернетка"
-          ? "blue"
-          : "green";
+  const statusTone = financeStatusTone(item.status);
   const amountText = item.amount
     ? `${item.amount < 0 ? "-" : ""}${new Intl.NumberFormat("uk-UA").format(Math.abs(item.amount))} грн`
     : "Документ";
@@ -1063,7 +1182,7 @@ function financeOperationRow(item, badge, icon, options = {}) {
       <strong class="${item.type === "Витрата" ? "danger" : "success"}">${item.type}</strong>
       <span>${item.title}</span>
       <b class="${item.amount < 0 ? "danger" : ""}">${amountText}</b>
-      ${badge(item.status, statusTone)}
+      ${badge(financeStatusLabel(item.status), statusTone)}
       <span>${item.method}</span>
       ${showActions ? `<div class="finance-action-cell">
         <button class="icon-button finance-row-menu ${menuId === item.id ? "is-open" : ""}" type="button" data-finance-operation-menu="${item.id}" aria-expanded="${menuId === item.id}" title="Дії">⋮</button>
@@ -1081,13 +1200,7 @@ function financeOperationRow(item, badge, icon, options = {}) {
 
 function financeOperationDetailCard(operation, icon, badge, currencyText) {
   if (!operation) return "";
-  const statusTone = operation.status === "Частково"
-    ? "red"
-    : operation.status === "Очікується"
-      ? "amber"
-      : operation.status === "Чернетка"
-        ? "blue"
-        : "green";
+  const statusTone = financeStatusTone(operation.status);
   const amountText = operation.amount
     ? `${operation.amount < 0 ? "-" : ""}${new Intl.NumberFormat("uk-UA").format(Math.abs(operation.amount))} грн`
     : currencyText(0);
@@ -1102,7 +1215,7 @@ function financeOperationDetailCard(operation, icon, badge, currencyText) {
       <div><span>Клієнт</span><b>${escapeHtml(operation.client || "Не вказано")}</b></div>
       <div><span>Справа</span>${operation.caseId ? `<button class="case-link-button" type="button" data-finance-open-case="${operation.caseId}">№${operation.caseId}</button>` : "<b>Без справи</b>"}</div>
       <div><span>Сума</span><b class="${operation.amount < 0 ? "danger" : ""}">${amountText}</b></div>
-      <div><span>Статус</span>${badge(operation.status, statusTone)}</div>
+      <div><span>Статус</span>${badge(financeStatusLabel(operation.status), statusTone)}</div>
       <div><span>Спосіб</span><b>${escapeHtml(operation.method || "-")}</b></div>
       <button class="secondary compact" type="button" data-finance-open-operation="${escapeHtml(operation.id)}">${icon("file")} Відкрити в платежах</button>
     </article>
@@ -1250,6 +1363,9 @@ function financeSalaryWorkspace(state, icon, currencyText) {
   const history = salaryHistoryValues(rows);
   const historyMax = Math.max(...history.map((item) => item.value), 1);
   const selectedEmployee = state.salaryFilter || "all";
+  const emptyTitle = selectedEmployee === "all"
+    ? "Нарахувань зарплати ще немає"
+    : `Для ${selectedEmployee} нарахувань ще немає`;
   return `
     <div class="salary-toolbar">
       <label class="salary-select-field salary-filter-field">Співробітник
@@ -1264,19 +1380,19 @@ function financeSalaryWorkspace(state, icon, currencyText) {
         <span>${selectedEmployee === "all" ? "Загальний фонд" : "Фонд співробітника"}</span>
         <strong>${currencyText(totals.total)}</strong>
       </div>
-      <button class="secondary compact" type="button" data-finance-salary-export>${icon("file")} Експорт відомості</button>
+      <button class="secondary compact" type="button" data-finance-salary-export ${rows.length ? "" : "disabled"}>${icon("file")} Експорт відомості</button>
     </div>
 
-    <div class="salary-history-card">
+    <div class="salary-history-card ${rows.length ? "" : "is-empty"}">
       <div>
         <span class="section-kicker">Динаміка за 12 місяців</span>
         <h3>${selectedEmployee === "all" ? "Нарахування команди" : selectedEmployee}</h3>
-        <p>Ставка, бонуси та загальна сума для швидкої перевірки.</p>
+        <p>${rows.length ? "Ставка, бонуси та загальна сума для швидкої перевірки." : "Додайте перше нарахування, і тут з'явиться реальна динаміка."}</p>
       </div>
       <div class="salary-history-bars">
         ${history.map((item) => `
           <div class="salary-month">
-            <span style="height: ${Math.max(18, Math.round((item.value / historyMax) * 76))}px"></span>
+            <span style="height: ${rows.length ? Math.max(18, Math.round((item.value / historyMax) * 76)) : 8}px"></span>
             <small>${item.month}</small>
           </div>
         `).join("")}
@@ -1314,16 +1430,48 @@ function financeSalaryWorkspace(state, icon, currencyText) {
             ` : ""}
           </div>
         </div>
-      `).join("") : `<div class="finance-operation-empty">Для обраного співробітника нарахувань немає.</div>`}
+      `).join("") : `
+        <div class="salary-empty-state">
+          <span>${icon("briefcase")}</span>
+          <strong>${escapeHtml(emptyTitle)}</strong>
+          <p>Нарахуйте зарплату через кнопку зверху. Запис автоматично потрапить у фінансові витрати і зарплатну відомість.</p>
+          <button class="primary compact" type="button" data-finance-salary-open>${icon("check")} Нарахувати зарплату</button>
+        </div>
+      `}
       ${financePaginationHtml(pagination, "нарахувань")}
     </div>
   `;
 }
 
-function financeReportsWorkspace(icon, totals, currencyText) {
+function financeReportsWorkspace(icon, rows, operations, totals, currencyText) {
+  const invoices = operations.filter((item) => item.type === "Рахунок");
+  const acts = operations.filter((item) => item.type === "Акт");
+  const payments = operations.filter((item) => ["Надходження", "Витрата"].includes(item.type));
+  const debtRows = rows.filter((item) => item.debt > 0);
+  const reportCards = [
+    {
+      title: "Фінансовий звіт",
+      text: `${payments.length} платежів · прибуток ${currencyText(totals.profit)}`,
+      format: "CSV"
+    },
+    {
+      title: "Заборгованість",
+      text: `${debtRows.length} справ · борг ${currencyText(totals.debt)}`,
+      format: "PDF"
+    },
+    {
+      title: "Рахунки та акти",
+      text: `${invoices.length} рахунків · ${acts.length} актів`,
+      format: "XLSX"
+    }
+  ];
+  const topDebts = debtRows
+    .slice()
+    .sort((a, b) => b.debt - a.debt)
+    .slice(0, 5);
   return `
     <div class="finance-report-grid">
-      ${REPORT_ROWS.map(([title, text, format]) => `
+      ${reportCards.map(({ title, text, format }) => `
         <article class="finance-report-card">
           <span>${icon("file")}</span>
           <strong>${title}</strong>
@@ -1331,6 +1479,24 @@ function financeReportsWorkspace(icon, totals, currencyText) {
           <button class="secondary compact" type="button" data-export-finance>${format}</button>
         </article>
       `).join("")}
+    </div>
+    <div class="finance-report-summary">
+      <div><span>Надходження</span><strong>${currencyText(totals.income)}</strong></div>
+      <div><span>Витрати</span><strong>${currencyText(totals.expenses)}</strong></div>
+      <div><span>Очікується</span><strong>${currencyText(totals.expected)}</strong></div>
+      <div><span>Документи</span><strong>${invoices.length + acts.length}</strong></div>
+    </div>
+    <div class="finance-report-table">
+      <div class="finance-report-table-head"><span>Справа</span><span>Клієнт</span><span>Договір</span><span>Оплачено</span><span>Борг</span></div>
+      ${topDebts.length ? topDebts.map((item) => `
+        <div class="finance-report-table-row">
+          <button class="case-link-button" type="button" data-finance-open-case="${item.id}">№${item.id}</button>
+          <span>${escapeHtml(item.client)}</span>
+          <strong>${currencyText(item.total)}</strong>
+          <span>${currencyText(item.paid)}</span>
+          <b>${currencyText(item.debt)}</b>
+        </div>
+      `).join("") : `<div class="finance-operation-empty">Боргів за вибраний період немає.</div>`}
     </div>
     <div class="finance-workspace-footer finance-report-total">
       <span>Поточний фінансовий результат</span>
@@ -1390,7 +1556,7 @@ function financeWorkspace(ctx, rows, operations, visibleOperations, totals) {
       </div>
 
       <div class="finance-workspace-metrics">
-        ${financeWorkspaceSummary(isCases ? "Справ" : isClients ? "Клієнтів" : "Записів", isCases ? rows.length : isClients ? debtClientCount : isSalary ? currentSalaryRows.length : isReports ? REPORT_ROWS.length : visibleOperations.length, "у цьому розділі")}
+        ${financeWorkspaceSummary(isCases ? "Справ" : isClients ? "Клієнтів" : "Записів", isCases ? rows.length : isClients ? debtClientCount : isSalary ? currentSalaryRows.length : isReports ? operations.length : visibleOperations.length, "у цьому розділі")}
         ${financeWorkspaceSummary(isSalary ? "Ставка" : "Надходження", isSalary ? currencyText(currentSalaryTotals.base) : currencyText(income), isSalary ? "за вибраним фільтром" : "за вибраний період")}
         ${financeWorkspaceSummary(isSalary ? "Бонуси" : "Витрати", isSalary ? currencyText(currentSalaryTotals.bonus) : currencyText(expenses), isSalary ? "премії та доплати" : "за вибраний період")}
         ${financeWorkspaceSummary(isSalary ? "До виплати" : "Борг", isSalary ? currencyText(currentSalaryTotals.total) : currencyText(totals.debt), isSalary ? "поточний фонд" : "поточний контроль")}
@@ -1399,7 +1565,7 @@ function financeWorkspace(ctx, rows, operations, visibleOperations, totals) {
       ${isSalary
         ? financeSalaryWorkspace(state, icon, currencyText)
         : isReports
-          ? financeReportsWorkspace(icon, totals, currencyText)
+          ? financeReportsWorkspace(icon, rows, operations, totals, currencyText)
           : isCases
             ? financeCaseWorkspace(state, rows, currencyText, badge, icon)
             : isClients
@@ -1766,7 +1932,7 @@ function openSalaryDialog(ctx, salaryId = "") {
   document.querySelector("#salary-dialog").showModal();
 }
 
-function applySalary(ctx, formData) {
+async function applySalary(ctx, formData) {
   const { state, currencyText, renderAll, switchView, showToast } = ctx;
   const employee = formData.get("employee");
   const employeeMeta = salaryEmployeeOptions(state).find((item) => item.name === employee);
@@ -1780,7 +1946,7 @@ function applySalary(ctx, formData) {
   const salaryId = formData.get("salaryId");
   const previousRow = salaryId ? findSalaryRow(state, salaryId) : null;
   const nextId = previousRow?.custom ? previousRow.id : `salary-${Date.now()}`;
-  const row = {
+  let row = {
     id: nextId,
     name: employee,
     role: employeeMeta?.role || "Співробітник",
@@ -1799,6 +1965,17 @@ function applySalary(ctx, formData) {
     state.salaryRows = state.salaryRows.filter((item) => item.id !== salaryId && item.id !== nextId);
     if (previousRow && !previousRow.custom && !state.deletedSalaryIds.includes(previousRow.id)) {
       state.deletedSalaryIds.push(previousRow.id);
+    }
+  }
+  if (shouldUseApi(state)) {
+    try {
+      const payload = { name: row.name, role: row.role, base, bonus, status, date: dateIso, comment: row.comment };
+      // PUT only when editing an already-persisted row; base/demo rows create a new record
+      if (previousRow?.custom) payload.id = previousRow.id;
+      row = normalizeSalary(await saveSalaryToApi(payload));
+    } catch (_error) {
+      showToast("Не вдалося зберегти зарплату в базі.", "danger");
+      return;
     }
   }
   state.salaryRows.unshift(row);
@@ -1828,10 +2005,19 @@ function applySalary(ctx, formData) {
   showToast(salaryId ? `Зарплату для ${row.name} оновлено: ${currencyText(total)}.` : `Зарплату для ${row.name} додано: ${currencyText(total)}.`);
 }
 
-function deleteSalary(ctx, salaryId) {
+async function deleteSalary(ctx, salaryId) {
   const { state, renderAll, switchView, showToast } = ctx;
   const row = findSalaryRow(state, salaryId);
   if (!row) return;
+  // Persisted (custom) rows live in the backend — remove them there first.
+  if (shouldUseApi(state) && row.custom) {
+    try {
+      await deleteSalaryFromApi(salaryId);
+    } catch (_error) {
+      showToast("Не вдалося видалити нарахування з бази.", "danger");
+      return;
+    }
+  }
   state.salaryRows = (state.salaryRows || []).filter((item) => item.id !== salaryId);
   state.deletedSalaryIds = state.deletedSalaryIds || [];
   if (!row.custom && !state.deletedSalaryIds.includes(row.id)) {
@@ -1943,21 +2129,16 @@ export function renderFinanceScreen(ctx) {
   const insights = financeInsightsFromData(rows, operationsInRange);
   const debtRows = rows.filter((item) => item.debt > 0).slice(0, 4);
   const selectedCaseId = state.selectedFinanceCaseId || rows[0]?.id;
-  const hasFinanceData = operationsInRange.length > 0 || rows.some((item) => item.total > 0 || item.paid > 0 || item.debt > 0);
   const hasFinanceTotals = totals.income > 0 || totals.expenses > 0 || totals.profit > 0 || totals.expected > 0 || totals.debt > 0;
-  const demoFinanceView = state.demoDataStatus?.enabled !== false && hasFinanceData;
   const realLineChart = financeLineChartData(operationsInRange, state.financeDateStart, state.financeDateEnd, state.financeChartScale);
-  const showDemoFinanceCharts = demoFinanceView && hasFinanceTotals && !realLineChart.hasData;
-  const showRealFinanceChart = realLineChart.hasData || showDemoFinanceCharts;
-  const lineData = showDemoFinanceCharts ? FINANCE_LINE : realLineChart.values;
-  const lineMax = showDemoFinanceCharts ? 100 : realLineChart.max;
-  const lineAxis = showDemoFinanceCharts ? ["0", "200k", "400k", "600k", "800k"] : realLineChart.axis.map((value) => currencyText(value));
-  const lineLabels = showDemoFinanceCharts ? chartDates : realLineChart.labels;
-  const cashflowData = demoFinanceView ? CASHFLOW : CASHFLOW.map(([label]) => [label, 0, 0]);
+  const showRealFinanceChart = realLineChart.hasData;
+  const lineData = realLineChart.values;
+  const lineMax = realLineChart.max;
+  const lineAxis = realLineChart.axis.map((value) => currencyText(value));
+  const lineLabels = realLineChart.labels;
+  const cashflow = financeCashflowData(operationsInRange, state.financeDateStart, state.financeDateEnd);
+  const cashflowData = cashflow.rows;
   const hasIncomeStructure = insights.incomeStructure.length > 0;
-  const accountBalance = totals.profit;
-  const cashBalance = 0;
-  const availableBalance = Math.max(0, totals.profit);
   const emptyKpiDetail = "даних ще немає";
   const financeTrend = (value, trend, detail) => value > 0 && hasFinanceTotals
     ? { trend, detail }
@@ -1973,7 +2154,11 @@ export function renderFinanceScreen(ctx) {
   $("#finance").innerHTML = `
     <div class="finance-screen finance-reference">
       <div class="finance-top-row">
-        <div></div>
+        <nav class="finance-tabs" aria-label="Розділи фінансів">
+          ${FINANCE_TABS.map(([tab, label]) => `
+            <button class="${state.financeTab === tab ? "active" : ""}" type="button" data-finance-tab="${tab}">${label}</button>
+          `).join("")}
+        </nav>
         <div class="analytics-date-wrap finance-date-wrap">
           <button class="analytics-date-range finance-date-range" type="button" data-finance-date-toggle aria-expanded="${state.financeDatePickerOpen}">
             <span>${financeDate(state.financeDateStart)} - ${financeDate(state.financeDateEnd)}</span>
@@ -1996,12 +2181,6 @@ export function renderFinanceScreen(ctx) {
         </div>
         <button class="secondary" type="button" data-export-finance>${icon("file")} Експорт звіту</button>
       </div>
-
-      <nav class="finance-tabs" aria-label="Розділи фінансів">
-        ${FINANCE_TABS.map(([tab, label]) => `
-          <button class="${state.financeTab === tab ? "active" : ""}" type="button" data-finance-tab="${tab}">${label}</button>
-        `).join("")}
-      </nav>
 
       ${state.financeTab === "overview" ? `
       <section class="finance-kpi-grid">
@@ -2069,10 +2248,10 @@ export function renderFinanceScreen(ctx) {
               <h2>Останні фінансові операції <small>Фінанси по справах</small></h2>
               <span class="muted">${operationsInRange.length} записів</span>
             </div>
-            <div class="finance-operation-head is-readonly is-tree">
-              <span>Клієнт</span><span>Справа</span><span>Дата</span><span>Тип</span><span>Назва / Опис</span><span>Сума</span><span>Статус</span><span>Спосіб оплати</span>
+            <div class="finance-recent-head">
+              <span>Клієнт</span><span>Справа</span><span>Операції</span>
             </div>
-            <div class="finance-operation-list is-readonly is-tree">${operationRows(recentOperations, badge, icon, { showActions: false, clickable: true, selectedId: state.selectedFinanceOperationId, caseTree: true })}</div>
+            <div class="finance-recent-tree">${financeRecentOperationRows(recentOperations, badge)}</div>
             ${financePaginationHtml(recentPagination, "операцій")}
             <button class="case-link-button finance-view-all" type="button" data-finance-all-operations>Переглянути всі операції</button>
           </article>
@@ -2088,7 +2267,7 @@ export function renderFinanceScreen(ctx) {
             </article>
             <article class="panel finance-chart-card">
               <h2>Прогноз грошового потоку</h2>
-              ${showDemoFinanceCharts ? `
+              ${cashflow.hasData ? `
                 <div class="finance-cashflow-legend">
                   <span class="green">Очікувані надходження</span>
                   <span class="red">Очікувані витрати</span>
@@ -2115,13 +2294,13 @@ export function renderFinanceScreen(ctx) {
         <aside class="finance-right-column">
           ${financeOperationDetailCard(selectedRecentOperation, icon, badge, currencyText)}
           <article class="panel finance-status-card">
-            <h2>Фінансовий стан</h2>
+            <h2>Фінансовий стан за період</h2>
             ${[
-              ["Всього на рахунках", currencyText(accountBalance)],
-              ["Готівка в касі", currencyText(cashBalance)],
+              ["Дохід за період", currencyText(totals.income)],
+              ["Витрати за період", currencyText(totals.expenses)],
               ["Заборгованість клієнтів", currencyText(totals.debt)]
             ].map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("")}
-            <div class="available"><span>Доступно до використання</span><strong>${currencyText(availableBalance)}</strong></div>
+            <div class="available"><span>Чистий прибуток за період</span><strong>${currencyText(totals.profit)}</strong></div>
           </article>
 
           <article class="panel finance-debt-card">
@@ -2131,7 +2310,7 @@ export function renderFinanceScreen(ctx) {
               <button type="button" data-finance-open-case="${item.id}">
                 <span>${item.client}</span>
                 <strong>${currencyText(item.debt)}</strong>
-                <small>${index === 0 ? "15 днів прострочки" : index === 1 ? "7 днів прострочки" : index === 2 ? "3 дні прострочки" : "Без прострочки"}</small>
+                <small>${debtOverdueLabel(item)}</small>
               </button>
             `).join("")}
             <button class="case-link-button finance-all-debts" type="button" data-finance-all-debts>Переглянути всі борги</button>

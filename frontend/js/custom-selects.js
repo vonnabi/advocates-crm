@@ -100,4 +100,14 @@ export function setupScreenCustomSelects(root = document, selector = "select") {
       if (event.key === "Escape") closeScreenCustomSelects(targetRoot);
     });
   }
+  if (!document.documentElement.dataset.screenSelectsDocumentBound) {
+    document.documentElement.dataset.screenSelectsDocumentBound = "true";
+    document.addEventListener("click", (event) => {
+      if (event.target.closest(".screen-custom-select")) return;
+      closeScreenCustomSelects(document);
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeScreenCustomSelects(document);
+    });
+  }
 }

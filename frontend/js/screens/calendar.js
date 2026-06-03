@@ -79,6 +79,14 @@ function closeCalendarSelectMenus(except = null) {
   });
 }
 
+function closeCalendarDayMenus(except = null) {
+  document.querySelectorAll(".calendar-day-more-wrap.is-open").forEach((shell) => {
+    if (shell === except) return;
+    shell.classList.remove("is-open");
+    shell.querySelector("[data-calendar-more]")?.setAttribute("aria-expanded", "false");
+  });
+}
+
 function syncCalendarCustomSelect(select) {
   const shell = select.nextElementSibling?.classList?.contains("document-custom-select")
     ? select.nextElementSibling
@@ -193,6 +201,20 @@ function calendarSortValue(event) {
   return `${event.date} ${event.time || "23:59"}`;
 }
 
+function calendarDistanceFrom(dateIso, anchorDate) {
+  return Math.abs(dateFromIso(dateIso) - anchorDate);
+}
+
+function calendarAutoFocusEvent(events, activeDate) {
+  const selected = events.find((event) => event.id === state.selectedEventId);
+  if (selected) return selected;
+  const today = dateFromIso(calendarToday);
+  const upcoming = events
+    .filter((event) => dateFromIso(event.date) >= today)
+    .sort((a, b) => calendarSortValue(a).localeCompare(calendarSortValue(b)));
+  return upcoming[0] || [...events].sort((a, b) => calendarDistanceFrom(a.date, activeDate) - calendarDistanceFrom(b.date, activeDate))[0];
+}
+
 function calendarTimeLabel(event) {
   return event.source === "task" ? "" : event.time;
 }
@@ -304,7 +326,7 @@ export function calendarEntries(ctx = null) {
 function renderCalendar() {
   const entries = calendarEntries();
   const mode = state.calendarMode || "month";
-  const activeDate = dateFromIso(state.calendarDate || calendarToday);
+  let activeDate = dateFromIso(state.calendarDate || calendarToday);
   const query = (state.calendarQuery || "").toLowerCase().trim();
   const filter = state.calendarFilter || "all";
   const clientFilter = state.calendarClientFilter || "all";
@@ -331,11 +353,30 @@ function renderCalendar() {
     const byOverdue = !state.calendarOverdueOnly || event.status === "Просрочено" || dateFromIso(event.date) < dateFromIso(calendarToday);
     return byQuery && byFilter && byClient && byCase && byResponsible && byStatus && byAuthority && byOverdue;
   });
-  const calendarDays = calendarViewDays(activeDate, mode);
-  const visibleIso = new Set(calendarDays.map((cell) => cell.iso));
-  const visibleEvents = mode === "list"
+  let calendarDays = calendarViewDays(activeDate, mode);
+  let visibleIso = new Set(calendarDays.map((cell) => cell.iso));
+  let visibleEvents = mode === "list"
     ? [...filtered].sort((a, b) => calendarSortValue(a).localeCompare(calendarSortValue(b)))
     : filtered.filter((event) => visibleIso.has(event.date));
+  const activeMonthKey = (state.calendarDate || calendarToday).slice(0, 7);
+  const todayMonthKey = calendarToday.slice(0, 7);
+  const shouldAutoFocusCalendar =
+    mode !== "list" &&
+    !visibleEvents.length &&
+    filtered.length &&
+    (!state.calendarDatePinned || activeMonthKey === todayMonthKey);
+  if (shouldAutoFocusCalendar) {
+    const focusEvent = calendarAutoFocusEvent(filtered, activeDate);
+    if (focusEvent?.date) {
+      state.calendarDate = focusEvent.date;
+      state.calendarDatePinned = false;
+      state.selectedEventId = focusEvent.id;
+      activeDate = dateFromIso(focusEvent.date);
+      calendarDays = calendarViewDays(activeDate, mode);
+      visibleIso = new Set(calendarDays.map((cell) => cell.iso));
+      visibleEvents = filtered.filter((event) => visibleIso.has(event.date));
+    }
+  }
   const upcoming = [...filtered].sort((a, b) => calendarSortValue(a).localeCompare(calendarSortValue(b))).slice(0, 4);
   const typeStats = calendarEventTypes().map((type) => ({
     type,
@@ -418,14 +459,27 @@ function renderCalendar() {
             <div class="calendar-grid ${mode}-view" style="${gridStyle}">
               ${calendarDays.map((cell) => {
                 const events = filtered.filter((event) => event.date === cell.iso);
+                const visibleCellEvents = mode === "month" ? events.slice(0, 1) : events;
+                const hiddenCellEvents = mode === "month" ? events.slice(visibleCellEvents.length) : [];
                 return `<div class="day ${cell.current ? "" : "muted-day"}">
                   <div class="day-num">${cell.day}</div>
-                ${events.map((event) => {
+                ${visibleCellEvents.map((event) => {
                   const client = clientById(event.clientId);
                   const eventSubline = event.caseId ? `Справа №${event.caseId}` : client?.name || "Клієнт";
                   const timeLabel = calendarTimeLabel(event);
-                  return `<button class="event-chip ${eventClass(event)} ${event.id === selected?.id ? "selected" : ""}" data-event="${event.id}">${timeLabel ? `<strong>${timeLabel}</strong> ` : ""}${event.title}<br><span>${eventSubline}</span></button>`;
+                  return `<button class="event-chip ${eventClass(event)} ${event.id === selected?.id ? "selected" : ""}" data-event="${event.id}">${timeLabel ? `<strong>${escapeHtml(timeLabel)}</strong>` : ""}<span class="event-chip-title">${escapeHtml(event.title)}</span><span class="event-chip-meta">${escapeHtml(eventSubline)}</span></button>`;
                 }).join("")}
+                ${hiddenCellEvents.length ? `<div class="calendar-day-more-wrap">
+                  <button type="button" class="calendar-day-more" data-calendar-more="${cell.iso}" aria-expanded="false" aria-label="Показати ще ${hiddenCellEvents.length} подій">+${hiddenCellEvents.length}<span>⌄</span></button>
+                  <div class="calendar-day-popover" role="list">
+                    ${events.map((event) => {
+                      const client = clientById(event.clientId);
+                      const eventSubline = event.caseId ? `Справа №${event.caseId}` : client?.name || "Клієнт";
+                      const timeLabel = calendarTimeLabel(event);
+                      return `<button type="button" class="calendar-popover-event ${eventClass(event)}" data-event="${event.id}" role="listitem">${timeLabel ? `<strong>${escapeHtml(timeLabel)}</strong>` : ""}<span class="event-chip-title">${escapeHtml(event.title)}</span><span class="event-chip-meta">${escapeHtml(eventSubline)}</span></button>`;
+                    }).join("")}
+                  </div>
+                </div>` : ""}
               </div>`;
             }).join("")}
             </div>
@@ -458,11 +512,11 @@ function renderCalendar() {
           <div class="panel" id="event-card"></div>
           <div class="panel calendar-reminders">
             <div class="calendar-reminders-head"><h2>Нагадування</h2><button class="ghost" type="button" data-send-selected-reminder>${icon("bell")} Нагадати зараз</button></div>
-            ${selected ? (selectedReminderRows.length ? selectedReminderRows.map((row) => `<div class="reminder-row">${icon(row.channel === "SMS" ? "mail" : row.channel === "CRM" ? "bell" : "telegram")}<div><strong>${row.channel}</strong><span>${row.before} до події (${row.scheduledAt})</span><small>${row.recipient}</small></div><em class="reminder-status ${row.tone}">${row.status}</em></div>`).join("") : `<p class="muted">Нагадування вимкнено для цієї події.</p>`) : `<p class="muted">Виберіть подію, щоб побачити нагадування.</p>`}
+            ${selected ? (selectedReminderRows.length ? selectedReminderRows.map((row) => `<div class="reminder-row">${icon(row.channel === "SMS" ? "mail" : row.channel === "CRM" ? "bell" : "telegram")}<div><strong>${row.channel}</strong><span>${row.before} до події (${row.scheduledAt})</span><small>${row.recipient}</small></div><em class="reminder-status ${row.tone}">${row.status}</em></div>`).join("") : `<p class="muted">Нагадування вимкнено.</p>`) : `<p class="muted">Виберіть подію, щоб побачити нагадування.</p>`}
           </div>
           <div class="panel calendar-reminders active-reminders">
             <h2>Нагадування активні</h2>
-            <p class="muted">${selected && selectedReminderRows.length ? `Для події «${selected.title}» активні вибрані канали.` : "Для вибраної події активних нагадувань немає."}</p>
+            <p class="muted">${selected && selectedReminderRows.length ? `Активні канали для події «${selected.title}».` : "Активних нагадувань немає."}</p>
             <div class="active-reminder-icons">
               ${selectedReminderRows.length ? selectedReminderRows.map((row) => `<span>${icon(row.channel === "SMS" ? "mail" : row.channel === "CRM" ? "bell" : "telegram")} ${row.channel}</span>`).join("") : `<span>${icon("bell")} Вимкнено</span>`}
             </div>
@@ -479,6 +533,17 @@ function renderCalendar() {
       renderCalendar();
     });
   });
+  document.querySelectorAll("[data-calendar-more]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const shell = button.closest(".calendar-day-more-wrap");
+      if (!shell) return;
+      const willOpen = !shell.classList.contains("is-open");
+      closeCalendarDayMenus(willOpen ? shell : null);
+      shell.classList.toggle("is-open", willOpen);
+      button.setAttribute("aria-expanded", String(willOpen));
+    });
+  });
   document.querySelectorAll("[data-calendar-mode]").forEach((button) => button.addEventListener("click", () => {
     state.calendarMode = button.dataset.calendarMode;
     state.calendarPickerOpen = false;
@@ -492,12 +557,21 @@ function renderCalendar() {
     state.calendarMode = "list";
     renderCalendar();
   });
+  document.querySelectorAll("[data-calendar-day]").forEach((button) => button.addEventListener("click", () => {
+    state.calendarDate = button.dataset.calendarDay;
+    state.calendarDatePinned = true;
+    state.calendarMode = "day";
+    const dayEvents = filtered.filter((event) => event.date === button.dataset.calendarDay);
+    if (dayEvents[0]) state.selectedEventId = dayEvents[0].id;
+    renderCalendar();
+  }));
   document.querySelector("[data-send-selected-reminder]")?.addEventListener("click", () => {
     if (!selected || selected.source === "task") return;
     sendManualReminder(selected.id);
   });
   document.querySelector("[data-calendar-today]")?.addEventListener("click", () => {
     state.calendarDate = todayIso();
+    state.calendarDatePinned = true;
     state.calendarPickerOpen = false;
     renderCalendar();
   });
@@ -511,6 +585,7 @@ function renderCalendar() {
     } else {
       state.calendarDate = isoFromDate(new Date(current.getFullYear(), current.getMonth() + direction, Math.min(current.getDate(), 28)));
     }
+    state.calendarDatePinned = true;
     state.calendarPickerOpen = false;
     renderCalendar();
   }));
@@ -521,17 +596,20 @@ function renderCalendar() {
   document.querySelectorAll("[data-calendar-month]").forEach((button) => button.addEventListener("click", () => {
     const current = dateFromIso(state.calendarDate || calendarToday);
     state.calendarDate = isoFromDate(new Date(current.getFullYear(), Number(button.dataset.calendarMonth), Math.min(current.getDate(), 28)));
+    state.calendarDatePinned = true;
     state.calendarPickerOpen = false;
     renderCalendar();
   }));
   document.querySelectorAll("[data-calendar-year]").forEach((button) => button.addEventListener("click", () => {
     const current = dateFromIso(state.calendarDate || calendarToday);
     state.calendarDate = isoFromDate(new Date(Number(button.dataset.calendarYear), current.getMonth(), Math.min(current.getDate(), 28)));
+    state.calendarDatePinned = true;
     state.calendarPickerOpen = false;
     renderCalendar();
   }));
   $("#calendar-search")?.addEventListener("input", (event) => {
     state.calendarQuery = event.currentTarget.value;
+    state.calendarDatePinned = false;
     renderCalendar();
     requestAnimationFrame(() => {
       const input = $("#calendar-search");
@@ -542,26 +620,32 @@ function renderCalendar() {
   });
   $("#calendar-filter")?.addEventListener("change", (event) => {
     state.calendarFilter = event.currentTarget.value;
+    state.calendarDatePinned = false;
     renderCalendar();
   });
   $("#calendar-client-filter")?.addEventListener("change", (event) => {
     state.calendarClientFilter = event.currentTarget.value;
+    state.calendarDatePinned = false;
     renderCalendar();
   });
   $("#calendar-case-filter")?.addEventListener("change", (event) => {
     state.calendarCaseFilter = event.currentTarget.value;
+    state.calendarDatePinned = false;
     renderCalendar();
   });
   $("#calendar-responsible-filter")?.addEventListener("change", (event) => {
     state.calendarResponsibleFilter = event.currentTarget.value;
+    state.calendarDatePinned = false;
     renderCalendar();
   });
   $("#calendar-status-filter")?.addEventListener("change", (event) => {
     state.calendarStatusFilter = event.currentTarget.value;
+    state.calendarDatePinned = false;
     renderCalendar();
   });
   $("#calendar-authority-filter")?.addEventListener("input", (event) => {
     state.calendarAuthorityFilter = event.currentTarget.value;
+    state.calendarDatePinned = false;
     renderCalendar();
     requestAnimationFrame(() => {
       const input = $("#calendar-authority-filter");
@@ -572,6 +656,7 @@ function renderCalendar() {
   });
   $("#calendar-overdue-filter")?.addEventListener("change", (event) => {
     state.calendarOverdueOnly = event.currentTarget.checked;
+    state.calendarDatePinned = false;
     renderCalendar();
   });
   document.querySelector("[data-calendar-reset-filters]")?.addEventListener("click", () => {
@@ -584,6 +669,7 @@ function renderCalendar() {
     state.calendarAuthorityFilter = "";
     state.calendarOverdueOnly = false;
     state.calendarMode = "month";
+    state.calendarDatePinned = false;
     state.calendarPickerOpen = false;
     renderCalendar();
   });
@@ -594,6 +680,10 @@ function renderCalendar() {
     calendarRoot.addEventListener("click", (event) => {
       if (event.target.closest(".calendar-filter-field .document-custom-select")) return;
       closeCalendarSelectMenus();
+      if (!event.target.closest(".calendar-day-more-wrap")) closeCalendarDayMenus();
+    });
+    calendarRoot.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeCalendarDayMenus();
     });
   }
 }
@@ -671,7 +761,7 @@ function renderEventCard(id) {
       <p class="muted event-description">${event.description || "Опис події ще не додано."}</p>
       <div class="event-reminder-log">
         <strong>Журнал нагадувань</strong>
-        ${(event.reminderLog || []).map((row) => `<span>${row.date} · ${row.text}</span>`).join("") || `<span>Автоматичні нагадування ще не відправлялись.</span>`}
+        ${(event.reminderLog || []).map((row) => `<span>${row.date} · ${row.text}</span>`).join("") || `<span>Нагадування ще не відправлялись.</span>`}
       </div>
       <div class="event-card-actions" id="event-card-actions">
         <button class="secondary" data-edit-calendar-event="${event.id}">${icon("edit")} Редагувати</button>

@@ -52,7 +52,10 @@ export function setupClientForm({ state, $, clientById, renderAll, switchView, s
       return;
     }
 
-    const nextId = Math.max(...state.clients.map((client) => client.id)) + 1;
+    const numericClientIds = state.clients
+      .map((client) => Number(client.id))
+      .filter(Number.isFinite);
+    const nextId = (numericClientIds.length ? Math.max(...numericClientIds) : 0) + 1;
     let newClient = {
       id: nextId,
       name: form.get("name"),

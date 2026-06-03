@@ -2,6 +2,7 @@ import { deleteCaseFromApi, saveCaseToApi, saveTaskToApi, shouldUseApi } from ".
 import { setupScreenCustomSelects } from "../custom-selects.js";
 import { normalizeCase, normalizeTask } from "../state.js";
 import { copyDocumentInCase, openDocumentArchiveDialog, openDocumentSendDialog } from "./documents.js";
+import { inferCaseDocumentFolder } from "../case-documents.js";
 
 let currentContext;
 let state;
@@ -56,16 +57,6 @@ function demoDisplayDate(dayMonth) {
 
 function isCaseCompleted(item) {
   return completedCaseStatuses.has(item?.status);
-}
-
-function inferCaseDocumentFolderName(doc = {}, fallback = "Інші документи") {
-  const haystack = [doc.type, doc.name, doc.folder, fallback].map((value) => String(value || "").toLowerCase()).join(" ");
-  if (/клопотан|клопа/.test(haystack)) return "Клопотання";
-  if (/адвокатськ.*запит|запит|витребуван/.test(haystack)) return "Запити";
-  if (/ухвал|відповід|рішенн|постанова/.test(haystack)) return "Відповіді та ухвали";
-  if (/позов|позовн|заява/.test(haystack)) return "Позови";
-  if (fallback && !["Позови", "Клопотання", "Запити", "Відповіді та ухвали", "Інші документи"].includes(fallback)) return fallback;
-  return fallback || "Інші документи";
 }
 
 function isProceduralCaseDocument(doc = {}, folderName = "") {
@@ -743,8 +734,8 @@ function renderCaseList() {
             <div class="case-pagination-left">
               <span>Показано ${sortedCases.length ? pageStart + 1 : 0}-${Math.min(pageStart + pageSize, sortedCases.length)} з ${sortedCases.length} справ</span>
               <select id="case-page-size">
-                ${[6, 10, 20, 30].map((size) => `<option value="${size}" ${String(size) === selectedPageSize ? "selected" : ""}>${size} на сторінці</option>`).join("")}
-                <option value="all" ${selectedPageSize === "all" ? "selected" : ""}>Усі справи</option>
+                ${[6, 10, 20, 30].map((size) => `<option value="${size}" ${String(size) === selectedPageSize ? "selected" : ""}>1-${size}</option>`).join("")}
+                <option value="all" ${selectedPageSize === "all" ? "selected" : ""}>Усі</option>
               </select>
             </div>
             <div ${selectedPageSize === "all" ? "hidden" : ""}>
@@ -1421,7 +1412,7 @@ export function caseFolders(item) {
     return null;
   };
   (item.documents || []).forEach((doc) => {
-    const folderName = inferCaseDocumentFolderName(doc, doc.folder || doc.folderName || "Інші документи");
+    const folderName = inferCaseDocumentFolder(doc, doc.folder || doc.folderName || "Інші документи");
     if (hasFileForDocument(doc, folders, folderName)) return;
     folders.forEach((folder) => {
       folder.files = (folder.files || []).filter((file) =>

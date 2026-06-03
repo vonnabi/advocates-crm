@@ -1,19 +1,9 @@
-import { deleteDocumentFromApi, saveDocumentToApi, saveMailingCampaignToApi, sendMailingCampaignInApi, shouldUseApi } from "../api.js";
+import { deleteDocumentFromApi, saveArchiveFoldersToApi, saveDocumentToApi, saveMailingCampaignToApi, sendMailingCampaignInApi, shouldUseApi } from "../api.js";
 import { normalizeDocument } from "../state.js";
+import { inferCaseDocumentFolder } from "../case-documents.js";
 
-const CASE_DOCUMENT_FOLDER_NAMES = ["Позови", "Клопотання", "Запити", "Відповіді та ухвали", "Інші документи"];
 const PROCEDURAL_DOCUMENT_FOLDERS = new Set(["Позови", "Клопотання", "Запити", "Відповіді та ухвали"]);
 const TECHNICAL_DOCUMENT_TYPES = new Set(["doc", "docx", "pdf", "txt", "rtf", "odt", "google docs", "google drive", "crm файл"]);
-
-function inferCaseDocumentFolder(doc = {}, fallback = "Інші документи") {
-  if (fallback && !CASE_DOCUMENT_FOLDER_NAMES.includes(fallback)) return fallback;
-  const haystack = [doc.type, doc.name, doc.folder, fallback].map((value) => String(value || "").toLowerCase()).join(" ");
-  if (/клопотан|клопа/.test(haystack)) return "Клопотання";
-  if (/адвокатськ.*запит|запит|витребуван/.test(haystack)) return "Запити";
-  if (/ухвал|відповід|рішенн|постанова/.test(haystack)) return "Відповіді та ухвали";
-  if (/позов|позовн|заява/.test(haystack)) return "Позови";
-  return CASE_DOCUMENT_FOLDER_NAMES.includes(fallback) ? "Інші документи" : fallback || "Інші документи";
-}
 
 function inferCaseDocumentType(doc = {}, folderName = "") {
   const folder = inferCaseDocumentFolder(doc, folderName);
@@ -1633,6 +1623,7 @@ export function renderDocumentsScreen(ctx) {
         else storageArchiveFolders.unshift(folder);
         state.documentStorageArchiveFolderId = folder.id;
       }
+      if (shouldUseApi(state)) saveArchiveFoldersToApi(state.documentArchiveFolders || []).catch(() => {});
       folderDialog.close();
       renderDocumentsScreen(ctx);
       showToast("Архівну папку збережено.");
@@ -1670,6 +1661,7 @@ export function renderDocumentsScreen(ctx) {
         if (state.documentStorageArchiveFolderId === folderId || findArchiveFolder([target], state.documentStorageArchiveFolderId)) {
           state.documentStorageArchiveFolderId = "all";
         }
+        if (shouldUseApi(state)) saveArchiveFoldersToApi(state.documentArchiveFolders || []).catch(() => {});
         archiveDeleteDialog.close();
         renderDocumentsScreen(ctx);
         showToast("Архівну папку видалено.");
