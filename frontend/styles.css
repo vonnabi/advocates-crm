@@ -3664,6 +3664,16 @@ button {
 .dashboard-status-icon .ui-icon {
   width: 12px;
   height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dashboard-status-icon .ui-icon svg {
+  /* Force a square 12x12 — percentage height was resolving to 16px and the svg
+     spilled below the circle (overflow is visible), pushing the icon off-center. */
+  width: 12px !important;
+  height: 12px !important;
   display: block;
 }
 
