@@ -15,3 +15,9 @@ materials/
 data/source_whatsapp_chat.txt
 data/exports/
 design/screenshots/
+
+# Local editor / tooling / scratch artifacts.
+.obsidian/
+.playwright-cli/
+output/
+tmp/

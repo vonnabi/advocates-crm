@@ -1,0 +1,223 @@
+:root {
+  /* Typography */
+  --font-family-sans: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+
+  /* Compact legal SaaS scale. Change these values here to resize the whole CRM. */
+  --font-size-display: clamp(20px, 1.25vw, 24px);
+  --font-size-page-title: clamp(17px, 1.05vw, 22px);
+  --font-size-section-title: clamp(14px, .85vw, 16px);
+  --font-size-card-title: clamp(12.5px, .72vw, 14px);
+  --font-size-modal-title: clamp(15px, .95vw, 17px);
+  --font-size-table-title: var(--font-size-section-title);
+  --font-size-body-lg: clamp(13px, .75vw, 14px);
+  --font-size-body: clamp(12px, .68vw, 13px);
+  --font-size-body-sm: clamp(10.5px, .58vw, 11.5px);
+  --font-size-body-xs: 9.5px;
+  --font-size-caption: clamp(9.5px, .5vw, 10.5px);
+  --font-size-caption-xs: 8.5px;
+  --font-size-label: clamp(10.5px, .56vw, 11.5px);
+  --font-size-button: clamp(10.5px, .6vw, 12px);
+  --font-size-sidebar: clamp(11px, .62vw, 12px);
+  --font-size-tab: clamp(10.5px, .58vw, 11.5px);
+  --font-size-badge: clamp(9px, .5vw, 10px);
+  --font-size-input: clamp(11px, .62vw, 12px);
+  --font-size-placeholder: clamp(10.5px, .56vw, 11.5px);
+  --font-size-control: var(--font-size-button);
+  --font-size-table-header: clamp(9.5px, .52vw, 10.5px);
+  --font-size-table-cell: clamp(10.75px, .6vw, 11.75px);
+  --font-size-kpi-value: clamp(17px, 1vw, 22px);
+  --font-size-widget-value: clamp(13px, .78vw, 15px);
+  --font-size-menu: var(--font-size-button);
+  --font-size-action: var(--font-size-button);
+  --font-size-right-panel-title: var(--font-size-card-title);
+  --font-size-right-panel-value: var(--font-size-body-lg);
+  --font-size-chart-label: var(--font-size-caption);
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-weight-black: 800;
+
+  --line-height-tight: 1.16;
+  --line-height-snug: 1.25;
+  --line-height-normal: 1.38;
+  --line-height-relaxed: 1.5;
+
+  --letter-spacing-tight: 0;
+  --letter-spacing-normal: 0;
+  --letter-spacing-wide: .01em;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Radius */
+  --radius-xs: 5px;
+  --radius-sm: 7px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-pill: 999px;
+
+  /* Component sizes */
+  --size-control-height: 30px;
+  --size-control-height-touch: 44px;
+  --size-button-height: 30px;
+  --size-menu-row-height: 28px;
+  --size-icon-xs: 12px;
+  --size-icon-sm: 14px;
+  --size-icon-md: 16px;
+  --size-icon-lg: 18px;
+  --icon-size-xs: var(--size-icon-xs);
+  --icon-size-sm: var(--size-icon-sm);
+  --icon-size-md: var(--size-icon-md);
+  --icon-size-lg: var(--size-icon-lg);
+  --icon-size-xl: 22px;
+  --size-icon-container-sm: 26px;
+  --size-icon-container-md: 30px;
+  --size-icon-container-lg: 36px;
+  --icon-container-sm: var(--size-icon-container-sm);
+  --icon-container-md: var(--size-icon-container-md);
+  --icon-container-lg: var(--size-icon-container-lg);
+  --icon-stroke-width: 2;
+
+  /* Unified CRM aliases */
+  --crm-page-title-size: var(--font-size-page-title);
+  --crm-section-title-size: var(--font-size-section-title);
+  --crm-card-title-size: var(--font-size-card-title);
+  --crm-description-size: var(--font-size-body);
+  --crm-meta-size: var(--font-size-caption);
+  --crm-kpi-value-size: var(--font-size-kpi-value);
+  --crm-control-size: var(--font-size-button);
+  --crm-table-size: var(--font-size-table-cell);
+  --crm-panel-padding: var(--space-3);
+  --crm-card-gap: var(--space-2);
+}
+
+@media (max-width: 1023px) {
+  :root {
+    --font-size-page-title: clamp(17px, 4.2vw, 20px);
+    --font-size-section-title: clamp(14px, 3.5vw, 16px);
+    --font-size-card-title: clamp(12px, 3vw, 14px);
+    --font-size-body-lg: clamp(12px, 3vw, 14px);
+    --font-size-body: clamp(11.5px, 2.9vw, 13px);
+    --font-size-body-sm: clamp(10px, 2.5vw, 11.5px);
+    --font-size-caption: clamp(9px, 2.25vw, 10.5px);
+    --font-size-label: clamp(10px, 2.5vw, 11.5px);
+    --font-size-button: clamp(10.5px, 2.6vw, 12px);
+    --font-size-sidebar: clamp(11px, 2.75vw, 12px);
+    --font-size-tab: clamp(10px, 2.5vw, 11.5px);
+    --font-size-badge: clamp(9px, 2.25vw, 10px);
+    --font-size-input: clamp(11px, 2.75vw, 12px);
+    --font-size-table-header: clamp(9px, 2.25vw, 10.5px);
+    --font-size-table-cell: clamp(10.5px, 2.65vw, 12px);
+    --font-size-kpi-value: clamp(16px, 4vw, 20px);
+    --font-size-widget-value: clamp(12px, 3vw, 14px);
+    --crm-panel-padding: var(--space-3);
+    --crm-card-gap: var(--space-3);
+  }
+}
+
+.text-page-title {
+  font-size: var(--font-size-page-title);
+  line-height: var(--line-height-tight);
+  font-weight: var(--font-weight-black);
+}
+
+.text-section-title {
+  font-size: var(--font-size-section-title);
+  line-height: var(--line-height-tight);
+  font-weight: var(--font-weight-black);
+}
+
+.text-card-title {
+  font-size: var(--font-size-card-title);
+  line-height: var(--line-height-tight);
+  font-weight: var(--font-weight-bold);
+}
+
+.text-body {
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-normal);
+  font-weight: var(--font-weight-medium);
+}
+
+.text-body-lg {
+  font-size: var(--font-size-body-lg);
+  line-height: var(--line-height-normal);
+  font-weight: var(--font-weight-medium);
+}
+
+.text-body-sm {
+  font-size: var(--font-size-body-sm);
+  line-height: var(--line-height-normal);
+  font-weight: var(--font-weight-medium);
+}
+
+.text-caption {
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-normal);
+  font-weight: var(--font-weight-medium);
+}
+
+.text-caption-xs {
+  font-size: var(--font-size-caption-xs);
+  line-height: var(--line-height-normal);
+  font-weight: var(--font-weight-medium);
+}
+
+.text-label {
+  font-size: var(--font-size-label);
+  line-height: var(--line-height-tight);
+  font-weight: var(--font-weight-bold);
+}
+
+.text-button {
+  font-size: var(--font-size-button);
+  line-height: var(--line-height-tight);
+  font-weight: var(--font-weight-bold);
+}
+
+.text-sidebar {
+  font-size: var(--font-size-sidebar);
+  line-height: var(--line-height-snug);
+  font-weight: var(--font-weight-semibold);
+}
+
+.text-tab {
+  font-size: var(--font-size-tab);
+  line-height: var(--line-height-snug);
+  font-weight: var(--font-weight-semibold);
+}
+
+.text-badge {
+  font-size: var(--font-size-badge);
+  line-height: var(--line-height-tight);
+  font-weight: var(--font-weight-semibold);
+}
+
+.text-input {
+  font-size: var(--font-size-input);
+  line-height: var(--line-height-normal);
+  font-weight: var(--font-weight-medium);
+}
+
+.text-table-header {
+  font-size: var(--font-size-table-header);
+  line-height: var(--line-height-tight);
+  font-weight: var(--font-weight-black);
+}
+
+.text-table-cell {
+  font-size: var(--font-size-table-cell);
+  line-height: var(--line-height-normal);
+  font-weight: var(--font-weight-medium);
+}
