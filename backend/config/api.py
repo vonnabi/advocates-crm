@@ -23,7 +23,7 @@ from django.db.models import Q, Sum
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.urls import reverse
 from django.utils import timezone
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_http_methods
 
 from apps.accounts.models import CRMSettings, UserProfile
@@ -2407,7 +2407,6 @@ def logout_api(request):
     return json_response(session_payload(request))
 
 
-@csrf_exempt
 @require_http_methods(["POST", "OPTIONS"])
 def change_password_api(request):
     if request.method == "OPTIONS":
@@ -2439,7 +2438,6 @@ def change_password_api(request):
     return json_response(session_payload(request))
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST", "OPTIONS"])
 def users_api(request):
     if request.method == "OPTIONS":
@@ -2454,7 +2452,6 @@ def users_api(request):
     return json_response({"results": [serialize_system_user(user) for user in system_users_queryset()]})
 
 
-@csrf_exempt
 @require_http_methods(["GET", "PUT", "PATCH", "DELETE", "OPTIONS"])
 def user_detail_api(request, user_id):
     if request.method == "OPTIONS":
@@ -2489,7 +2486,6 @@ def session_api(request):
     return json_response(session_payload(request))
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST", "OPTIONS"])
 def clients_api(request):
     if request.method == "OPTIONS":
@@ -2505,7 +2501,6 @@ def clients_api(request):
     return json_response({"results": [serialize_client(item) for item in items]})
 
 
-@csrf_exempt
 @require_http_methods(["GET", "PUT", "PATCH", "DELETE", "OPTIONS"])
 def client_detail_api(request, client_id):
     if request.method == "OPTIONS":
@@ -2543,7 +2538,6 @@ def client_detail_api(request, client_id):
     return json_response(serialize_client(updated))
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST", "OPTIONS"])
 def client_communications_api(request, client_id):
     if request.method == "OPTIONS":
@@ -2565,7 +2559,6 @@ def client_communications_api(request, client_id):
     return json_response({"results": [serialize_client_communication(item) for item in items]})
 
 
-@csrf_exempt
 @require_http_methods(["GET", "PUT", "PATCH", "DELETE", "OPTIONS"])
 def client_communication_detail_api(request, communication_id):
     if request.method == "OPTIONS":
@@ -2593,7 +2586,6 @@ def client_communication_detail_api(request, communication_id):
     return json_response(serialize_client_communication(updated))
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST", "OPTIONS"])
 def cases_api(request):
     if request.method == "OPTIONS":
@@ -2615,7 +2607,6 @@ def cases_api(request):
     return json_response({"results": [serialize_case(item, include_finance=include_finance) for item in items]})
 
 
-@csrf_exempt
 @require_http_methods(["GET", "PUT", "PATCH", "DELETE", "OPTIONS"])
 def case_detail_api(request, case_number):
     if request.method == "OPTIONS":
@@ -2655,7 +2646,6 @@ def case_detail_api(request, case_number):
     return json_response(serialize_case(updated, include_finance=include_finance))
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST", "OPTIONS"])
 def tasks_api(request):
     if request.method == "OPTIONS":
@@ -2675,7 +2665,6 @@ def tasks_api(request):
     return json_response({"results": [serialize_task(item) for item in items]})
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST", "OPTIONS"])
 def documents_api(request):
     if request.method == "OPTIONS":
@@ -2695,7 +2684,6 @@ def documents_api(request):
     return json_response({"results": [serialize_document(item, request) for item in items]})
 
 
-@csrf_exempt
 @require_http_methods(["GET", "PUT", "PATCH", "DELETE", "OPTIONS"])
 def document_detail_api(request, document_id):
     if request.method == "OPTIONS":
@@ -2732,7 +2720,6 @@ def document_detail_api(request, document_id):
     return json_response(serialize_document(updated, request))
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST", "OPTIONS"])
 def document_file_api(request, document_id):
     if request.method == "OPTIONS":
@@ -2799,7 +2786,6 @@ def document_onlyoffice_callback_api(request, document_id):
         return json_response({"error": 1}, status=500)
 
 
-@csrf_exempt
 @require_http_methods(["GET", "PUT", "PATCH", "DELETE", "OPTIONS"])
 def task_detail_api(request, task_id):
     if request.method == "OPTIONS":
@@ -2831,7 +2817,6 @@ def task_detail_api(request, task_id):
     return json_response(serialize_task(updated))
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST", "OPTIONS"])
 def events_api(request):
     if request.method == "OPTIONS":
@@ -2852,7 +2837,6 @@ def events_api(request):
     return json_response({"results": [serialize_event(item) for item in items]})
 
 
-@csrf_exempt
 @require_http_methods(["GET", "PUT", "PATCH", "DELETE", "OPTIONS"])
 def event_detail_api(request, event_id):
     if request.method == "OPTIONS":
@@ -2886,7 +2870,6 @@ def event_detail_api(request, event_id):
     return json_response(serialize_event(updated))
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST", "OPTIONS"])
 def finance_operations_api(request):
     if request.method == "OPTIONS":
@@ -2917,7 +2900,6 @@ def finance_operations_api(request):
     return json_response({"results": finance_operations_payload(finance_cases_scope(request))})
 
 
-@csrf_exempt
 @require_http_methods(["DELETE", "OPTIONS"])
 def finance_operation_detail_api(request, operation_id):
     if request.method == "OPTIONS":
@@ -2952,7 +2934,6 @@ def finance_summary_api(request):
     return json_response(finance_summary_payload(finance_cases_scope(request)))
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST", "OPTIONS"])
 def salaries_api(request):
     if request.method == "OPTIONS":
@@ -2970,7 +2951,6 @@ def salaries_api(request):
     return json_response({"results": [serialize_salary(item) for item in Salary.objects.all()]})
 
 
-@csrf_exempt
 @require_http_methods(["PUT", "PATCH", "DELETE", "OPTIONS"])
 def salary_detail_api(request, salary_id):
     if request.method == "OPTIONS":
@@ -2992,7 +2972,6 @@ def salary_detail_api(request, salary_id):
     return json_response(serialize_salary(updated))
 
 
-@csrf_exempt
 @require_http_methods(["GET", "PUT", "POST", "OPTIONS"])
 def document_archive_folders_api(request):
     if request.method == "OPTIONS":
@@ -3018,7 +2997,6 @@ def mailings_api(request):
     return json_response(mailing_payload())
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST", "OPTIONS"])
 def mailing_templates_api(request):
     if request.method == "OPTIONS":
@@ -3033,7 +3011,6 @@ def mailing_templates_api(request):
     return json_response({"results": mailing_payload()["templates"]})
 
 
-@csrf_exempt
 @require_http_methods(["GET", "PUT", "PATCH", "DELETE", "OPTIONS"])
 def mailing_template_detail_api(request, template_id):
     if request.method == "OPTIONS":
@@ -3057,7 +3034,6 @@ def mailing_template_detail_api(request, template_id):
     return json_response(serialize_mailing_template(updated))
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST", "OPTIONS"])
 def mailing_campaigns_api(request):
     if request.method == "OPTIONS":
@@ -3072,7 +3048,6 @@ def mailing_campaigns_api(request):
     return json_response({"results": mailing_payload()["campaigns"]})
 
 
-@csrf_exempt
 @require_http_methods(["GET", "PUT", "PATCH", "DELETE", "OPTIONS"])
 def mailing_campaign_detail_api(request, campaign_id):
     if request.method == "OPTIONS":
@@ -3096,7 +3071,6 @@ def mailing_campaign_detail_api(request, campaign_id):
     return json_response(serialize_mailing_campaign(updated))
 
 
-@csrf_exempt
 @require_http_methods(["POST", "OPTIONS"])
 def mailing_campaign_send_api(request, campaign_id):
     if request.method == "OPTIONS":
@@ -3122,7 +3096,6 @@ def mailing_campaign_send_api(request, campaign_id):
     return json_response({"campaign": serialize_mailing_campaign(item), "sent": sent_count})
 
 
-@csrf_exempt
 @require_http_methods(["GET", "PUT", "PATCH", "OPTIONS"])
 def mailing_delivery_detail_api(request, delivery_id):
     if request.method == "OPTIONS":
@@ -3149,7 +3122,6 @@ def mailing_delivery_detail_api(request, delivery_id):
     return json_response({"delivery": serialize_message_delivery(updated), "campaign": serialize_mailing_campaign(campaign)})
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST", "OPTIONS"])
 def mailing_automation_rules_api(request):
     if request.method == "OPTIONS":
@@ -3165,7 +3137,6 @@ def mailing_automation_rules_api(request):
     return json_response({"results": mailing_payload()["automationRules"]})
 
 
-@csrf_exempt
 @require_http_methods(["GET", "PUT", "PATCH", "DELETE", "OPTIONS"])
 def mailing_automation_rule_detail_api(request, rule_id):
     if request.method == "OPTIONS":
@@ -3189,7 +3160,6 @@ def mailing_automation_rule_detail_api(request, rule_id):
     return json_response(serialize_automation_rule(updated))
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST", "OPTIONS"])
 def demo_data_api(request):
     if request.method == "OPTIONS":
@@ -3234,7 +3204,6 @@ def demo_data_api(request):
     return json_response({"error": "Unsupported action"}, status=400)
 
 
-@csrf_exempt
 @require_http_methods(["GET", "DELETE", "OPTIONS"])
 def audit_logs_api(request):
     if request.method == "OPTIONS":
@@ -3252,7 +3221,6 @@ def audit_logs_api(request):
     return json_response({"results": recent_audit_logs(limit)})
 
 
-@csrf_exempt
 @require_http_methods(["GET", "PUT", "PATCH", "OPTIONS"])
 def settings_api(request):
     if request.method == "OPTIONS":
@@ -3282,7 +3250,6 @@ def settings_api(request):
     })
 
 
-@csrf_exempt
 @require_http_methods(["GET", "POST", "OPTIONS"])
 def settings_provider_status_api(request):
     if request.method == "OPTIONS":
@@ -3320,6 +3287,7 @@ def settings_provider_status_api(request):
     })
 
 
+@ensure_csrf_cookie
 @require_GET
 def bootstrap_api(_request):
     current_user = current_demo_user(_request)

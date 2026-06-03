@@ -214,17 +214,20 @@
     для анонима (нет fallback-админа) → `permissions_for_user(None)` пуст → все проверки прав отказывают.
     Эндпоинты `/api/*` защищены `RequireApiAuthMiddleware` (401 анониму), открыты только `session/login/logout`
     и webhook ONLYOFFICE. Проверка: secured-mode anon bootstrap → 401; демо (flag off) → 200.
-20. 🟡 **CSRF + CORS.** ✅ CORS: убрана опасная связка `Allow-Origin:*` + `Allow-Credentials:true`; теперь
-    `ApiCorsMiddleware` — в проде только origin из `CRM_ALLOWED_ORIGINS` (с credentials), в демо отражает origin.
-    CSRF: базовая защита через `SameSite=Lax` cookies уже есть; полное снятие `@csrf_exempt` + X-CSRFToken во
-    фронте — ОСТАЁТСЯ (нужна проводка токена в `apiRequest`).
+20. ✅ **CSRF + CORS.** CORS: убрана опасная связка `Allow-Origin:*` + `Allow-Credentials:true`; `ApiCorsMiddleware` —
+    в проде только origin из `CRM_ALLOWED_ORIGINS`, в демо отражает origin.
+    CSRF: снят `@csrf_exempt` с 33 мутирующих эндпоинтов (оставлен на login/logout/onlyoffice-webhook);
+    штатный `CsrfViewMiddleware` теперь защищает мутации; `bootstrap` ставит csrf-cookie (`@ensure_csrf_cookie`),
+    `apiRequest`/`apiFormRequest` шлют `X-CSRFToken` из cookie. Работает и в демо, и в проде (golden 13/13).
+    Проверка: мутация без токена → 403 «CSRF cookie not set»; с токеном → ок.
 21. ✅ **SSRF в ONLYOFFICE-колбэке.** `is_safe_fetch_url` блокирует не-http(s), localhost, loopback, link-local
     (метадата 169.254.x), private/reserved. Проверка: file://, 169.254.x, 127.0.0.1, 10.x → отказ; публичный → ок.
     *(Токен на колбэк — отдельная задача; webhook server-to-server, частично прикрыт SSRF-guard + id документа.)*
 22. ✅ **Запрещённый контент не уходит в DOM.** Финансы в bootstrap уже под `view_finance`; добавлен гейтинг
     `settingsUsers` под `manage_users` (не-админ получает только свой профиль, а не весь список сотрудников).
 23. 🟡 **Валидация входных данных.** ✅ битый JSON → `BadRequest` (400) вместо 500; тело не-объект → 400.
-    Проверка `choices`/типов по полям — ОСТАЁТСЯ (нужен `full_clean`/валидаторы в upsert-функциях).
+    Проверка `choices`/типов по полям — СОЗНАТЕЛЬНО ОТЛОЖЕНА: фронт шлёт отображаемые строки («В роботі»),
+    которые upsert маппит в коды; строгий `full_clean` их отклонит. Нужна аккуратная per-field валидация (не риск).
 
 ---
 
@@ -236,4 +239,4 @@
 - [x] Финансовый долг/переплата считаются достоверно. *(Спринт 2 п.8)*
 - [x] На экранах нет цифр-«обманок» без пометки «демо». *(Спринт 3)*
 - [x] AI / OSINT / Розсилка честно помечены как интерфейс/mock. *(Спринт 3 п.13/14)*
-- [~] (для прода) Авторизация привязана к сессии, CSRF/CORS закрыты. *(Спринт 5: auth/CORS/SSRF/валидация ✅ за флагом; остаётся X-CSRFToken во фронте и choices-валидация)*
+- [x] (для прода) Авторизация привязана к сессии, CSRF/CORS закрыты. *(Спринт 5: auth/CORS за флагом + CSRF-токены ✅; остаётся только choices-валидация — низкий риск)*

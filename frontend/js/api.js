@@ -12,14 +12,24 @@ export function shouldUseApi(state) {
   return state?.dataSource === "api" && Boolean(apiBaseUrl());
 }
 
+function readCookie(name) {
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
 export async function apiRequest(path, options = {}) {
   const baseUrl = apiBaseUrl();
   if (!baseUrl) throw new Error("CRM API base URL is not configured");
+  const method = options.method || "GET";
+  const csrfHeader = UNSAFE_METHODS.has(method) ? { "X-CSRFToken": readCookie("csrftoken") } : {};
   const response = await fetch(`${baseUrl}${path}`, {
-    method: options.method || "GET",
+    method,
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
+      ...csrfHeader,
       ...(options.headers || {})
     },
     body: options.body === undefined ? undefined : JSON.stringify(options.body)
@@ -38,6 +48,7 @@ export async function apiFormRequest(path, formData, options = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
     method: options.method || "POST",
     credentials: "include",
+    headers: { "X-CSRFToken": readCookie("csrftoken") },
     body: formData
   });
   if (!response.ok) {

@@ -65,12 +65,25 @@ async function apiJson(response, label) {
   return text ? JSON.parse(text) : {};
 }
 
+async function csrfHeaders(request) {
+  // CSRF is now enforced on mutating endpoints. The browser gets the cookie via
+  // bootstrap (@ensure_csrf_cookie); for direct API calls we fetch it the same way.
+  let state = await request.storageState();
+  let token = state.cookies.find((c) => c.name === "csrftoken")?.value;
+  if (!token) {
+    await request.get("/api/bootstrap/");
+    state = await request.storageState();
+    token = state.cookies.find((c) => c.name === "csrftoken")?.value;
+  }
+  return token ? { "X-CSRFToken": token } : {};
+}
+
 async function apiPost(request, path, data) {
-  return apiJson(await request.post(path, { data }), `POST ${path}`);
+  return apiJson(await request.post(path, { data, headers: await csrfHeaders(request) }), `POST ${path}`);
 }
 
 async function apiDelete(request, path) {
-  const response = await request.delete(path);
+  const response = await request.delete(path, { headers: await csrfHeaders(request) });
   if (response.status() === 404) return {};
   return apiJson(response, `DELETE ${path}`);
 }
