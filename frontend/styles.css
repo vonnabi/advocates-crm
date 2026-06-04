@@ -37614,13 +37614,26 @@ body #cases .case-preview-stat {
 }
 
 body #cases .case-preview-stat i {
-  gap: 3px !important;
+  gap: 4px !important;
+  align-items: center !important;
 }
 
-body #cases .case-preview-stat i .ui-icon,
-body #cases .case-preview-stat i svg {
-  width: 14px !important;
-  height: 14px !important;
+/* The icon badge and the glyph inside it must be sized separately: the soft
+   circle is the badge, the svg is a smaller, centered glyph with breathing room.
+   Sizing both to 14px (old rule) made the glyph fill the circle and spill onto
+   the ring, throwing it off-center. */
+body #cases .case-preview-stat i .ui-icon {
+  width: 18px !important;
+  height: 18px !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  line-height: 0 !important;
+}
+
+body #cases .case-preview-stat i .ui-icon svg {
+  width: 11px !important;
+  height: 11px !important;
+  display: block !important;
 }
 
 body #cases .case-preview-stat strong {
