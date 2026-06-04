@@ -2147,8 +2147,8 @@ export function renderFinanceScreen(ctx) {
     { title: "Загальний дохід", value: currencyText(totals.income), ...financeTrend(totals.income, "+12%"), iconName: "briefcase", tone: "blue" },
     { title: "Витрати", value: currencyText(totals.expenses), ...financeTrend(totals.expenses, "+8%"), trendTone: totals.expenses > 0 ? "danger" : "", iconName: "file", tone: "red" },
     { title: "Чистий прибуток", value: currencyText(totals.profit), ...financeTrend(totals.profit, "+15%"), iconName: "check", tone: "green" },
-    { title: "Очікувані надходження", value: currencyText(totals.expected), ...financeTrend(totals.expected, "порівняно з попер. періодом"), iconName: "clock", tone: "amber" },
-    { title: "Заборгованість клієнтів", value: currencyText(totals.debt), ...financeTrend(totals.debt, "порівняно з попер. періодом"), iconName: "mail", tone: "red" }
+    { title: "Очікувані надходження", value: currencyText(totals.expected), ...financeTrend(totals.expected, "Очікується", "за виставленими рахунками"), iconName: "clock", tone: "amber" },
+    { title: "Заборгованість клієнтів", value: currencyText(totals.debt), ...financeTrend(totals.debt, "До сплати", "за активними справами"), trendTone: totals.debt > 0 ? "danger" : "", iconName: "mail", tone: "red" }
   ];
 
   $("#finance").innerHTML = `

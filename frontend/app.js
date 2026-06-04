@@ -5,13 +5,13 @@ import {
   setupTopbarControls,
   syncTopbarNotifications
 } from "./js/chrome.js?v=preserve-manual-demo-1";
-import { createDialogOpeners } from "./js/dialog-openers.js?v=document-delete-path-3";
+import { createDialogOpeners } from "./js/dialog-openers.js?v=builtin-rich-editor-1";
 import { setupDialogControls, persistSnapshotState } from "./js/dialogs.js?v=document-delete-path-3";
 import { setupCaseDetailForms } from "./js/forms/case-details.js?v=finance-operation-menu-1";
 import { setupCaseItemForms } from "./js/forms/case-items.js";
 import { setupCaseForm } from "./js/forms/cases.js";
 import { setupClientForm } from "./js/forms/clients.js";
-import { setupDocumentForm } from "./js/forms/documents.js?v=document-target-mode-1";
+import { setupDocumentForm } from "./js/forms/documents.js?v=builtin-rich-editor-1";
 import { setupEventForm } from "./js/forms/events.js?v=event-reminder-toggle-1";
 import {
   restoreNavigationState as restoreNavigationStateFromStorage,
@@ -45,7 +45,7 @@ import {
   renderMailingsScreen,
   setMailingTab as setMailingTabScreen
 } from "./js/screens/mailings.js?v=modal-select-audit-1";
-import { renderFinanceScreen } from "./js/screens/finance.js?v=finance-pagination-2";
+import { renderFinanceScreen } from "./js/screens/finance.js?v=finance-kpi-trend-1";
 import { renderOSINTScreen } from "./js/screens/osint.js?v=live-demo-1";
 import { renderPlannerScreen } from "./js/screens/planner.js";
 import { renderSettingsScreen } from "./js/screens/settings.js?v=empty-audit-1";

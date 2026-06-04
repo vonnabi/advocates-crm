@@ -1,3 +1,6 @@
+import { saveDocumentToApi, shouldUseApi } from "./api.js";
+import { docContentToHtml, docContentToDisplayHtml, sanitizeDocHtml, isHtmlDocContent } from "./doc-html.js";
+
 export function createDialogOpeners({
   state,
   $,
@@ -522,7 +525,10 @@ export function createDialogOpeners({
     .meta { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
     .meta td { border: 1px solid #d9e2ef; padding: 7px 9px; font-size: 12px; }
     .meta td:first-child { width: 160px; color: #5b6b82; font-weight: 700; }
-    .content { white-space: pre-wrap; font-size: 14px; }
+    .content { font-size: 14px; }
+    .content.is-plain { white-space: pre-wrap; }
+    .content h1, .content h2, .content h3 { font-size: 15px; margin: 12px 0 6px; }
+    .content p { margin: 0 0 8px; }
   </style>
 </head>
 <body>
@@ -534,7 +540,7 @@ export function createDialogOpeners({
     <tr><td>Тип</td><td>${escapeHtml(documentData.type || "Не вказано")}</td></tr>
     <tr><td>Статус</td><td>${escapeHtml(documentData.status || "Без статусу")}</td></tr>
   </table>
-  <div class="content">${escapeHtml(body)}</div>
+  <div class="content${isHtmlDocContent(body) ? "" : " is-plain"}">${docContentToDisplayHtml(body)}</div>
 </body>
 </html>`;
     const text = [
@@ -953,6 +959,186 @@ export function createDialogOpeners({
     return `crm-${String(documentData.documentId || documentData.id || "document")}-${fileType}-${Math.abs(hash)}`.slice(0, 120);
   }
 
+  function setOfficeSaveStatus(dialog, label, statusName = "idle") {
+    const el = dialog?.querySelector(".office-editor-save-status");
+    if (!el) return;
+    el.dataset.state = statusName;
+    el.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"></path></svg>${escapeHtml(label)}`;
+  }
+
+  function updateDocumentContentInState(documentData, content) {
+    const ids = new Set(
+      [documentData.documentId, documentData.id]
+        .filter((value) => value !== undefined && value !== null && value !== "")
+        .map((value) => String(value))
+    );
+    const matches = (doc) => {
+      const candidates = [doc.documentId, doc.id]
+        .filter((value) => value !== undefined && value !== null && value !== "")
+        .map((value) => String(value));
+      return candidates.some((value) => ids.has(value));
+    };
+    (state.cases || []).forEach((caseItem) => {
+      (caseItem.documents || []).forEach((doc) => {
+        if (matches(doc)) doc.content = content;
+      });
+    });
+    const walkFolders = (folders = []) => {
+      folders.forEach((folder) => {
+        (folder.documents || []).forEach((doc) => {
+          if (matches(doc)) doc.content = content;
+        });
+        walkFolders(folder.children || []);
+      });
+    };
+    walkFolders(state.documentArchiveFolders || []);
+    documentData.content = content;
+  }
+
+  function builtInDocEditorView(documentData) {
+    const html = docContentToHtml(documentData.content || documentData.comment || "");
+    return `
+      <div class="builtin-doc-editor">
+        <div class="builtin-doc-toolbar" role="toolbar" aria-label="Форматування документа">
+          <div class="builtin-doc-toolbar-group">
+            <button type="button" data-doc-cmd="undo" title="Скасувати (Ctrl+Z)" aria-label="Скасувати">↶</button>
+            <button type="button" data-doc-cmd="redo" title="Повторити (Ctrl+Y)" aria-label="Повторити">↷</button>
+          </div>
+          <span class="builtin-doc-toolbar-sep"></span>
+          <select class="builtin-doc-block" data-doc-block title="Стиль абзацу">
+            <option value="P">Звичайний текст</option>
+            <option value="H1">Заголовок 1</option>
+            <option value="H2">Заголовок 2</option>
+            <option value="H3">Заголовок 3</option>
+          </select>
+          <span class="builtin-doc-toolbar-sep"></span>
+          <div class="builtin-doc-toolbar-group">
+            <button type="button" data-doc-cmd="bold" title="Жирний (Ctrl+B)" aria-label="Жирний"><b>Ж</b></button>
+            <button type="button" data-doc-cmd="italic" title="Курсив (Ctrl+I)" aria-label="Курсив"><i>К</i></button>
+            <button type="button" data-doc-cmd="underline" title="Підкреслений (Ctrl+U)" aria-label="Підкреслений"><u>П</u></button>
+            <button type="button" data-doc-cmd="strikeThrough" title="Закреслений" aria-label="Закреслений"><s>З</s></button>
+          </div>
+          <span class="builtin-doc-toolbar-sep"></span>
+          <div class="builtin-doc-toolbar-group">
+            <button type="button" data-doc-cmd="insertUnorderedList" title="Маркований список" aria-label="Маркований список">•</button>
+            <button type="button" data-doc-cmd="insertOrderedList" title="Нумерований список" aria-label="Нумерований список">1.</button>
+          </div>
+          <span class="builtin-doc-toolbar-sep"></span>
+          <div class="builtin-doc-toolbar-group">
+            <button type="button" data-doc-cmd="justifyLeft" title="Вирівняти ліворуч" aria-label="Ліворуч">⯇</button>
+            <button type="button" data-doc-cmd="justifyCenter" title="По центру" aria-label="По центру">≡</button>
+            <button type="button" data-doc-cmd="justifyRight" title="Вирівняти праворуч" aria-label="Праворуч">⯈</button>
+          </div>
+          <span class="builtin-doc-toolbar-sep"></span>
+          <div class="builtin-doc-toolbar-group">
+            <button type="button" data-doc-cmd="removeFormat" title="Очистити форматування" aria-label="Очистити форматування">⌫</button>
+          </div>
+        </div>
+        <div class="builtin-doc-editor-page">
+          <div class="builtin-doc-editor-area" contenteditable="true" spellcheck="true" role="textbox" aria-multiline="true" aria-label="Текст документа">${html}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function mountBuiltInDocEditor(documentData, dialog, body) {
+    const subtitle = dialog.querySelector("#office-editor-subtitle");
+    if (subtitle) subtitle.textContent = "Повноцінне редагування документа у вбудованому редакторі CRM.";
+    body.innerHTML = builtInDocEditorView(documentData);
+    const area = body.querySelector(".builtin-doc-editor-area");
+    const toolbar = body.querySelector(".builtin-doc-toolbar");
+    const blockSelect = body.querySelector("[data-doc-block]");
+    if (!area) return;
+    setOfficeSaveStatus(dialog, "Збережено", "saved");
+    const hasBackendId = documentData.id !== undefined && documentData.id !== null && documentData.id !== "";
+    let lastSaved = sanitizeDocHtml(area.innerHTML);
+    let timer = null;
+    let saving = false;
+
+    const persist = async () => {
+      const content = sanitizeDocHtml(area.innerHTML);
+      if (content === lastSaved) return;
+      const pending = content;
+      updateDocumentContentInState(documentData, content);
+      if (shouldUseApi(state) && hasBackendId) {
+        saving = true;
+        setOfficeSaveStatus(dialog, "Зберігаємо…", "saving");
+        try {
+          await saveDocumentToApi({
+            id: documentData.id,
+            caseId: documentData.caseId,
+            documentId: documentData.documentId,
+            name: documentData.name,
+            type: documentData.type,
+            folder: documentData.folder,
+            status: documentData.status,
+            submitted: documentData.submitted,
+            responseDue: documentData.responseDue,
+            comment: documentData.comment,
+            content: pending,
+            responsible: documentData.responsible,
+            url: documentData.url
+          });
+        } catch (_error) {
+          saving = false;
+          setOfficeSaveStatus(dialog, "Не збережено", "error");
+          showToast("Не вдалося зберегти документ. Перевірте з'єднання.", "warning");
+          return;
+        }
+        saving = false;
+      }
+      lastSaved = pending;
+      setOfficeSaveStatus(dialog, "Збережено", "saved");
+    };
+
+    const scheduleSave = () => {
+      if (!saving) setOfficeSaveStatus(dialog, "Редагування…", "saving");
+      clearTimeout(timer);
+      timer = setTimeout(persist, 700);
+    };
+
+    const syncBlockSelect = () => {
+      if (!blockSelect) return;
+      let node = document.getSelection()?.anchorNode || null;
+      while (node && node !== area && node.nodeType !== 1) node = node.parentNode;
+      let tag = "P";
+      while (node && node !== area) {
+        const name = node.tagName;
+        if (name && /^(H1|H2|H3|P)$/.test(name)) { tag = name; break; }
+        node = node.parentNode;
+      }
+      blockSelect.value = tag;
+    };
+
+    // Toolbar: run commands without losing the editor selection.
+    toolbar?.addEventListener("mousedown", (event) => {
+      const button = event.target.closest("[data-doc-cmd]");
+      if (!button) return;
+      event.preventDefault();
+      area.focus();
+      document.execCommand(button.dataset.docCmd, false);
+      scheduleSave();
+      syncBlockSelect();
+    });
+    blockSelect?.addEventListener("change", () => {
+      area.focus();
+      document.execCommand("formatBlock", false, blockSelect.value);
+      scheduleSave();
+    });
+
+    area.addEventListener("input", scheduleSave);
+    area.addEventListener("keyup", syncBlockSelect);
+    area.addEventListener("mouseup", syncBlockSelect);
+
+    const flush = () => {
+      clearTimeout(timer);
+      persist().finally(() => renderAll());
+    };
+    dialog.addEventListener("close", flush, { once: true });
+    area.focus();
+    syncBlockSelect();
+  }
+
   async function openOfficeEditor(documentData, previewContext = {}) {
     const dialog = $("#office-editor-dialog");
     const body = $("#office-editor-body");
@@ -975,13 +1161,14 @@ export function createDialogOpeners({
         ${fileType === "pdf" ? "Перегляд" : "Автозбереження"}
       `;
     }
+    const canUseBuiltInEditor = documentType === "word";
     dialog.showModal();
-    if (!documentServerUrl) {
-      body.innerHTML = officeEditorSetupView(documentData, settings);
-      return;
-    }
-    if (!documentUrl) {
-      body.innerHTML = officeEditorSetupView(documentData, settings, "Потрібен URL файлу");
+    if (!documentServerUrl || !documentUrl) {
+      if (canUseBuiltInEditor) {
+        mountBuiltInDocEditor(documentData, dialog, body);
+      } else {
+        body.innerHTML = officeEditorSetupView(documentData, settings, documentServerUrl ? "Потрібен URL файлу" : "");
+      }
       return;
     }
     body.innerHTML = `<div class="office-editor-loading"><strong>Завантажуємо ONLYOFFICE...</strong><span>${escapeHtml(documentServerUrl)}</span></div><div id="onlyoffice-editor-container" class="onlyoffice-editor-container"></div>`;
@@ -1012,8 +1199,13 @@ export function createDialogOpeners({
         width: "100%"
       });
     } catch (_error) {
-      body.innerHTML = officeEditorSetupView(documentData, settings, "Не вдалося завантажити ONLYOFFICE");
-      showToast("ONLYOFFICE не відкрився. Перевірте Document Server URL.", "warning");
+      if (canUseBuiltInEditor) {
+        mountBuiltInDocEditor(documentData, dialog, body);
+        showToast("ONLYOFFICE недоступний — відкрито вбудований редактор CRM.", "info");
+      } else {
+        body.innerHTML = officeEditorSetupView(documentData, settings, "Не вдалося завантажити ONLYOFFICE");
+        showToast("ONLYOFFICE не відкрився. Перевірте Document Server URL.", "warning");
+      }
     }
   }
 
@@ -1094,7 +1286,7 @@ export function createDialogOpeners({
       </div>
       <div class="document-preview-body">
         <strong>Текст документа</strong>
-        <p>${escapeHtml(documentData.content || "Текст документа ще не додано. Відкрийте редагування, заповніть чернетку і експортуйте файл.")}</p>
+        <div class="document-preview-richtext">${docContentToDisplayHtml(documentData.content, "Текст документа ще не додано. Відкрийте редагування, заповніть чернетку і експортуйте файл.")}</div>
       </div>
     `;
     fileButton.disabled = !hasFile;

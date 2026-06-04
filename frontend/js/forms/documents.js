@@ -1,6 +1,7 @@
 import { saveArchiveFoldersToApi, saveDocumentToApi, shouldUseApi, uploadDocumentFileToApi } from "../api.js";
 import { normalizeDocument } from "../state.js";
 import { inferCaseDocumentFolder } from "../case-documents.js";
+import { docHtmlToPlainText, isHtmlDocContent, sanitizeDocHtml } from "../doc-html.js";
 
 const PROCEDURAL_DOCUMENT_FOLDERS = new Set(["Позови", "Клопотання", "Запити", "Відповіді та ухвали"]);
 const TECHNICAL_DOCUMENT_TYPES = new Set(["doc", "docx", "pdf", "txt", "rtf", "odt", "google docs", "google drive", "crm файл"]);
@@ -247,12 +248,13 @@ export function setupDocumentForm({
       `Дата подання: ${submitted || "-"}`,
       `Строк відповіді: ${responseDue || "-"}`,
       "",
-      content || comment || "Текст документа ще не заповнено."
+      docHtmlToPlainText(content) || comment || "Текст документа ще не заповнено."
     ].join("\n");
   }
 
   function buildDocumentHtml({ item, name, type, folder, status, submitted, responseDue, comment, content }) {
     const body = content || comment || "Текст документа ще не заповнено.";
+    const bodyIsHtml = isHtmlDocContent(body);
     return `<!doctype html>
 <html>
 <head>
@@ -264,7 +266,10 @@ export function setupDocumentForm({
     .meta { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
     .meta td { border: 1px solid #d9e2ef; padding: 7px 9px; font-size: 12px; }
     .meta td:first-child { width: 170px; color: #5b6b82; font-weight: 700; }
-    .content { white-space: pre-wrap; font-size: 14px; }
+    .content { font-size: 14px; }
+    .content.is-plain { white-space: pre-wrap; }
+    .content h1, .content h2, .content h3 { font-size: 15px; margin: 12px 0 6px; }
+    .content p { margin: 0 0 8px; }
   </style>
 </head>
 <body>
@@ -277,7 +282,7 @@ export function setupDocumentForm({
     <tr><td>Дата подання</td><td>${escapeHtml(submitted || "-")}</td></tr>
     <tr><td>Строк відповіді</td><td>${escapeHtml(responseDue || "-")}</td></tr>
   </table>
-  <div class="content">${escapeHtml(body)}</div>
+  <div class="content${bodyIsHtml ? "" : " is-plain"}">${bodyIsHtml ? sanitizeDocHtml(body) : escapeHtml(body)}</div>
 </body>
 </html>`;
   }
