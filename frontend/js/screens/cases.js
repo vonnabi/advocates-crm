@@ -3,6 +3,7 @@ import { setupScreenCustomSelects } from "../custom-selects.js";
 import { normalizeCase, normalizeTask } from "../state.js";
 import { copyDocumentInCase, openDocumentArchiveDialog, openDocumentSendDialog } from "./documents.js";
 import { inferCaseDocumentFolder } from "../case-documents.js";
+import { formatDate } from "../ui.js";
 
 let currentContext;
 let state;

@@ -1,10 +1,10 @@
-import { createInitialState } from "./js/state.js?v=calendar-time-1";
+import { createInitialState } from "./js/state.js?v=secured-session-1";
 import {
   closeTopbarPanels as closeTopbarPanelsInChrome,
   isTopbarPanelOpen,
   setupTopbarControls,
   syncTopbarNotifications
-} from "./js/chrome.js?v=preserve-manual-demo-1";
+} from "./js/chrome.js?v=secured-login-boot-2";
 import { createDialogOpeners } from "./js/dialog-openers.js?v=builtin-rich-editor-1";
 import { setupDialogControls, persistSnapshotState } from "./js/dialogs.js?v=document-delete-path-3";
 import { setupCaseDetailForms } from "./js/forms/case-details.js?v=finance-operation-menu-1";
@@ -26,7 +26,7 @@ import {
   renderCaseListScreen,
   renderCaseProfileScreen,
   renderCasesScreen
-} from "./js/screens/cases.js?v=context-task-case-2";
+} from "./js/screens/cases.js?v=formatdate-fix-1";
 import {
   calendarEntries as calendarEntriesScreen,
   calendarEventMeta as calendarEventMetaScreen,
@@ -39,7 +39,7 @@ import {
   renderClientRows as renderClientRowsScreen,
   renderClientsScreen
 } from "./js/screens/clients.js?v=clients-filter-1";
-import { renderDashboardScreen } from "./js/screens/dashboard.js?v=live-demo-1";
+import { renderDashboardScreen } from "./js/screens/dashboard.js?v=quick-actions-1";
 import { renderDocumentsScreen } from "./js/screens/documents.js?v=document-delete-path-3";
 import {
   renderMailingsScreen,

@@ -1,4 +1,4 @@
-import { apiBaseUrl } from "./api.js?v=demo-empty-state-1";
+import { apiBaseUrl, getSessionFromApi } from "./api.js?v=demo-empty-state-1";
 
 const DEMO_DATE_ANCHOR = new Date(2024, 4, 15);
 const ISO_DATE_RE = /(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)/g;
@@ -369,13 +369,25 @@ async function loadDemoData() {
   const snapshot = readSnapshotOverride(mailing, settings);
   if (snapshot) return snapshot;
   const expectedApi = Boolean(apiBaseUrl());
+  let bootstrapFailed = false;
   try {
     const apiData = normalizeBackendPayload(await readApiBootstrap());
     if (apiData) return { ...apiData, mailing: mergeMailing(mailing, apiData.mailing), settings: mergeSettings(settings, apiData.settings) };
   } catch (_error) {
-    if (expectedApi) return emptyApiPayload(mailing, settings, { apiError: true });
+    bootstrapFailed = true;
   }
-  if (expectedApi) return emptyApiPayload(mailing, settings);
+  // API mode but bootstrap returned no usable data (e.g. 401 in secured mode).
+  // Pull the live session so the app knows whether to force the login screen
+  // instead of silently dropping to full-access demo data.
+  if (expectedApi) {
+    let session = {};
+    try {
+      session = await getSessionFromApi();
+    } catch (_sessionError) {
+      session = {};
+    }
+    return { ...emptyApiPayload(mailing, settings, { apiError: bootstrapFailed }), session };
+  }
   const [clients, cases, events] = await Promise.all([
     readDataFile("../data/clients.json"),
     readDataFile("../data/cases.json"),

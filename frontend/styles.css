@@ -1254,45 +1254,73 @@ h3 {
   z-index: 200;
   display: grid;
   place-items: center;
-  background: rgba(10, 29, 49, 0.72);
-  padding: 20px;
+  padding: 24px;
+  /* Opaque branded backdrop fully hides the app behind the login screen. */
+  background:
+    radial-gradient(1200px 680px at 12% -12%, rgba(74, 134, 214, 0.55), transparent 58%),
+    radial-gradient(1000px 680px at 112% 118%, rgba(28, 70, 132, 0.6), transparent 55%),
+    linear-gradient(140deg, #0b1f3a 0%, #102a4c 48%, #0a1730 100%);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
 
 .logout-overlay[hidden] {
   display: none;
 }
 
+/* Soft vignette so the card reads as the focal point. */
+.logout-overlay::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(720px 520px at 50% 42%, transparent 38%, rgba(4, 12, 26, 0.45) 100%);
+}
+
 .logout-card {
-  width: min(420px, 100%);
-  border: 1px solid rgba(255, 255, 255, 0.42);
-  border-radius: 10px;
-  background: white;
-  box-shadow: 0 28px 80px rgba(2, 12, 27, 0.28);
-  padding: 28px;
+  position: relative;
+  z-index: 1;
+  width: min(440px, 100%);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 44px 120px rgba(2, 10, 26, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  padding: 36px 34px 30px;
   text-align: center;
+  animation: crm-login-card-in 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes crm-login-card-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .logout-mark {
-  width: 52px;
-  height: 52px;
+  width: 60px;
+  height: 60px;
   display: grid;
   place-items: center;
-  border-radius: 12px;
-  background: var(--navy);
+  border-radius: 16px;
+  background: linear-gradient(140deg, #3a78cf 0%, #1b2c4d 100%);
   color: white;
+  font-size: 18px;
+  letter-spacing: 0.06em;
   font-weight: var(--weight-black);
-  margin: 0 auto 16px;
+  box-shadow: 0 14px 30px rgba(22, 58, 120, 0.45);
+  margin: 0 auto 18px;
 }
 
 .logout-card h2 {
   margin: 0 0 8px;
   color: var(--text);
-  font-size: var(--text-xl);
+  font-size: 22px;
+  font-weight: var(--weight-black);
+  letter-spacing: -0.01em;
 }
 
 .logout-card p {
-  margin: 0 auto 20px;
-  max-width: 330px;
+  margin: 0 auto 22px;
+  max-width: 340px;
   color: var(--muted);
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
@@ -1464,38 +1492,66 @@ h3 {
 
 .login-form {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   text-align: left;
 }
 
 .login-form label {
   display: grid;
   gap: 6px;
-  color: #66758c;
-  font-size: 12px;
-  font-weight: var(--weight-bold);
+  color: #5a6b84;
+  font-size: 11px;
+  font-weight: var(--weight-black);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .login-form input {
-  min-height: 42px;
+  min-height: 46px;
   border: 1px solid #d8e2ef;
-  border-radius: 8px;
-  padding: 0 12px;
+  border-radius: 10px;
+  padding: 0 14px;
+  background: #f8fbff;
   color: var(--text);
   font: inherit;
   font-weight: var(--weight-semibold);
+  letter-spacing: 0.01em;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
+}
+
+.login-form input:focus {
+  outline: none;
+  border-color: var(--action-dark);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(47, 111, 199, 0.16);
 }
 
 .login-form small {
-  color: #718097;
+  margin-top: 2px;
+  padding-top: 12px;
+  border-top: 1px solid #eef2f8;
+  color: #8492a6;
   font-size: 11px;
   font-weight: var(--weight-semibold);
+  line-height: 1.4;
 }
 
 .login-form .primary,
 .login-form .secondary {
   width: 100%;
+  min-height: 46px;
   justify-content: center;
+  border-radius: 10px;
+  font-weight: var(--weight-bold);
+}
+
+.login-form .primary {
+  margin-top: 2px;
+  box-shadow: 0 10px 24px rgba(31, 76, 138, 0.28);
+}
+
+.login-form .secondary {
+  background: transparent;
 }
 
 .login-error {
@@ -3835,11 +3891,16 @@ button {
 
 .dashboard-quick-button {
   min-height: 38px;
-  justify-content: flex-start;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  line-height: 1.2;
   border: 1px solid var(--line);
   background: white;
   color: var(--action-dark);
-  padding-inline: 10px;
+  padding-inline: 12px;
 }
 
 .dashboard-quick-button:hover {
@@ -3851,6 +3912,7 @@ button {
 .dashboard-quick-button .ui-icon {
   width: 16px;
   height: 16px;
+  flex: 0 0 16px;
 }
 
 .dashboard-empty {

@@ -9,7 +9,8 @@ from django.conf import settings
 from django.http import JsonResponse
 
 # Endpoints that must stay reachable without a session even in secured mode.
-OPEN_API_PREFIXES = ("/api/session", "/api/login", "/api/logout")
+# Paths must match config/urls.py exactly (login/logout live under /api/auth/).
+OPEN_API_PREFIXES = ("/api/session", "/api/auth/login", "/api/auth/logout")
 
 
 class RequireApiAuthMiddleware:
@@ -24,7 +25,7 @@ class RequireApiAuthMiddleware:
                 and not request.path.startswith(OPEN_API_PREFIXES)
                 # ONLYOFFICE document-server webhook is server-to-server (no session);
                 # it is guarded separately by the SSRF check + document id.
-                and "/onlyoffice-callback/" not in request.path):
+                and "/onlyoffice/callback/" not in request.path):
             return JsonResponse({"error": "Unauthorized", "message": "Потрібен вхід у систему."}, status=401)
         return self.get_response(request)
 

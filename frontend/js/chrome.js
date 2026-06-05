@@ -520,18 +520,29 @@ function ensureLogoutOverlay(ctx) {
   overlay.id = "logout-overlay";
   overlay.className = "logout-overlay";
   overlay.hidden = true;
+  // Secured deployments (CRM_REQUIRE_AUTH) get a real sign-in screen: no demo
+  // credentials, no "back to demo" escape hatch (it would bypass auth).
+  const secured = Boolean(state.session?.requireAuth);
+  const heading = secured ? "Вхід у систему" : "Сеанс завершено";
+  const subtitle = secured
+    ? "Введіть робочий email і пароль, щоб увійти в CRM."
+    : "Увійдіть під роллю користувача бюро або поверніться в демо-режим.";
+  const emailValue = secured ? "" : "ivanenko@advocates.crm";
+  const passwordValue = secured ? "" : "demo12345";
+  const demoHint = secured ? "" : `<small>Демо-доступ: ivanenko@advocates.crm / demo12345</small>`;
+  const returnButton = secured ? "" : `<button class="secondary" type="button" data-login-return>Повернутися в демо</button>`;
   overlay.innerHTML = `
     <section class="logout-card" role="dialog" aria-modal="true" aria-labelledby="logout-title">
       <div class="logout-mark">AB</div>
-      <h2 id="logout-title">Сеанс завершено</h2>
-      <p>Увійдіть під роллю користувача бюро або поверніться в демо-режим.</p>
+      <h2 id="logout-title">${heading}</h2>
+      <p>${subtitle}</p>
       <form class="login-form" data-login-form>
-        <label>Email<input name="email" type="email" value="ivanenko@advocates.crm" autocomplete="username" required /></label>
-        <label>Пароль<input name="password" type="password" value="demo12345" autocomplete="current-password" required /></label>
-        <small>Демо-доступ: ivanenko@advocates.crm / demo12345</small>
+        <label>Email<input name="email" type="email" value="${emailValue}" autocomplete="username" required /></label>
+        <label>Пароль<input name="password" type="password" value="${passwordValue}" autocomplete="current-password" required /></label>
+        ${demoHint}
         <p class="login-error" data-login-error hidden></p>
         <button class="primary" type="submit">Увійти</button>
-        <button class="secondary" type="button" data-login-return>Повернутися в демо</button>
+        ${returnButton}
       </form>
     </section>
   `;
@@ -691,6 +702,14 @@ export function setupTopbarControls({ $, state, switchView, saveNavigationState,
   $("[data-demo-data-toggle]")?.addEventListener("click", () => handleDemoDataToggleClick({ state, showToast }));
   if (shouldUseApi(state) && state.sessionPermissions?.canManageUsers) {
     window.setTimeout(() => refreshDemoDataStatus(state).catch(() => {}), 0);
+  }
+  // Secured mode (CRM_REQUIRE_AUTH): force the login screen on boot so the app
+  // is not usable anonymously. Does NOT call logout — just reveals the overlay.
+  if (shouldUseApi(state) && state.session?.requireAuth && !state.sessionAuthenticated) {
+    const overlay = ensureLogoutOverlay({ $, state, saveNavigationState, showToast, onSessionChange });
+    document.body.classList.add("session-ended");
+    overlay.hidden = false;
+    overlay.querySelector("input[name='email']")?.focus();
   }
   window.setTimeout(() => openPasswordChangeOverlay({ $, state, saveNavigationState, showToast, onSessionChange }), 0);
 }

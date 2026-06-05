@@ -406,7 +406,7 @@ export function renderDashboardScreen(ctx) {
               ${quickButton("tasks", "Додати задачу", "check", icon)}
               ${quickButton("calendar", "Подія календаря", "calendar", icon)}
               ${quickButton("documents", "Документи", "file", icon)}
-              ${quickButton("analytics", "Аналітика", "briefcase", icon)}
+              ${quickButton("analytics", "Аналітика", "chart", icon)}
             </div>
           </article>
         </aside>

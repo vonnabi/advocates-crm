@@ -2289,6 +2289,7 @@ def session_payload(request):
     permissions = permissions_for_user(user)
     return {
         "authenticated": bool(request.user.is_authenticated),
+        "requireAuth": bool(getattr(settings, "CRM_REQUIRE_AUTH", False)),
         "user": serialize_system_user(user) if user else None,
         "permissions": permission_flags(permissions),
         "mustChangePassword": bool(request.user.is_authenticated and profile and profile.password_temporary),
