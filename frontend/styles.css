@@ -930,6 +930,8 @@ h3 {
   width: 42px;
   height: 42px;
   min-height: 42px;
+  display: grid;
+  place-items: center;
   border: 1px solid transparent;
   background: white;
   color: #526176;
@@ -945,8 +947,8 @@ h3 {
 }
 
 .bell-shape {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   display: inline-flex;
 }
 
@@ -962,18 +964,21 @@ h3 {
 
 .notification-badge {
   position: absolute;
-  top: 6px;
-  right: 5px;
-  min-width: 18px;
-  height: 18px;
+  top: -3px;
+  right: -3px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
   display: grid;
   place-items: center;
   border-radius: 999px;
   background: #ef3e3e;
   color: white;
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-bold);
+  font-size: 10px;
+  line-height: 1;
+  font-weight: var(--weight-black);
   border: 2px solid white;
+  box-shadow: 0 2px 5px rgba(190, 18, 18, 0.4);
 }
 
 .notification-badge.empty {
@@ -17978,9 +17983,9 @@ td a,
 }
 
 .procedural-actions > .row-action-menu-wrap > .row-action-trigger:hover {
-  border-color: var(--action-hover);
-  color: white;
-  background: var(--action-hover);
+  border-color: var(--action-dark);
+  color: var(--action-dark);
+  background: white;
 }
 
 .procedural-actions .danger-icon {
@@ -25992,8 +25997,8 @@ body .row-action-menu-wrap > .row-action-trigger {
 body .row-action-menu-wrap > .row-action-trigger:hover,
 body .row-action-menu-wrap > .row-action-trigger[aria-expanded="true"] {
   border-color: var(--action-dark);
-  background: var(--action-dark);
-  color: white;
+  background: white;
+  color: var(--action-dark);
 }
 
 body .row-action-menu button {
@@ -37450,7 +37455,7 @@ body #cases .case-list-table td:nth-child(7) {
 
 body #cases .case-list-table th:nth-child(8),
 body #cases .case-list-table td:nth-child(8) {
-  width: 106px !important;
+  width: 124px !important;
 }
 
 body #cases .case-list-table th:nth-child(9),
@@ -41163,4 +41168,87 @@ body #calendar .calendar-events-list > button {
     font-size: 9.5px !important;
     letter-spacing: -0.01em !important;
   }
+}
+
+/* ============================================================================
+   Cases table — "Фінанси" cell as a compact stacked pyramid:
+   total (ink) · paid (green) · debt (red), numbers only with small icons.
+   Selectors include .case-list-table to outrank legacy finance-cell rules.
+   ========================================================================== */
+body #cases .case-list-table .case-finance-stack {
+  display: grid !important;
+  gap: 2px !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+body #cases .case-list-table .case-finance-stack span {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  line-height: 1.15 !important;
+  white-space: nowrap !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+body #cases .case-list-table .case-finance-stack .ui-icon {
+  flex: 0 0 12px !important;
+  width: 12px !important;
+  height: 12px !important;
+}
+
+body #cases .case-list-table .case-finance-stack .ui-icon svg {
+  width: 12px !important;
+  height: 12px !important;
+  stroke-width: 2 !important;
+}
+
+body #cases .case-list-table .case-finance-stack .fin-total {
+  font-size: var(--font-size-table-cell) !important;
+  font-weight: var(--font-weight-bold) !important;
+  color: var(--ink) !important;
+}
+
+body #cases .case-list-table .case-finance-stack .fin-total .ui-icon {
+  color: #64748b !important;
+}
+
+body #cases .case-list-table .case-finance-stack .fin-paid {
+  font-size: var(--font-size-caption) !important;
+  font-weight: var(--font-weight-semibold) !important;
+  color: #1a8f57 !important;
+}
+
+body #cases .case-list-table .case-finance-stack .fin-debt {
+  font-size: var(--font-size-caption) !important;
+  font-weight: var(--font-weight-semibold) !important;
+  color: #d8434f !important;
+}
+
+/* ============================================================================
+   Kebab (⋮) action triggers: the text glyph sits optically high in its box.
+   Replace it with three CSS dots, absolutely centred, for any trigger that
+   doesn't already contain an SVG icon. Crisp and perfectly centred everywhere.
+   ========================================================================== */
+body .row-action-menu-wrap > .row-action-trigger:not(:has(.ui-icon)) {
+  position: relative !important;
+  font-size: 0 !important;
+  /* Hide the original "⋮" glyph robustly (survives any font-size override)
+     so only the CSS dots below remain. */
+  text-indent: -9999px !important;
+  overflow: hidden !important;
+}
+
+body .row-action-menu-wrap > .row-action-trigger:not(:has(.ui-icon))::before {
+  content: "" !important;
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  width: 2px !important;
+  height: 2px !important;
+  border-radius: 50% !important;
+  background: currentColor !important;
+  transform: translate(-50%, -50%) !important;
+  box-shadow: 0 -3.6px 0 currentColor, 0 3.6px 0 currentColor !important;
 }

@@ -164,12 +164,19 @@ function financePercent(item) {
 
 function caseFinanceSummary(item) {
   const finance = caseFinance(item);
-  const isPaid = finance.total > 0 && finance.debt === 0;
+  const hasFinance = finance.total > 0;
+  if (!hasFinance) {
+    return `
+      <div class="case-finance-stack is-empty">
+        <span class="fin-total">${currencyText(finance.total)}</span>
+      </div>
+    `;
+  }
   return `
-    <div class="case-finance-summary">
-      <strong>${currencyText(finance.total)}</strong>
-      <span>оплачено ${currencyText(finance.paid)}</span>
-      <span class="${finance.debt ? "debt" : "paid"}">${isPaid ? "оплачено повністю" : `борг ${currencyText(finance.debt)}`}</span>
+    <div class="case-finance-stack" role="group" aria-label="Сума ${currencyText(finance.total)}, оплачено ${currencyText(finance.paid)}, борг ${currencyText(finance.debt)}">
+      <span class="fin-total">${icon("wallet")}${currencyText(finance.total)}</span>
+      <span class="fin-paid">${icon("check")}${currencyText(finance.paid)}</span>
+      ${finance.debt > 0 ? `<span class="fin-debt">${icon("warning")}${currencyText(finance.debt)}</span>` : ""}
     </div>
   `;
 }

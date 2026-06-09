@@ -26,7 +26,7 @@ import {
   renderCaseListScreen,
   renderCaseProfileScreen,
   renderCasesScreen
-} from "./js/screens/cases.js?v=formatdate-fix-1";
+} from "./js/screens/cases.js?v=finance-donut-1";
 import {
   calendarEntries as calendarEntriesScreen,
   calendarEventMeta as calendarEventMetaScreen,
