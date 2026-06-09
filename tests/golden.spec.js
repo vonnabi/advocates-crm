@@ -49,6 +49,16 @@ function stamp() {
   return `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
 }
 
+// The finance workspace defaults to a rolling [today-14, today] window
+// (DEMO_END = localIsoDate(), DEMO_START = -14d in derived-data.js). Operation
+// dates fed to period-filtered UI must land inside it, so compute them relative
+// to "now" instead of hardcoding a date that silently drifts out of range.
+function isoDaysAgo(days = 0) {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 async function openApp(page) {
   await page.addInitScript(() => {
     window.localStorage.clear();
@@ -468,6 +478,133 @@ test("finance invoice and act create documents and clean them up on delete", asy
   }
 });
 
+test("finance chain keeps debt/overpayment honest and deletion cleans the documents", async ({ request }) => {
+  // End-to-end финансовий контур: рахунок → акт → платіж → платіж → видалення.
+  // Locks in the Sprint 2 arithmetic (debt = income - paid, payments never inflate
+  // income, overpayment surfaces) and the Sprint 1/4 document lifecycle (each
+  // рахунок/акт spawns a finance document that is removed when the operation is).
+  const created = { operationIds: [], documentIds: [] };
+  const label = stamp();
+
+  async function readCase() {
+    const bootstrap = await apiJson(await request.get("/api/bootstrap/"), "GET /api/bootstrap/");
+    return bootstrap.cases.find((item) => item.id === created.matter.id);
+  }
+
+  try {
+    Object.assign(created, await createGoldenMatter(request, label));
+
+    // 1) Рахунок на 10000 → задає гонорар (income) і породжує фінансовий документ.
+    const invoice = await apiPost(request, "/api/finance/operations/", {
+      caseId: created.matter.id,
+      action: "invoice",
+      title: `Chain invoice ${label}`,
+      amount: 10000,
+      date: "2026-06-01",
+      status: "Очікується",
+      method: "Документ",
+      documentNumber: `INV-CHAIN-${label}`,
+      documentDue: "2026-06-15",
+      documentTemplate: "Основний шаблон",
+      comment: "Chain: рахунок задає гонорар і створює документ."
+    });
+    created.operationIds.push(invoice.operation.id);
+    created.documentIds.push(invoice.document.id);
+    expect(invoice.document?.id, "invoice must spawn a finance document").toBeTruthy();
+    expect(invoice.case.income, "invoice sets the agreed fee").toBe(10000);
+    expect(invoice.case.debt, "unpaid invoice → full debt").toBe(10000);
+    expect(invoice.case.overpaid).toBe(0);
+
+    // 2) Акт → окремий документ, гроші не чіпає.
+    const act = await apiPost(request, "/api/finance/operations/", {
+      caseId: created.matter.id,
+      action: "act",
+      title: `Chain act ${label}`,
+      amount: 10000,
+      date: "2026-06-02",
+      status: "Чернетка",
+      method: "Документ",
+      documentNumber: `ACT-CHAIN-${label}`,
+      workPeriod: "червень 2026",
+      documentTemplate: "Основний шаблон",
+      comment: "Chain: акт створює окремий документ."
+    });
+    created.operationIds.push(act.operation.id);
+    created.documentIds.push(act.document.id);
+    expect(act.document?.id, "act must spawn a finance document").toBeTruthy();
+    expect(act.case.income, "act must not inflate income").toBe(10000);
+
+    // 3) Платіж 5000 → борг наполовину, переплати ще немає.
+    const partial = await apiPost(request, "/api/finance/operations/", {
+      caseId: created.matter.id,
+      action: "income",
+      title: `Chain payment A ${label}`,
+      amount: 5000,
+      date: "2026-06-03",
+      status: "Оплачено",
+      method: "Банківський переказ",
+      comment: "Chain: частковий платіж."
+    });
+    created.operationIds.push(partial.operation.id);
+    expect(partial.case.paid).toBe(5000);
+    expect(partial.case.debt).toBe(5000);
+    expect(partial.case.overpaid).toBe(0);
+
+    // 4) Платіж 8000 → разом сплачено 13000 при гонорарі 10000: income НЕ роздувається,
+    //    борг обнуляється, зайве проявляється як переплата.
+    const overpay = await apiPost(request, "/api/finance/operations/", {
+      caseId: created.matter.id,
+      action: "income",
+      title: `Chain payment B ${label}`,
+      amount: 8000,
+      date: "2026-06-04",
+      status: "Оплачено",
+      method: "Банківський переказ",
+      comment: "Chain: переплата."
+    });
+    created.operationIds.push(overpay.operation.id);
+    expect(overpay.case.income, "payments must NOT inflate the fee").toBe(10000);
+    expect(overpay.case.paid).toBe(13000);
+    expect(overpay.case.debt, "fully paid → no debt").toBe(0);
+    expect(overpay.case.overpaid, "13000 paid on a 10000 fee → 3000 overpaid").toBe(3000);
+
+    // Обидва фінансові документи мають бути підшиті до справи.
+    let persistedCase = await readCase();
+    expect(persistedCase.documents.map((item) => item.id)).toEqual(
+      expect.arrayContaining([invoice.document.id, act.document.id])
+    );
+
+    // 5) Видалення: знімаємо рахунок → його документ зникає, гонорар відкочується.
+    await apiDelete(request, `/api/finance/operations/${invoice.operation.id}/`);
+    persistedCase = await readCase();
+    expect(persistedCase.documents.map((item) => item.id), "invoice document removed with its operation")
+      .not.toContain(invoice.document.id);
+    expect(persistedCase.income, "removing the invoice unwinds the fee").toBe(0);
+    expect(persistedCase.paid, "payments survive invoice removal").toBe(13000);
+    expect(persistedCase.overpaid, "no fee + 13000 paid → all of it is overpayment").toBe(13000);
+
+    // Знімаємо акт → його документ теж прибирається.
+    await apiDelete(request, `/api/finance/operations/${act.operation.id}/`);
+    persistedCase = await readCase();
+    expect(persistedCase.documents.map((item) => item.id), "act document removed with its operation")
+      .not.toContain(act.document.id);
+
+    // Рахунок та акт зникли з фінансового реєстру; платежі лишаються.
+    const bootstrap = await apiJson(await request.get("/api/bootstrap/"), "GET /api/bootstrap/");
+    const operationIds = bootstrap.financeOperations.map((item) => item.id);
+    expect(operationIds).not.toContain(invoice.operation.id);
+    expect(operationIds).not.toContain(act.operation.id);
+    expect(operationIds, "the two payments stay in the ledger").toEqual(
+      expect.arrayContaining([partial.operation.id, overpay.operation.id])
+    );
+    created.documentIds = [];
+  } finally {
+    // cleanupGoldenMatter re-derives leftover operations/documents from bootstrap,
+    // so already-deleted ids are harmless (DELETE 404 is treated as a no-op).
+    await cleanupGoldenMatter(request, created);
+  }
+});
+
 test("documents send and ONLYOFFICE actions open from the document registry", async ({ page, request }) => {
   const created = { operationIds: [], documentIds: [] };
   const label = stamp();
@@ -739,7 +876,7 @@ test("finance UI flow creates payment, invoice, act and opens row actions", asyn
     await chooseFinanceCase();
     await page.locator('#finance-action-form input[name="title"]').fill(title);
     await page.locator('#finance-action-form input[name="amount"]').fill(String(amount));
-    await page.locator('#finance-action-form input[name="date"]').fill("2026-05-25");
+    await page.locator('#finance-action-form input[name="date"]').fill(isoDaysAgo(3));
     if (extra.documentNumber) {
       await page.locator('#finance-action-form input[name="documentNumber"]').fill(extra.documentNumber);
     }
@@ -847,7 +984,7 @@ test("finance payment workspace paginates dense operation lists without resizing
         action: "income",
         title: `Pagination payment ${label} ${String(index).padStart(2, "0")}`,
         amount: 1000 + index,
-        date: "2026-05-25",
+        date: isoDaysAgo(3),
         status: index % 2 ? "Оплачено" : "Частково",
         method: index % 2 ? "Банківський переказ" : "Картка",
         comment: "Pagination regression"
@@ -1042,6 +1179,111 @@ test("OSINT uses live cases for search, monitoring, reports and case navigation"
     await expect(page.locator("#case-detail")).toContainText(`Справа № ${matter.id}`);
     await expect(page.locator("#case-detail")).toContainText(clientName);
   } finally {
+    await cleanupGoldenMatter(request, created);
+  }
+});
+
+test("role walkthrough: finance gating and case scoping per role", async ({ request, playwright }) => {
+  // Closes the last unchecked item of the "ready to demo" checklist (LOGIC_AUDIT
+  // Sprint 5 / risk #4): admin / адвокат / помічник / бухгалтер each get exactly
+  // the access their role allows. Logging in flips current_demo_user to the real
+  // session user (works even in demo mode), so this exercises the live gate.
+  const label = stamp();
+  const password = "RoleWalk-2026!";
+  const created = { operationIds: [], documentIds: [], userIds: [] };
+  const contexts = [];
+
+  async function loginBootstrap(email) {
+    const ctx = await playwright.request.newContext({ baseURL: "http://127.0.0.1:8001" });
+    contexts.push(ctx);
+    const session = await apiJson(await ctx.post("/api/auth/login/", { data: { email, password } }), `login ${email}`);
+    const bootstrap = await apiJson(await ctx.get("/api/bootstrap/"), `bootstrap ${email}`);
+    return { session, bootstrap };
+  }
+
+  try {
+    // Admin (the demo `request` context) sets the stage: one matter + an invoice on it.
+    Object.assign(created, await createGoldenMatter(request, label));
+    const invoice = await apiPost(request, "/api/finance/operations/", {
+      caseId: created.matter.id,
+      action: "invoice",
+      title: `Role invoice ${label}`,
+      amount: 4200,
+      date: "2026-06-01",
+      status: "Очікується",
+      method: "Документ",
+      documentNumber: `INV-ROLE-${label}`,
+      documentDue: "2026-06-15",
+      documentTemplate: "Основний шаблон",
+      comment: "Role walkthrough: ledger entry for finance gating."
+    });
+    created.operationIds.push(invoice.operation.id);
+    created.documentIds.push(invoice.document.id);
+
+    // Three non-admin roles. Lawyer + accountant are members of the matter;
+    // the assistant deliberately is NOT, to prove case scoping hides it.
+    const lawyerEmail = `role-lawyer-${label}@example.com`;
+    const assistantEmail = `role-assistant-${label}@example.com`;
+    const accountantEmail = `role-accountant-${label}@example.com`;
+    const lawyer = await apiPost(request, "/api/users/", {
+      name: `Role Lawyer ${label}`, email: lawyerEmail, role: "Адвокат",
+      password, passwordTemporary: false, assignedCaseIds: [created.matter.id]
+    });
+    const assistant = await apiPost(request, "/api/users/", {
+      name: `Role Assistant ${label}`, email: assistantEmail, role: "Помічник",
+      password, passwordTemporary: false, assignedCaseIds: []
+    });
+    const accountant = await apiPost(request, "/api/users/", {
+      name: `Role Accountant ${label}`, email: accountantEmail, role: "Бухгалтер",
+      password, passwordTemporary: false, assignedCaseIds: [created.matter.id]
+    });
+    created.userIds.push(lawyer.id, assistant.id, accountant.id);
+
+    // --- ADMIN: sees the full picture ---
+    const admin = await apiJson(await request.get("/api/bootstrap/"), "bootstrap admin");
+    expect(admin.session.permissions.canSeeFinance, "admin sees finance").toBe(true);
+    expect(admin.session.permissions.canManageUsers, "admin manages users").toBe(true);
+    expect(admin.financeOperations.map((o) => o.id), "admin sees the invoice op").toContain(invoice.operation.id);
+    expect(admin.settingsUsers.length, "admin gets the full staff directory").toBeGreaterThan(1);
+    expect(admin.cases.map((c) => c.id), "admin sees the matter").toContain(created.matter.id);
+
+    // --- АДВОКАТ: cases yes, finance no, users no ---
+    const law = await loginBootstrap(lawyerEmail);
+    expect(law.session.user.roleKey).toBe("lawyer");
+    expect(law.session.permissions.canManageCases, "lawyer manages cases").toBe(true);
+    expect(law.session.permissions.canSeeFinance, "lawyer must NOT see finance").toBe(false);
+    expect(law.session.permissions.canManageUsers, "lawyer must NOT manage users").toBe(false);
+    expect(law.bootstrap.financeOperations, "no finance ledger for lawyer").toEqual([]);
+    expect(law.bootstrap.settingsUsers.length, "lawyer only gets own profile").toBe(1);
+    expect(law.bootstrap.cases.map((c) => c.id), "lawyer sees the assigned matter").toContain(created.matter.id);
+    const lawyerCase = law.bootstrap.cases.find((c) => c.id === created.matter.id);
+    expect(lawyerCase.income, "finance figures zeroed for lawyer").toBe(0);
+    expect(lawyerCase.debt, "finance figures zeroed for lawyer").toBe(0);
+
+    // --- ПОМІЧНИК: no finance, no users, not a member → matter hidden ---
+    const asst = await loginBootstrap(assistantEmail);
+    expect(asst.session.user.roleKey).toBe("assistant");
+    expect(asst.session.permissions.canSeeFinance, "assistant must NOT see finance").toBe(false);
+    expect(asst.session.permissions.canManageUsers, "assistant must NOT manage users").toBe(false);
+    expect(asst.session.permissions.canViewPlanner, "assistant has the planner").toBe(true);
+    expect(asst.bootstrap.financeOperations, "no finance ledger for assistant").toEqual([]);
+    expect(asst.bootstrap.settingsUsers.length, "assistant only gets own profile").toBe(1);
+    expect(asst.bootstrap.cases.map((c) => c.id), "non-member assistant cannot see the matter").not.toContain(created.matter.id);
+
+    // --- БУХГАЛТЕР: finance yes, users no, cases no, member → sees the ledger ---
+    const acc = await loginBootstrap(accountantEmail);
+    expect(acc.session.user.roleKey).toBe("accountant");
+    expect(acc.session.permissions.canSeeFinance, "accountant sees finance").toBe(true);
+    expect(acc.session.permissions.canManageFinance, "accountant manages finance").toBe(true);
+    expect(acc.session.permissions.canManageUsers, "accountant must NOT manage users").toBe(false);
+    expect(acc.session.permissions.canManageCases, "accountant must NOT manage cases").toBe(false);
+    expect(acc.bootstrap.settingsUsers.length, "accountant only gets own profile").toBe(1);
+    expect(acc.bootstrap.financeOperations.map((o) => o.id), "accountant sees the matter's ledger").toContain(invoice.operation.id);
+  } finally {
+    for (const ctx of contexts) await ctx.dispose();
+    for (const userId of created.userIds || []) {
+      await apiDelete(request, `/api/users/${userId}/`);
+    }
     await cleanupGoldenMatter(request, created);
   }
 });
