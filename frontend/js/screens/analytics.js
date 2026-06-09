@@ -13,49 +13,6 @@ import { setupScreenCustomSelects } from "../custom-selects.js";
 
 const typeColors = ["#1f7ae0", "#27ae6f", "#f59e0b", "#7c5ce8", "#64748b", "#9aa7b7"];
 
-const STATUS_ROWS = [
-  ["В роботі", 96, 45, "#1f7ae0"],
-  ["Підготовка", 28, 13, "#27ae6f"],
-  ["Судовий розгляд", 38, 18, "#f59e0b"],
-  ["Очікування рішення", 22, 10, "#7c5ce8"],
-  ["Завершені", 18, 8, "#9aa7b7"],
-  ["Інші", 6, 6, "#c8d1dc"]
-];
-
-const TYPE_ROWS = [
-  ["Цивільні справи", 42, "#1f7ae0"],
-  ["Кримінальні справи", 28, "#27ae6f"],
-  ["Адміністративні справи", 20, "#f59e0b"],
-  ["Господарські справи", 15, "#7c5ce8"],
-  ["Сімейні справи", 10, "#1f7ae0"],
-  ["Трудові спори", 7, "#9aa7b7"],
-  ["Інші", 6, "#64748b"]
-];
-
-const PRACTICE_ROWS = [
-  ["Сімейне право", 32, "#1f7ae0"],
-  ["Цивільне право", 28, "#27ae6f"],
-  ["Кримінальне право", 22, "#f59e0b"],
-  ["Військове право", 18, "#7c5ce8"],
-  ["Адміністративне право", 12, "#1f7ae0"],
-  ["Трудове право", 8, "#9aa7b7"],
-  ["Інші", 8, "#64748b"]
-];
-
-const LAWYERS = [
-  ["Іваненко А.Ю.", 80],
-  ["Петренко М.С.", 75],
-  ["Коваленко О.В.", 72],
-  ["Шевченко І.А.", 65],
-  ["Бондаренко Д.В.", 58]
-];
-
-const LINE_SERIES = {
-  newCases: [20, 21, 25, 21, 19, 22, 29, 24, 26, 21, 27, 31, 32, 24, 28],
-  closedCases: [14, 11, 10, 14, 12, 15, 17, 16, 17, 14, 17, 17, 17, 15, 18],
-  inWork: [40, 42, 52, 47, 49, 50, 66, 58, 57, 50, 59, 63, 62, 56, 66]
-};
-
 const dates = Array.from({ length: 15 }, (_, index) => {
   const date = dateFromAny(DEMO_START);
   date.setDate(date.getDate() + index);
@@ -397,7 +354,6 @@ export function renderAnalyticsScreen(ctx) {
         <article class="panel analytics-chart-card analytics-line-card">
           <div class="analytics-card-head">
             <h2>Динаміка справ</h2>
-            <select><option>По днях</option><option>По тижнях</option></select>
           </div>
           ${showAnalyticsLineChart ? `
             <div class="analytics-legend">
@@ -434,7 +390,6 @@ export function renderAnalyticsScreen(ctx) {
         <article class="panel analytics-chart-card">
           <div class="analytics-card-head">
             <h2>Справи за типами</h2>
-            <select><option>За кількістю</option><option>За сумою</option></select>
           </div>
           <div class="analytics-hbar-list">${horizontalRows(typeRows) || `<p class="analytics-empty-note">Типи справ ще не сформовані.</p>`}</div>
         </article>
@@ -442,7 +397,6 @@ export function renderAnalyticsScreen(ctx) {
         <article class="panel analytics-chart-card">
           <div class="analytics-card-head">
             <h2>Ефективність адвокатів</h2>
-            <select><option>За успішними справами</option><option>За навантаженням</option></select>
           </div>
           <div class="analytics-lawyer-list">
             ${lawyerRows.length ? lawyerRows.map(([name, percent], index) => `
@@ -461,7 +415,6 @@ export function renderAnalyticsScreen(ctx) {
         <article class="panel analytics-chart-card analytics-finance-card">
           <div class="analytics-card-head">
             <h2>Фінансові показники</h2>
-            <select><option>За період</option><option>За місяць</option></select>
           </div>
           <div class="analytics-finance-summary">
             <div><span>Дохід</span><strong>${currency(financeStats.income)}</strong><em>${financeSummaryLabels.income}</em></div>
@@ -490,7 +443,6 @@ export function renderAnalyticsScreen(ctx) {
         <article class="panel analytics-chart-card">
           <div class="analytics-card-head">
             <h2>Топ практик <small>(${activeTabLabel.toLowerCase()})</small></h2>
-            <select><option>За кількістю</option><option>За доходом</option></select>
           </div>
           <div class="analytics-hbar-list">${horizontalRows(practiceRows) || `<p class="analytics-empty-note">Практики з'являться після першої справи.</p>`}</div>
         </article>
@@ -499,7 +451,7 @@ export function renderAnalyticsScreen(ctx) {
   `;
 
   const rerender = () => renderAnalyticsScreen(ctx);
-  setupScreenCustomSelects($("#analytics"), ".analytics-filter-card select, .analytics-card-head select");
+  setupScreenCustomSelects($("#analytics"), ".analytics-filter-card select");
   document.querySelector("[data-analytics-period]")?.addEventListener("change", (event) => {
     state.analyticsPeriod = event.currentTarget.value;
   });

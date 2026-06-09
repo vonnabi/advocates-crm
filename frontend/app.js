@@ -18,7 +18,7 @@ import {
   saveNavigationState as saveNavigationStateToStorage
 } from "./js/navigation.js";
 import { renderAIScreen } from "./js/screens/ai.js";
-import { renderAnalyticsScreen } from "./js/screens/analytics.js?v=live-demo-1";
+import { renderAnalyticsScreen } from "./js/screens/analytics.js?v=dead-code-cleanup-1";
 import {
   caseFinance,
   caseFolders,
@@ -46,7 +46,7 @@ import {
   setMailingTab as setMailingTabScreen
 } from "./js/screens/mailings.js?v=modal-select-audit-1";
 import { renderFinanceScreen } from "./js/screens/finance.js?v=finance-kpi-trend-1";
-import { renderOSINTScreen } from "./js/screens/osint.js?v=live-demo-1";
+import { renderOSINTScreen } from "./js/screens/osint.js?v=dead-code-cleanup-1";
 import { renderPlannerScreen } from "./js/screens/planner.js";
 import { renderSettingsScreen } from "./js/screens/settings.js?v=empty-audit-1";
 import {

@@ -4,7 +4,6 @@ import {
   DEMO_START,
   osintSummaryFromData
 } from "../derived-data.js?v=live-demo-1";
-import { setupScreenCustomSelects } from "../custom-selects.js";
 
 const OSINT_TABS = [
   ["overview", "Огляд"],
@@ -60,33 +59,6 @@ OSINT_SOURCE_COLORS.set("Opendatabot", "#27ae6f");
 OSINT_SOURCE_COLORS.set("Судовий реєстр", "#7c5ce8");
 OSINT_SOURCE_COLORS.set("Новини", "#f59e0b");
 OSINT_SOURCE_COLORS.set("YouControl", "#16a34a");
-
-const OSINT_MENTIONS = [
-  { source: "Facebook", title: "Згадка у Facebook", text: "Олександр Петренко згаданий у коментарях до публікації", caseId: demoCaseId("2024/12345"), time: demoDateTime("16.05", "09:20"), tone: "red", status: "Негативна" },
-  { source: "Opendatabot", title: "Зміна в компанії", text: "ТОВ «Альфа» змінило кінцевого бенефіціара", caseId: demoCaseId("2024/9012"), time: demoDateTime("16.05", "09:10"), tone: "blue", status: "Нейтральна" },
-  { source: "Судовий реєстр", title: "Нове судове рішення", text: "Знайдено рішення у справі №755/1234/24", caseId: demoCaseId("2024/5678"), time: demoDateTime("16.05", "08:45"), tone: "amber", status: "Важлива" },
-  { source: "Telegram", title: "Повідомлення в Telegram", text: "Знайдено згадку в каналі «Правовий контроль»", caseId: demoCaseId("2024/2468"), time: demoDateTime("16.05", "08:30"), tone: "red", status: "Негативна" },
-  { source: "Новини", title: "Публікація в ЗМІ", text: "Опубліковано статтю про судову справу", caseId: demoCaseId("2024/1357"), time: demoDateTime("16.05", "08:15"), tone: "blue", status: "Нейтральна" }
-];
-
-const OSINT_ACTIVE_CASES = [
-  { caseId: demoCaseId("2024/1234"), title: "Оскарження дій ТЦК щодо мобілізації", risk: "Високий ризик", progress: 78, updated: demoDateTime("16.05", "09:15"), tone: "red" },
-  { caseId: demoCaseId("2024/5678"), title: "Шахрайство в особливо великих розмірах", risk: "Середній ризик", progress: 64, updated: demoDateTime("16.05", "08:40"), tone: "amber" },
-  { caseId: demoCaseId("2024/9012"), title: "Корпоративний спір між засновниками", risk: "Низький ризик", progress: 42, updated: demoDateTime("15.05", "17:30"), tone: "green" },
-  { caseId: demoCaseId("2024/2468"), title: "Визнання договору недійсним", risk: "Низький ризик", progress: 35, updated: demoDateTime("15.05", "16:10"), tone: "green" },
-  { caseId: demoCaseId("2024/1357"), title: "Стягнення заборгованості з контрагента", risk: "Середній ризик", progress: 58, updated: demoDateTime("15.05", "14:55"), tone: "amber" }
-];
-
-const OSINT_DATA_TYPES = [
-  ["Персональні дані", 1245, "#1f7ae0"],
-  ["Судові рішення", 987, "#2f80d0"],
-  ["Соцмережі", 856, "#27ae6f"],
-  ["Компанії та реєстри", 743, "#ef4444"],
-  ["Новини та ЗМІ", 532, "#7c5ce8"],
-  ["Відкриті реєстри", 421, "#f59e0b"],
-  ["Форуми та блоги", 312, "#3b82f6"],
-  ["Інше", 156, "#64748b"]
-];
 
 const OSINT_SOURCE_DEFAULTS = [
   { id: "youcontrol", title: "YouControl", subtitle: "Бізнес-дані та реєстри", updated: demoDateTime("16.05", "09:00"), status: "Активне", enabled: true, cadence: "кожні 60 хв" },
@@ -670,7 +642,6 @@ function overviewWorkspace(state, badge, icon) {
       <article class="panel osint-chart-card osint-line-panel">
         <div class="analytics-card-head">
           <h2>Динаміка згадок</h2>
-          <select data-osint-chart-scale><option>По днях</option><option>По тижнях</option></select>
         </div>
         <div class="analytics-legend">
           <span class="blue">Всі згадки</span>
@@ -918,7 +889,6 @@ export function renderOSINTScreen(ctx) {
     </div>
   `;
 
-  setupScreenCustomSelects($("#osint"), "[data-osint-chart-scale]");
   document.querySelector("[data-osint-query]")?.addEventListener("input", (event) => {
     state.osintQuery = event.currentTarget.value;
     renderOSINTScreen(ctx);
@@ -1026,9 +996,8 @@ export function renderOSINTScreen(ctx) {
     showToast("Період OSINT застосовано.");
     renderOSINTScreen(ctx);
   });
-  document.querySelectorAll("[data-osint-sync], [data-osint-chart-scale]").forEach((control) => {
+  document.querySelectorAll("[data-osint-sync]").forEach((control) => {
     control.addEventListener("click", () => showToast("OSINT дані оновлено."));
-    control.addEventListener("change", () => showToast("Параметри OSINT оновлено."));
   });
   document.querySelectorAll("[data-osint-quick]").forEach((button) => button.addEventListener("click", () => {
     const caseItem = selectedOsintCase(state);
