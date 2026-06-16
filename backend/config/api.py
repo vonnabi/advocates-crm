@@ -135,9 +135,15 @@ def verify_onlyoffice_jwt(request, body, secret):
     """Verify the ONLYOFFICE callback HS256 JWT (Authorization: Bearer or body "token").
     Returns the trusted claims (the signed callback payload) or None if unverifiable."""
     token = ""
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        token = auth_header[len("Bearer "):].strip()
+    # ONLYOFFICE sends the JWT in a header (default "Authorization: Bearer", while ONLYOFFICE
+    # Docs Cloud uses a custom "AuthorizationJwt" header) and also inside the callback body.
+    for header_name in ("Authorization", "AuthorizationJwt"):
+        raw = request.headers.get(header_name, "")
+        if not raw:
+            continue
+        token = raw[len("Bearer "):].strip() if raw.startswith("Bearer ") else raw.strip()
+        if token:
+            break
     if not token:
         token = str(body.get("token") or "").strip()
     if not token or token.count(".") != 2:
