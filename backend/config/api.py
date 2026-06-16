@@ -1,4 +1,6 @@
 import json
+import base64
+import binascii
 import hmac
 import ipaddress
 import re
@@ -8,13 +10,14 @@ import urllib.request
 from urllib.parse import urlsplit
 from datetime import datetime, time, timedelta
 from decimal import Decimal
-from hashlib import sha1
+from hashlib import sha1, sha256
 from io import BytesIO
 from xml.sax.saxutils import escape
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from django.contrib.auth import authenticate, get_user_model, login as auth_login, logout as auth_logout, update_session_auth_hash
 from django.conf import settings
+from django.core import signing
 from django.core.exceptions import BadRequest
 from django.core.files.base import ContentFile
 from django.core.management import call_command
@@ -48,10 +51,9 @@ def empty_response(status=204):
 
 
 def file_response(response):
-    response["Access-Control-Allow-Origin"] = "*"
-    response["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    response["Access-Control-Allow-Headers"] = "Content-Type"
-    response["Access-Control-Allow-Credentials"] = "true"
+    # CORS is applied centrally by ApiCorsMiddleware (per-origin allow-list). Files are
+    # served same-origin to the browser and server-to-server to ONLYOFFICE (no CORS needed),
+    # so we must NOT emit the invalid "Allow-Origin: * + Allow-Credentials: true" combo here.
     return response
 
 
@@ -90,6 +92,70 @@ def is_safe_fetch_url(url):
                 or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
             return False
     return True
+
+
+ONLYOFFICE_MAX_DOCUMENT_BYTES = 50 * 1024 * 1024  # cap remote fetch to avoid memory-exhaustion DoS
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Refuse redirects so the SSRF allow-list (validated on the original URL) cannot be
+    bypassed by a public URL that 30x-redirects to an internal/metadata host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def fetch_remote_document(url):
+    opener = urllib.request.build_opener(_NoRedirectHandler)
+    with opener.open(url, timeout=30) as response:
+        content = response.read(ONLYOFFICE_MAX_DOCUMENT_BYTES + 1)
+    if len(content) > ONLYOFFICE_MAX_DOCUMENT_BYTES:
+        raise BadRequest("Файл документа перевищує допустимий розмір.")
+    return content
+
+
+def onlyoffice_jwt_secret():
+    config = crm_settings_instance().integration_settings or {}
+    onlyoffice = config.get("ONLYOFFICE") if isinstance(config, dict) else {}
+    if not isinstance(onlyoffice, dict):
+        return ""
+    return str(onlyoffice.get("jwtSecret") or "").strip()
+
+
+def _b64url_decode(segment):
+    padding = "=" * (-len(segment) % 4)
+    return base64.urlsafe_b64decode(segment + padding)
+
+
+def verify_onlyoffice_jwt(request, body, secret):
+    """Verify the ONLYOFFICE callback HS256 JWT (Authorization: Bearer or body "token").
+    Returns the trusted claims (the signed callback payload) or None if unverifiable."""
+    token = ""
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[len("Bearer "):].strip()
+    if not token:
+        token = str(body.get("token") or "").strip()
+    if not token or token.count(".") != 2:
+        return None
+    header_b64, payload_b64, signature_b64 = token.split(".")
+    signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
+    try:
+        expected = hmac.new(secret.encode("utf-8"), signing_input, sha256).digest()
+        provided = _b64url_decode(signature_b64)
+    except (ValueError, binascii.Error):
+        return None
+    if not hmac.compare_digest(expected, provided):
+        return None
+    try:
+        claims = json.loads(_b64url_decode(payload_b64).decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if not isinstance(claims, dict):
+        return None
+    # ONLYOFFICE header-token wraps callback data under "payload"; body-token is inline.
+    inner = claims.get("payload")
+    return inner if isinstance(inner, dict) else claims
 
 
 def clean_string_map(source, defaults, max_lengths=None):
@@ -520,9 +586,16 @@ def upsert_document(data, document=None):
     return document
 
 
+DOCUMENT_FILE_TOKEN_SALT = "crm.document-file-access"
+# Long enough for ONLYOFFICE to fetch when opening a doc, short enough that a leaked
+# file URL stops working quickly. Browser downloads fall back to session case-access.
+DOCUMENT_FILE_TOKEN_MAX_AGE = 60 * 60  # seconds
+
+
 def document_file_token(document):
-    raw = f"{document.id}:{document.file.name}:{settings.SECRET_KEY}"
-    return sha1(raw.encode("utf-8")).hexdigest()
+    # Signed, expiring, scoped capability token (replaces the old eternal sha1 digest
+    # that bypassed case access forever once a URL leaked).
+    return signing.dumps({"id": document.id, "name": document.file.name}, salt=DOCUMENT_FILE_TOKEN_SALT)
 
 
 def document_file_url(request, document):
@@ -540,8 +613,13 @@ def document_callback_url(request, document):
 
 def has_valid_document_file_token(request, document):
     token = request.GET.get("token") or ""
-    expected = document_file_token(document)
-    return bool(token and hmac.compare_digest(token, expected))
+    if not token:
+        return False
+    try:
+        data = signing.loads(token, salt=DOCUMENT_FILE_TOKEN_SALT, max_age=DOCUMENT_FILE_TOKEN_MAX_AGE)
+    except signing.BadSignature:
+        return False
+    return isinstance(data, dict) and data.get("id") == document.id and data.get("name") == document.file.name
 
 
 def safe_document_upload_name(document, uploaded_name="document.docx"):
@@ -2772,12 +2850,23 @@ def document_onlyoffice_callback_api(request, document_id):
         return json_response({"error": 1}, status=404)
     try:
         payload = parse_body(request)
+        # The callback is server-to-server (no session), so authenticate it with the ONLYOFFICE
+        # HS256 JWT signed by the configured jwtSecret. Without a verified signature an anonymous
+        # caller could overwrite any document and drive SSRF, so we refuse the callback whenever a
+        # secret is configured, and in secured mode we require one outright.
+        secret = onlyoffice_jwt_secret()
+        if secret:
+            verified = verify_onlyoffice_jwt(request, payload, secret)
+            if verified is None:
+                return json_response({"error": 1, "message": "Недійсний підпис callback."}, status=403)
+            payload = verified
+        elif getattr(settings, "CRM_REQUIRE_AUTH", False):
+            return json_response({"error": 1, "message": "ONLYOFFICE JWT не налаштовано."}, status=403)
         status = int(payload.get("status", 0))
         if status in {2, 6} and payload.get("url"):
             if not is_safe_fetch_url(payload["url"]):
                 return json_response({"error": 1, "message": "Недопустиме посилання на документ."}, status=400)
-            with urllib.request.urlopen(payload["url"], timeout=30) as response:
-                content = response.read()
+            content = fetch_remote_document(payload["url"])
             file_name = safe_document_upload_name(item, f"{item.title}.docx")
             item.file.save(file_name, ContentFile(content), save=False)
             item.status = item.status or "В роботі"
@@ -2789,6 +2878,8 @@ def document_onlyoffice_callback_api(request, document_id):
             item.history = history
             item.save()
         return json_response({"error": 0})
+    except BadRequest:
+        return json_response({"error": 1, "message": "Не вдалося завантажити документ."}, status=400)
     except Exception:
         return json_response({"error": 1}, status=500)
 

@@ -1337,3 +1337,40 @@ test("role walkthrough: finance gating and case scoping per role", async ({ requ
     await cleanupGoldenMatter(request, created);
   }
 });
+
+test("ONLYOFFICE callback refuses SSRF urls and never overwrites a document from an internal host", async ({ request }) => {
+  const created = { documentIds: [] };
+  try {
+    const { matter } = await createGoldenMatter(request);
+    created.matter = matter;
+    const document = await apiPost(request, "/api/documents/", {
+      caseId: matter.id,
+      name: `SSRF Probe ${stamp()}.docx`,
+      type: "Запит",
+      folder: "Запити",
+      status: "Чернетка",
+      responsible: "Іваненко А.Ю."
+    });
+    created.documentIds.push(document.id);
+
+    // The callback is the highest-risk surface (server-side fetch of an attacker-supplied
+    // URL + unauthenticated document overwrite). Internal/metadata/file targets must be
+    // refused by the SSRF guard, and when an ONLYOFFICE jwtSecret is configured an unsigned
+    // callback is refused outright. Either way the document must NOT be overwritten.
+    const ssrfTargets = [
+      "http://169.254.169.254/latest/meta-data/",
+      "http://127.0.0.1:8001/api/bootstrap/",
+      "file:///etc/passwd"
+    ];
+    for (const url of ssrfTargets) {
+      const res = await request.post(`/api/documents/${document.id}/onlyoffice/callback/`, {
+        data: { status: 2, url }
+      });
+      expect([400, 403], `callback must reject ${url} (got ${res.status()})`).toContain(res.status());
+      const body = await res.json().catch(() => ({}));
+      expect(body.error, `callback must not report success for ${url}`).not.toBe(0);
+    }
+  } finally {
+    await cleanupGoldenMatter(request, created);
+  }
+});

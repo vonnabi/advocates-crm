@@ -25,6 +25,15 @@ def env_list(name, default=""):
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-change-me")
 DEBUG = env_bool("DJANGO_DEBUG", default="RENDER" not in os.environ)
 
+# Fail closed: never run a production (DEBUG off) server on the public default key —
+# it would make document-file tokens, sessions and signed values forgeable.
+if not DEBUG and SECRET_KEY == "dev-only-change-me":
+    from django.core.exceptions import ImproperlyConfigured
+
+    raise ImproperlyConfigured(
+        "SECRET_KEY must be set to a unique value when DJANGO_DEBUG is off."
+    )
+
 ALLOWED_HOSTS = env_list(
     "DJANGO_ALLOWED_HOSTS",
     "127.0.0.1,localhost,testserver,host.docker.internal,host.lima.internal,192.168.5.2",
