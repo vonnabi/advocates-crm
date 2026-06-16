@@ -5,6 +5,8 @@ keeps working. Enable for real deployments via env:
   CRM_REQUIRE_AUTH=true            — reject anonymous /api/ requests with 401
   CRM_ALLOWED_ORIGINS=https://app  — restrict CORS to a comma-separated allow-list
 """
+import re
+
 from django.conf import settings
 from django.http import JsonResponse
 
@@ -12,6 +14,11 @@ from django.http import JsonResponse
 # Paths must match config/urls.py exactly (login/logout live under /api/auth/).
 # /api/health is the platform health-check (Render) and must answer 200 anonymously.
 OPEN_API_PREFIXES = ("/api/health", "/api/session", "/api/auth/login", "/api/auth/logout")
+
+# The document file download is fetched server-to-server by the ONLYOFFICE Document Server
+# (no session). It enforces its own auth in the view (signed, expiring file token OR case
+# access), so it must bypass the blanket session gate — same as the ONLYOFFICE callback.
+DOCUMENT_FILE_RE = re.compile(r"^/api/documents/\d+/file/$")
 
 
 class RequireApiAuthMiddleware:
@@ -26,7 +33,10 @@ class RequireApiAuthMiddleware:
                 and not request.path.startswith(OPEN_API_PREFIXES)
                 # ONLYOFFICE document-server webhook is server-to-server (no session);
                 # it is guarded separately by the SSRF check + document id.
-                and "/onlyoffice/callback/" not in request.path):
+                and "/onlyoffice/callback/" not in request.path
+                # ONLYOFFICE fetches the document file server-to-server; the view enforces
+                # its own signed-token / case-access check.
+                and not DOCUMENT_FILE_RE.match(request.path)):
             return JsonResponse({"error": "Unauthorized", "message": "Потрібен вхід у систему."}, status=401)
         return self.get_response(request)
 
