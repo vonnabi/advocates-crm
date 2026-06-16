@@ -1,4 +1,4 @@
-import { saveDocumentToApi, shouldUseApi } from "./api.js";
+import { apiRequest, saveDocumentToApi, shouldUseApi } from "./api.js";
 import { docContentToHtml, docContentToDisplayHtml, sanitizeDocHtml, isHtmlDocContent } from "./doc-html.js";
 
 export function createDialogOpeners({
@@ -1173,31 +1173,46 @@ export function createDialogOpeners({
     }
     body.innerHTML = `<div class="office-editor-loading"><strong>Завантажуємо ONLYOFFICE...</strong><span>${escapeHtml(documentServerUrl)}</span></div><div id="onlyoffice-editor-container" class="onlyoffice-editor-container"></div>`;
     try {
+      // Prefer the server-signed config: a JWT-enabled Document Server only accepts a config
+      // signed with the shared jwtSecret, and that secret must never reach the browser. The
+      // unsigned client-built config below is a fallback for unsaved docs / a JWT-off dev server.
+      let editorConfig = null;
+      const backendDocId = documentData.id ?? documentData.documentId;
+      if (backendDocId !== undefined && backendDocId !== null && backendDocId !== "") {
+        try {
+          editorConfig = await apiRequest(`/api/documents/${backendDocId}/onlyoffice/config/`);
+        } catch (_configError) {
+          editorConfig = null;
+        }
+      }
+      if (!editorConfig) {
+        editorConfig = {
+          document: {
+            fileType,
+            key: onlyOfficeDocumentKey(documentData, fileType, documentUrl),
+            title: documentData.fileName || documentData.name || `document.${fileType}`,
+            url: documentUrl
+          },
+          documentType,
+          editorConfig: {
+            callbackUrl,
+            lang: "uk",
+            mode: fileType === "pdf" ? "view" : "edit",
+            user: {
+              id: "crm-user",
+              name: state.currentUser?.name || "CRM user"
+            }
+          },
+          height: "100%",
+          width: "100%"
+        };
+      }
       await loadOnlyOfficeApi(documentServerUrl);
       const container = document.querySelector("#onlyoffice-editor-container");
       if (!container || !window.DocsAPI?.DocEditor) throw new Error("ONLYOFFICE API unavailable");
       body.querySelector(".office-editor-loading")?.remove();
       window.__crmOnlyOfficeEditor?.destroyEditor?.();
-      window.__crmOnlyOfficeEditor = new window.DocsAPI.DocEditor("onlyoffice-editor-container", {
-        document: {
-          fileType,
-          key: onlyOfficeDocumentKey(documentData, fileType, documentUrl),
-          title: documentData.fileName || documentData.name || `document.${fileType}`,
-          url: documentUrl
-        },
-        documentType,
-        editorConfig: {
-          callbackUrl,
-          lang: "uk",
-          mode: fileType === "pdf" ? "view" : "edit",
-          user: {
-            id: "crm-user",
-            name: state.currentUser?.name || "CRM user"
-          }
-        },
-        height: "100%",
-        width: "100%"
-      });
+      window.__crmOnlyOfficeEditor = new window.DocsAPI.DocEditor("onlyoffice-editor-container", editorConfig);
     } catch (_error) {
       if (canUseBuiltInEditor) {
         mountBuiltInDocEditor(documentData, dialog, body);

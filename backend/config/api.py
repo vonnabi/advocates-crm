@@ -127,6 +127,10 @@ def _b64url_decode(segment):
     return base64.urlsafe_b64decode(segment + padding)
 
 
+def _b64url_encode(data):
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
 def verify_onlyoffice_jwt(request, body, secret):
     """Verify the ONLYOFFICE callback HS256 JWT (Authorization: Bearer or body "token").
     Returns the trusted claims (the signed callback payload) or None if unverifiable."""
@@ -156,6 +160,75 @@ def verify_onlyoffice_jwt(request, body, secret):
     # ONLYOFFICE header-token wraps callback data under "payload"; body-token is inline.
     inner = claims.get("payload")
     return inner if isinstance(inner, dict) else claims
+
+
+ONLYOFFICE_CELL_TYPES = {"xls", "xlsx", "xlsm", "xlt", "xltx", "ods", "csv", "fods"}
+ONLYOFFICE_SLIDE_TYPES = {"ppt", "pptx", "pps", "ppsx", "pot", "potx", "odp", "fodp"}
+
+
+def sign_onlyoffice_jwt(payload, secret):
+    header = _b64url_encode(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode("utf-8"))
+    body = _b64url_encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+    signing_input = f"{header}.{body}".encode("ascii")
+    signature = _b64url_encode(hmac.new(secret.encode("utf-8"), signing_input, sha256).digest())
+    return f"{header}.{body}.{signature}"
+
+
+def onlyoffice_file_type(document):
+    name = (document.file.name if document.file else "") or document.title or ""
+    ext = os.path.splitext(name)[1].lower().lstrip(".")
+    return ext or "docx"
+
+
+def onlyoffice_document_type(file_type):
+    if file_type in ONLYOFFICE_CELL_TYPES:
+        return "cell"
+    if file_type in ONLYOFFICE_SLIDE_TYPES:
+        return "slide"
+    if file_type == "pdf":
+        return "pdf"
+    return "word"
+
+
+def onlyoffice_document_key(document):
+    # Must change whenever the file content changes so the Document Server does not serve a
+    # stale cached version. updated_at advances on every save and re-saved files get a suffix.
+    stamp = document.updated_at.isoformat() if getattr(document, "updated_at", None) else ""
+    raw = f"{document.id}:{document.file.name if document.file else ''}:{stamp}"
+    return f"doc{document.id}-{sha1(raw.encode('utf-8')).hexdigest()[:24]}"
+
+
+def build_onlyoffice_config(request, document, user=None):
+    file_type = onlyoffice_file_type(document)
+    editable = file_type != "pdf"
+    fallback_name = os.path.basename(document.file.name) if document.file else f"{document.title}.{file_type}"
+    config = {
+        "document": {
+            "fileType": file_type,
+            "key": onlyoffice_document_key(document),
+            "title": document.title or fallback_name,
+            "url": document_file_url(request, document),
+            "permissions": {"edit": editable, "download": True, "print": True},
+        },
+        "documentType": onlyoffice_document_type(file_type),
+        "editorConfig": {
+            "callbackUrl": document_callback_url(request, document),
+            "lang": "uk",
+            "mode": "edit" if editable else "view",
+            "user": {
+                "id": str(user.id) if user else "crm",
+                "name": (user_name(user) if user else "") or "CRM",
+            },
+        },
+        "height": "100%",
+        "width": "100%",
+    }
+    # Sign the whole config with the shared secret so a JWT-enabled Document Server accepts it.
+    # Signing happens server-side only — the secret never reaches the browser.
+    secret = onlyoffice_jwt_secret()
+    if secret:
+        config["token"] = sign_onlyoffice_jwt(config, secret)
+    return config
 
 
 def clean_string_map(source, defaults, max_lengths=None):
@@ -2837,6 +2910,24 @@ def document_file_api(request, document_id):
     item.save(update_fields=["file", "history"])
     log_crm_action(request, AuditLog.Action.UPDATE, "document", item.id, item.title, f"Завантажено файл документа {item.title}.")
     return json_response(serialize_document(item, request))
+
+
+@require_http_methods(["GET", "OPTIONS"])
+def document_onlyoffice_config_api(request, document_id):
+    """Build the ONLYOFFICE editor config server-side and sign it (the jwtSecret must never
+    reach the browser). The frontend hands the returned object straight to DocsAPI.DocEditor."""
+    if request.method == "OPTIONS":
+        return empty_response()
+    try:
+        item = CaseDocument.objects.select_related("case").get(pk=document_id)
+    except CaseDocument.DoesNotExist as exc:
+        raise Http404("Document not found") from exc
+    forbidden = require_case_access(request, item.case)
+    if forbidden:
+        return forbidden
+    if not item.file:
+        return json_response({"error": "Документ не має файлу для редагування."}, status=404)
+    return json_response(build_onlyoffice_config(request, item, current_demo_user(request)))
 
 
 @csrf_exempt
