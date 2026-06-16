@@ -4,6 +4,7 @@ import {
   DEMO_START,
   osintSummaryFromData
 } from "../derived-data.js?v=live-demo-1";
+import { escapeHtml } from "../ui.js";
 
 const OSINT_TABS = [
   ["overview", "Огляд"],
@@ -164,10 +165,10 @@ function osintMetrics(state) {
   const summary = osintSummaryFromData(state);
   const trend = (metricValue, value) => metricValue ? value : "Без даних";
   return [
-    { action: "overview", label: "Зібрано даних", value: new Intl.NumberFormat("uk-UA").format(summary.collected), trend: trend(summary.collected, "+18%"), icon: "briefcase", tone: "blue" },
-    { action: "mentions", label: "Нові згадки", value: new Intl.NumberFormat("uk-UA").format(summary.mentions), trend: trend(summary.mentions, "+12%"), icon: "file", tone: "green" },
-    { action: "cases", label: "Проаналізовано справ", value: summary.analyzedCases, trend: trend(summary.analyzedCases, "+8%"), icon: "check", tone: "green" },
-    { action: "risks", label: "Виявлено ризиків", value: summary.risks, trend: trend(summary.risks, "+20%"), icon: "tag", tone: "red" },
+    { action: "overview", label: "Зібрано даних", value: new Intl.NumberFormat("uk-UA").format(summary.collected), trend: trend(summary.collected, "за поточний період"), icon: "briefcase", tone: "blue" },
+    { action: "mentions", label: "Нові згадки", value: new Intl.NumberFormat("uk-UA").format(summary.mentions), trend: trend(summary.mentions, "за поточний період"), icon: "file", tone: "green" },
+    { action: "cases", label: "Проаналізовано справ", value: summary.analyzedCases, trend: trend(summary.analyzedCases, "усього"), icon: "check", tone: "green" },
+    { action: "risks", label: "Виявлено ризиків", value: summary.risks, trend: trend(summary.risks, "усього"), icon: "tag", tone: "red" },
     { action: "monitoring", label: "Моніторинг активний", value: summary.monitoring, trend: trend(summary.monitoring, "справ / людей / подій"), icon: "refresh", tone: "blue" },
     { action: "sources", label: "Джерел у роботі", value: summary.sources, trend: trend(summary.sources, "підключено"), icon: "search", tone: "blue" }
   ];
@@ -424,8 +425,8 @@ function mentionList(badge, icon, state, limit = 0) {
         <button class="osint-mention-row" type="button" data-open-osint-case="${item.caseId}">
           <span class="source-icon ${meta.tone}">${meta.label ? `<b>${meta.label}</b>` : icon(meta.iconName)}</span>
           <span>
-            <strong>${item.title}</strong>
-            <small>${item.text}</small>
+            <strong>${escapeHtml(item.title)}</strong>
+            <small>${escapeHtml(item.text)}</small>
             <small>Справа: №${item.caseId}</small>
           </span>
           <time>${item.time}</time>
@@ -498,7 +499,7 @@ function activeCasesList(state, badge) {
         <button type="button" data-open-osint-case="${item.caseId}">
           <span>
             <strong>№${item.caseId}</strong>
-            <b>${item.title}</b>
+            <b>${escapeHtml(item.title)}</b>
             <small>Оновлено: ${item.updated}</small>
           </span>
           ${badge(item.risk, item.tone)}
@@ -813,8 +814,8 @@ function secondaryWorkspace(state, badge, icon) {
       <div class="osint-focus-grid">
         ${filteredChecks(state).map((check) => `
           <button class="osint-focus-card" type="button" data-select-osint="${check.id}">
-            <strong>${check.title}</strong>
-            <span>№${check.caseId} · ${check.object}</span>
+            <strong>${escapeHtml(check.title)}</strong>
+            <span>№${check.caseId} · ${escapeHtml(check.object)}</span>
             ${badge(check.status, osintTone(check.status))}
           </button>
         `).join("")}

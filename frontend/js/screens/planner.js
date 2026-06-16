@@ -1,3 +1,5 @@
+import { escapeHtml } from "../ui.js";
+
 function planDateLabel(date, monthNames) {
   const weekdays = ["неділя", "понеділок", "вівторок", "середа", "четвер", "п'ятниця", "субота"];
   return `${date.getDate()} ${monthNames[date.getMonth()].toLowerCase()} ${date.getFullYear()}, ${weekdays[date.getDay()]}`;
@@ -149,14 +151,14 @@ export function renderPlannerScreen(ctx) {
                       <time><strong>${dueTime(task, index)}</strong><span>${icon("clock")}</span></time>
                       <div class="planner-item-icon" data-tooltip="${taskCategory(task)}" tabindex="0" role="img" aria-label="Тип задачі: ${taskCategory(task)}">${icon(taskIconName(task))}</div>
                       <div class="planner-item-main">
-                        <strong>${task.title}</strong>
-                        <span>${task.caseTitle} · ${task.plannerReason || task.status}</span>
-                        <em>${task.reminderEnabled ? `${icon("bell")} ${task.reminderBefore || "Нагадування"}` : "Без нагадування"}${task.teamTask ? ` · Співвиконавці: ${task.coexecutors.join(", ")}` : ""}</em>
+                        <strong>${escapeHtml(task.title)}</strong>
+                        <span>${escapeHtml(task.caseTitle)} · ${escapeHtml(task.plannerReason || task.status)}</span>
+                        <em>${task.reminderEnabled ? `${icon("bell")} ${escapeHtml(task.reminderBefore || "Нагадування")}` : "Без нагадування"}${task.teamTask ? ` · Співвиконавці: ${escapeHtml(task.coexecutors.join(", "))}` : ""}</em>
                       </div>
                       ${badge(taskCategory(task), group.tone)}
                       <div class="planner-item-case">
                         <strong>Справа №${task.caseId}</strong>
-                        <span>${task.clientName}</span>
+                        <span>${escapeHtml(task.clientName)}</span>
                       </div>
                       <div class="planner-item-actions">
                         <button type="button" class="secondary" data-open-planner-case="${task.caseId}">Відкрити справу</button>
@@ -224,7 +226,7 @@ export function renderPlannerScreen(ctx) {
               ${calendarTomorrow.map((event) => `
                 <p>
                   <time>${event.time}</time>
-                  <strong>${event.title}</strong>
+                  <strong>${escapeHtml(event.title)}</strong>
                   <span>Справа №${event.caseId}</span>
                 </p>
               `).join("")}

@@ -388,8 +388,8 @@ function renderCalendar() {
   const gridStyle = `--calendar-columns:${mode === "day" ? 1 : 7};`;
   const pickerYears = Array.from({ length: 11 }, (_, index) => activeDate.getFullYear() - 5 + index);
   const caseOptions = state.cases.map((item) => `<option value="${item.id}" ${caseFilter === item.id ? "selected" : ""}>№${item.id}</option>`).join("");
-  const clientOptions = state.clients.map((client) => `<option value="${client.id}" ${clientFilter === String(client.id) ? "selected" : ""}>${client.name}</option>`).join("");
-  const responsibleOptions = responsibleNames().map((name) => `<option value="${name}" ${responsibleFilter === name ? "selected" : ""}>${name}</option>`).join("");
+  const clientOptions = state.clients.map((client) => `<option value="${client.id}" ${clientFilter === String(client.id) ? "selected" : ""}>${escapeHtml(client.name)}</option>`).join("");
+  const responsibleOptions = responsibleNames().map((name) => `<option value="${escapeHtml(name)}" ${responsibleFilter === name ? "selected" : ""}>${escapeHtml(name)}</option>`).join("");
   $("#calendar").innerHTML = `
     <div class="calendar-screen">
       <div class="calendar-toolbar">
@@ -415,7 +415,7 @@ function renderCalendar() {
             </div>
           </div>` : ""}
         </div>
-        <input id="calendar-search" type="search" value="${state.calendarQuery || ""}" placeholder="Пошук подій, справ, клієнтів..." />
+        <input id="calendar-search" type="search" value="${escapeHtml(state.calendarQuery || "")}" placeholder="Пошук подій, справ, клієнтів..." />
       </div>
       <div class="calendar-filter-panel">
         <label class="calendar-filter-field"><select id="calendar-filter" aria-label="Фільтр подій">
@@ -424,13 +424,13 @@ function renderCalendar() {
           <option value="event" ${filter === "event" ? "selected" : ""}>Події</option>
           <option value="court" ${filter === "court" ? "selected" : ""}>Судові</option>
           <option value="deadline" ${filter === "deadline" ? "selected" : ""}>Дедлайни</option>
-          ${calendarEventTypes().map((type) => `<option value="${type}" ${filter === type ? "selected" : ""}>${type}</option>`).join("")}
+          ${calendarEventTypes().map((type) => `<option value="${escapeHtml(type)}" ${filter === type ? "selected" : ""}>${escapeHtml(type)}</option>`).join("")}
         </select></label>
         <label class="calendar-filter-field"><select id="calendar-client-filter" aria-label="Фільтр клієнтів"><option value="all">Усі клієнти</option>${clientOptions}</select></label>
         <label class="calendar-filter-field"><select id="calendar-case-filter" aria-label="Фільтр справ"><option value="all">Усі справи</option>${caseOptions}</select></label>
         <label class="calendar-filter-field"><select id="calendar-responsible-filter" aria-label="Фільтр відповідальних"><option value="all">Усі відповідальні</option>${responsibleOptions}</select></label>
-        <label class="calendar-filter-field"><select id="calendar-status-filter" aria-label="Фільтр статусів"><option value="all">Усі статуси</option>${calendarStatuses().map((status) => `<option value="${status}" ${statusFilter === status ? "selected" : ""}>${status}</option>`).join("")}</select></label>
-        <input id="calendar-authority-filter" value="${state.calendarAuthorityFilter || ""}" placeholder="Орган / суд / ТЦК" />
+        <label class="calendar-filter-field"><select id="calendar-status-filter" aria-label="Фільтр статусів"><option value="all">Усі статуси</option>${calendarStatuses().map((status) => `<option value="${escapeHtml(status)}" ${statusFilter === status ? "selected" : ""}>${escapeHtml(status)}</option>`).join("")}</select></label>
+        <input id="calendar-authority-filter" value="${escapeHtml(state.calendarAuthorityFilter || "")}" placeholder="Орган / суд / ТЦК" />
         <label class="calendar-overdue-filter"><input id="calendar-overdue-filter" type="checkbox" ${state.calendarOverdueOnly ? "checked" : ""} /> Прострочені</label>
         <button class="secondary calendar-reset-filter" type="button" data-calendar-reset-filters>${icon("refresh")} Скинути</button>
       </div>
@@ -445,9 +445,9 @@ function renderCalendar() {
                 return `<button type="button" class="calendar-list-row ${event.id === selected?.id ? "selected" : ""}" data-event="${event.id}">
                   <span class="event-dot ${eventClass(event)}"></span>
                   <time><strong>${formatDate(event.date)}</strong>${timeRange ? `<em>${timeRange}</em>` : ""}</time>
-                  <span><strong>${event.title}</strong><em>${event.type} · ${event.status}</em></span>
-                  <span><strong>${meta.client?.name || "Клієнт не вказаний"}</strong><em>№${event.caseId}</em></span>
-                  <span><strong>${meta.authority}</strong><em>${meta.responsible}</em></span>
+                  <span><strong>${escapeHtml(event.title)}</strong><em>${escapeHtml(event.type)} · ${escapeHtml(event.status)}</em></span>
+                  <span><strong>${escapeHtml(meta.client?.name || "Клієнт не вказаний")}</strong><em>№${event.caseId}</em></span>
+                  <span><strong>${escapeHtml(meta.authority)}</strong><em>${escapeHtml(meta.responsible)}</em></span>
                   ${badge(eventTimeLeftLabel(event), calendarTimeTone(eventTimeLeftLabel(event)))}
                 </button>`;
               }).join("") || `<p class="muted">Подій за цими фільтрами немає.</p>`}
@@ -500,7 +500,7 @@ function renderCalendar() {
               const timeLabel = calendarTimeLabel(event);
               return `<button type="button" class="upcoming-event-row" data-event="${event.id}">
                 <span class="event-dot ${eventClass(event)}"></span>
-                <span class="upcoming-event-main"><strong>${event.title}${event.caseId ? ` у справі №${event.caseId}` : ""}</strong><em>Клієнт: ${client?.name || "Не вказано"}</em></span>
+                <span class="upcoming-event-main"><strong>${escapeHtml(event.title)}${event.caseId ? ` у справі №${event.caseId}` : ""}</strong><em>Клієнт: ${escapeHtml(client?.name || "Не вказано")}</em></span>
                 <time>${formatDate(event.date)}</time>
                 ${timeLabel ? `<span class="upcoming-event-time">${timeLabel}</span>` : `<span class="upcoming-event-time muted">Без часу</span>`}
                 ${badge(leftLabel, calendarTimeTone(leftLabel))}
@@ -512,11 +512,11 @@ function renderCalendar() {
           <div class="panel" id="event-card"></div>
           <div class="panel calendar-reminders">
             <div class="calendar-reminders-head"><h2>Нагадування</h2><button class="ghost" type="button" data-send-selected-reminder>${icon("bell")} Нагадати зараз</button></div>
-            ${selected ? (selectedReminderRows.length ? selectedReminderRows.map((row) => `<div class="reminder-row">${icon(row.channel === "SMS" ? "mail" : row.channel === "CRM" ? "bell" : "telegram")}<div><strong>${row.channel}</strong><span>${row.before} до події (${row.scheduledAt})</span><small>${row.recipient}</small></div><em class="reminder-status ${row.tone}">${row.status}</em></div>`).join("") : `<p class="muted">Нагадування вимкнено.</p>`) : `<p class="muted">Виберіть подію, щоб побачити нагадування.</p>`}
+            ${selected ? (selectedReminderRows.length ? selectedReminderRows.map((row) => `<div class="reminder-row">${icon(row.channel === "SMS" ? "mail" : row.channel === "CRM" ? "bell" : "telegram")}<div><strong>${row.channel}</strong><span>${row.before} до події (${row.scheduledAt})</span><small>${escapeHtml(row.recipient)}</small></div><em class="reminder-status ${row.tone}">${escapeHtml(row.status)}</em></div>`).join("") : `<p class="muted">Нагадування вимкнено.</p>`) : `<p class="muted">Виберіть подію, щоб побачити нагадування.</p>`}
           </div>
           <div class="panel calendar-reminders active-reminders">
             <h2>Нагадування активні</h2>
-            <p class="muted">${selected && selectedReminderRows.length ? `Активні канали для події «${selected.title}».` : "Активних нагадувань немає."}</p>
+            <p class="muted">${selected && selectedReminderRows.length ? `Активні канали для події «${escapeHtml(selected.title)}».` : "Активних нагадувань немає."}</p>
             <div class="active-reminder-icons">
               ${selectedReminderRows.length ? selectedReminderRows.map((row) => `<span>${icon(row.channel === "SMS" ? "mail" : row.channel === "CRM" ? "bell" : "telegram")} ${row.channel}</span>`).join("") : `<span>${icon("bell")} Вимкнено</span>`}
             </div>
@@ -745,20 +745,20 @@ function renderEventCard(id) {
     </div>
     <div class="event-card-title">
       <span class="event-dot ${eventClass(event)}"></span>
-      <strong>${event.title}</strong>
+      <strong>${escapeHtml(event.title)}</strong>
       ${badge(event.source === "task" ? "Задача" : typeConfig.label, eventClass(event) === "court" ? "green" : eventClass(event) === "deadline" ? "red" : "blue")}
     </div>
     <div class="event-profile">
       <div class="event-info-list">
         <div class="event-info-row">${icon("calendar")}<span><strong>${formatDate(event.date)}</strong></span></div>
         ${timeRange ? `<div class="event-info-row">${icon("clock")}<span><strong>${timeRange}</strong></span></div>` : ""}
-        <div class="event-info-row">${icon("building")}<span><strong>${authority}</strong><em>${location}</em></span></div>
-        <div class="event-info-row">${icon("briefcase")}<span><strong>Справа №${event.caseId}</strong><em>${caseItem?.title || "Без назви справи"}</em></span></div>
-        <div class="event-info-row">${icon("user")}<span><strong>Клієнт: ${client?.name || "Не вказано"}</strong></span></div>
-        <div class="event-info-row">${icon("user")}<span><strong>Відповідальний: ${responsible}</strong></span></div>
-        <div class="event-info-row">${icon("bell")}<span><strong>${reminderEnabled ? `${reminderBefore} · ${reminderChannels}` : "Нагадування вимкнено"}</strong><em>${reminderEnabled ? `${reminderRecipients} · ` : ""}${recurrence} · ${event.status}</em></span></div>
+        <div class="event-info-row">${icon("building")}<span><strong>${escapeHtml(authority)}</strong><em>${escapeHtml(location)}</em></span></div>
+        <div class="event-info-row">${icon("briefcase")}<span><strong>Справа №${event.caseId}</strong><em>${escapeHtml(caseItem?.title || "Без назви справи")}</em></span></div>
+        <div class="event-info-row">${icon("user")}<span><strong>Клієнт: ${escapeHtml(client?.name || "Не вказано")}</strong></span></div>
+        <div class="event-info-row">${icon("user")}<span><strong>Відповідальний: ${escapeHtml(responsible)}</strong></span></div>
+        <div class="event-info-row">${icon("bell")}<span><strong>${reminderEnabled ? `${escapeHtml(reminderBefore)} · ${escapeHtml(reminderChannels)}` : "Нагадування вимкнено"}</strong><em>${reminderEnabled ? `${escapeHtml(reminderRecipients)} · ` : ""}${escapeHtml(recurrence)} · ${escapeHtml(event.status)}</em></span></div>
       </div>
-      <p class="muted event-description">${event.description || "Опис події ще не додано."}</p>
+      <p class="muted event-description">${escapeHtml(event.description || "Опис події ще не додано.")}</p>
       <div class="event-reminder-log">
         <strong>Журнал нагадувань</strong>
         ${(event.reminderLog || []).map((row) => `<span>${row.date} · ${row.text}</span>`).join("") || `<span>Нагадування ще не відправлялись.</span>`}

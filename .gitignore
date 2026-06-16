@@ -17,6 +17,7 @@ data/exports/
 design/screenshots/
 
 # Local editor / tooling / scratch artifacts.
+.claude/
 .obsidian/
 .playwright-cli/
 output/

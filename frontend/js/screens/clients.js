@@ -176,15 +176,15 @@ export function renderClientRows(ctx) {
   const rows = visibleClients
     .map((client) => `
       <tr>
-        <td><input type="checkbox" data-select-client-row="${client.id}" ${selectedClientSet.has(String(client.id)) ? "checked" : ""} aria-label="Обрати ${client.name}" /></td>
+        <td><input type="checkbox" data-select-client-row="${client.id}" ${selectedClientSet.has(String(client.id)) ? "checked" : ""} aria-label="Обрати ${escapeHtml(client.name)}" /></td>
         <td>
           <div class="client-name-cell">
-            <a href="#" data-open-client="${client.id}">${client.name}</a>
+            <a href="#" data-open-client="${client.id}">${escapeHtml(client.name)}</a>
           </div>
         </td>
-        <td>${client.phone}</td>
-        <td>${client.email}</td>
-        <td>${(client.request || "").slice(0, 44)}...</td>
+        <td>${escapeHtml(client.phone)}</td>
+        <td>${escapeHtml(client.email)}</td>
+        <td>${escapeHtml((client.request || "").slice(0, 44))}...</td>
         <td>${client.added}</td>
         <td class="clients-telegram-actions">
           <div class="clients-telegram-actions-inner">
@@ -625,7 +625,7 @@ export function renderClientProfile(ctx, id) {
         <div class="client-title">
           ${clientAvatar(client)}
           <div>
-            <strong>${client.name}</strong>
+            <strong>${escapeHtml(client.name)}</strong>
             ${badge(client.status, statusTone(client.status))}
           </div>
         </div>
@@ -633,19 +633,19 @@ export function renderClientProfile(ctx, id) {
       </div>
       <div class="profile-screenshot-grid">
         <div class="profile-contact-list">
-          <div class="contact-row">${icon("phone")}<strong>${client.phone}</strong></div>
-          <div class="contact-row">${icon("mail")}<strong>${client.email}</strong></div>
-          <div class="contact-row">${icon("telegram")}<strong>${client.telegramUsername || "Telegram не вказано"}</strong></div>
+          <div class="contact-row">${icon("phone")}<strong>${escapeHtml(client.phone)}</strong></div>
+          <div class="contact-row">${icon("mail")}<strong>${escapeHtml(client.email)}</strong></div>
+          <div class="contact-row">${icon("telegram")}<strong>${escapeHtml(client.telegramUsername || "Telegram не вказано")}</strong></div>
           <div class="contact-row">${icon("calendar")}<strong>Дата додавання: ${client.added}</strong></div>
-          <div class="contact-row">${icon("tag")}<strong>Джерело: ${client.source}</strong></div>
+          <div class="contact-row">${icon("tag")}<strong>Джерело: ${escapeHtml(client.source)}</strong></div>
         </div>
         <div class="profile-details">
           <h3>Суть звернення</h3>
-          <p>${client.request}</p>
+          <p>${escapeHtml(client.request)}</p>
           <h3>Додаткові нотатки</h3>
-          <p>${client.notes}</p>
+          <p>${escapeHtml(client.notes)}</p>
           <h3>Відповідальний менеджер</h3>
-          <div class="manager-line">${advocatePhoto(client.manager, "mini")}<strong>${client.manager}</strong></div>
+          <div class="manager-line">${advocatePhoto(client.manager, "mini")}<strong>${escapeHtml(client.manager)}</strong></div>
           <div class="related-case-strip">${relatedCases.map((item) => badge(`Справа №${item.id}`, statusTone(item.status))).join("")}</div>
         </div>
       </div>
@@ -667,10 +667,10 @@ export function renderClientProfile(ctx, id) {
             <div class="client-communication-row">
               <i>${icon(item.channel === "Telegram" ? "telegram" : item.channel === "Телефон" ? "phone" : "mail")}</i>
               <div>
-                <strong>${item.title}</strong>
-                <span>${item.channel} · ${item.date || "Без дати"}${item.caseId ? ` · Справа №${item.caseId}` : ""}</span>
+                <strong>${escapeHtml(item.title)}</strong>
+                <span>${escapeHtml(item.channel)} · ${item.date || "Без дати"}${item.caseId ? ` · Справа №${item.caseId}` : ""}</span>
               </div>
-              <em>${item.status || "Контакт"}</em>
+              <em>${escapeHtml(item.status || "Контакт")}</em>
             </div>
           `).join("") || `<p class="muted">Комунікацій поки немає.</p>`}
         </div>

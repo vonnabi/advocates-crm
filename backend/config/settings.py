@@ -42,6 +42,10 @@ if render_hostname:
 # CRM_ALLOWED_ORIGINS: CORS allow-list for credentialed requests.
 CRM_REQUIRE_AUTH = env_bool("CRM_REQUIRE_AUTH", default=False)
 CRM_ALLOWED_ORIGINS = env_list("CRM_ALLOWED_ORIGINS")
+# The app and its API share the same Render host, so auto-trust it for credentialed
+# CORS — keeps the allow-list correct regardless of the assigned hostname.
+if render_hostname and f"https://{render_hostname}" not in CRM_ALLOWED_ORIGINS:
+    CRM_ALLOWED_ORIGINS.append(f"https://{render_hostname}")
 
 INSTALLED_APPS = [
     "django.contrib.admin",

@@ -326,7 +326,7 @@ export function createDialogOpeners({
   function openCaseDialog(caseId = null) {
     const form = $("#case-form");
     form.reset();
-    $("#case-client").innerHTML = state.clients.map((client) => `<option value="${client.id}">${client.name}</option>`).join("");
+    $("#case-client").innerHTML = state.clients.map((client) => `<option value="${client.id}">${escapeHtml(client.name)}</option>`).join("");
     form.elements.caseId.value = "";
     form.elements.stage.value = "Первинна консультація";
     $("#case-dialog-title").textContent = "Нова справа";
@@ -1747,7 +1747,7 @@ export function createDialogOpeners({
     const taskCaseField = form.querySelector(".task-case-field");
     const taskCaseLocked = form.querySelector("[data-task-case-locked]");
     form.dataset.originalCaseId = caseId || "";
-    $("#task-case-select").innerHTML = state.cases.map((item) => `<option value="${item.id}">№${item.id} · ${item.title}</option>`).join("");
+    $("#task-case-select").innerHTML = state.cases.map((item) => `<option value="${item.id}">№${item.id} · ${escapeHtml(item.title)}</option>`).join("");
     form.elements.caseId.value = caseId;
     const taskCase = caseById(caseId);
     if (taskCaseField && taskCaseLocked) {
@@ -1824,8 +1824,8 @@ export function createDialogOpeners({
     const form = $("#event-form");
     form.reset();
     form.dataset.caseProceduralContext = Boolean(context.caseId && !context.eventId) ? "true" : "false";
-    $("#event-client").innerHTML = state.clients.map((client) => `<option value="${client.id}">${client.name}</option>`).join("");
-    $("#event-case").innerHTML = state.cases.map((item) => `<option value="${item.id}">№${item.id} · ${item.title}</option>`).join("");
+    $("#event-client").innerHTML = state.clients.map((client) => `<option value="${client.id}">${escapeHtml(client.name)}</option>`).join("");
+    $("#event-case").innerHTML = state.cases.map((item) => `<option value="${item.id}">№${item.id} · ${escapeHtml(item.title)}</option>`).join("");
     const initialCaseId = context.caseId || state.selectedCaseId || state.cases[0]?.id || "";
     const initialCase = caseById(initialCaseId);
     const linkFields = form.querySelector("[data-event-link-fields]");

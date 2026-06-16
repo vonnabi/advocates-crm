@@ -1,6 +1,7 @@
 import { saveTaskToApi, shouldUseApi } from "../api.js";
 import { setupScreenCustomSelects } from "../custom-selects.js";
 import { normalizeTask } from "../state.js";
+import { escapeHtml } from "../ui.js";
 
 let state;
 let $;
@@ -195,8 +196,8 @@ function renderTaskSubtasksMenu(task = {}) {
         ${subtasks.length ? subtasks.map((subtask, subtaskIndex) => `
           <div class="task-subtasks-menu-row">
             <span>
-              <strong>${subtask.title}</strong>
-              <small>${subtask.responsible || task.responsible || "Не вказано"} · ${subtask.due || task.dueText || "Не вказано"}</small>
+              <strong>${escapeHtml(subtask.title)}</strong>
+              <small>${escapeHtml(subtask.responsible || task.responsible || "Не вказано")} · ${escapeHtml(subtask.due || task.dueText || "Не вказано")}</small>
             </span>
             ${badge(subtask.status || "Нова", taskTone(subtask.status || "Нова"))}
             <div class="task-subtasks-actions">
@@ -331,15 +332,15 @@ function taskCard(task) {
       <div class="task-detail-info">
         <div>
           <span>Справа</span>
-          <strong><a href="#" data-open-task-case="${task.caseId}">№${task.caseId}</a><br>${caseItem?.clientId ? clientById(caseItem.clientId)?.name || task.clientName : task.clientName}</strong>
+          <strong><a href="#" data-open-task-case="${task.caseId}">№${task.caseId}</a><br>${escapeHtml(caseItem?.clientId ? clientById(caseItem.clientId)?.name || task.clientName : task.clientName)}</strong>
         </div>
         <div>
           <span>Відповідальний</span>
-          <strong class="advocate-person">${advocatePhoto(task.responsible)}${task.responsible}</strong>
+          <strong class="advocate-person">${advocatePhoto(task.responsible)}${escapeHtml(task.responsible)}</strong>
         </div>
         <div>
           <span>Співвиконавці</span>
-          <strong>${coexecutors.length ? coexecutors.map((name) => `<em class="task-chip">${name}</em>`).join("") : "Не призначено"}</strong>
+          <strong>${coexecutors.length ? coexecutors.map((name) => `<em class="task-chip">${escapeHtml(name)}</em>`).join("") : "Не призначено"}</strong>
         </div>
         <div><span>Дедлайн</span><strong>${task.dueText}<br><em>${dueStatus}</em></strong></div>
         <div>
@@ -371,8 +372,8 @@ function taskCard(task) {
         </div>
       </div>
       <h3>Опис</h3>
-      <p>${task.caseTitle}. ${task.description || "Контроль виконання задачі та пов'язаних матеріалів по справі."}</p>
-      ${task.comment ? `<h3>Коментар</h3><p>${task.comment}</p>` : ""}
+      <p>${escapeHtml(task.caseTitle)}. ${escapeHtml(task.description || "Контроль виконання задачі та пов'язаних матеріалів по справі.")}</p>
+      ${task.comment ? `<h3>Коментар</h3><p>${escapeHtml(task.comment)}</p>` : ""}
       <div class="task-progress">
         <div><strong>Прогрес виконання</strong><span>${progress}%</span></div>
         <i style="--progress:${progress}%"></i>
@@ -384,8 +385,8 @@ function taskCard(task) {
           <label class="task-subtask-row">
             <input type="checkbox" data-toggle-subtask-task="${task.key}" data-subtask-index="${subtaskIndex}" ${subtask.status === "Виконано" ? "checked" : ""} />
             <span>
-              <strong>${subtask.title}</strong>
-              <em>${subtask.responsible} · ${subtask.due}</em>
+              <strong>${escapeHtml(subtask.title)}</strong>
+              <em>${escapeHtml(subtask.responsible)} · ${escapeHtml(subtask.due)}</em>
             </span>
             ${badge(subtask.status, taskTone(subtask.status))}
           </label>
@@ -398,7 +399,7 @@ function taskCard(task) {
         ${taskFiles.map((file) => `
           <div class="task-file-row">
             ${icon("file")}
-            <span><strong>${file.name}</strong><em>${file.meta}</em></span>
+            <span><strong>${escapeHtml(file.name)}</strong><em>${escapeHtml(file.meta)}</em></span>
             ${badge(file.meta.includes("чернетка") ? "Чернетка" : "Файл", file.tone)}
           </div>
         `).join("")}
@@ -411,7 +412,7 @@ function taskCard(task) {
           <div class="task-history-row">
             <i></i>
             <span>${item.date}</span>
-            <strong>${item.text}</strong>
+            <strong>${escapeHtml(item.text)}</strong>
           </div>
         `).join("")}
       </div>
@@ -421,8 +422,8 @@ function taskCard(task) {
         ${taskComments.map((item) => `
           <div class="task-history-row">
             <i></i>
-            <span>${item.date || "Сьогодні"} · ${item.author || task.responsible}</span>
-            <strong>${item.text}</strong>
+            <span>${item.date || "Сьогодні"} · ${escapeHtml(item.author || task.responsible)}</span>
+            <strong>${escapeHtml(item.text)}</strong>
           </div>
         `).join("") || `<p class="muted">Коментарів по задачі ще немає.</p>`}
       </div>
@@ -433,7 +434,7 @@ function taskCard(task) {
     <aside class="panel task-side-card">
       <div class="task-side-head">
         <div>
-          <h2>${task.title}</h2>
+          <h2>${escapeHtml(task.title)}</h2>
           <span>№${task.caseId}</span>
         </div>
         <button class="ghost task-side-close" type="button" aria-label="Закрити">×</button>
@@ -584,7 +585,7 @@ function renderTasks() {
             <button class="panel tasks-kpi-card ${quickFilter === "planner" ? "active" : ""}" type="button" data-task-kpi="planner"><div><span>Планер / нагадування</span><strong>${plannedCount} / ${reminderCount}</strong><em>${plannerPercent}</em></div><i class="violet">${icon("calendar")}</i></button>
           </div>
           <div class="tasks-toolbar">
-            <input id="task-search" value="${state.taskQuery || ""}" type="search" placeholder="Пошук задачі, клієнта, справи..." />
+            <input id="task-search" value="${escapeHtml(state.taskQuery || "")}" type="search" placeholder="Пошук задачі, клієнта, справи..." />
             <select id="task-priority-filter">
               <option value="all">Всі пріоритети</option>
               <option value="Високий" ${state.taskPriorityFilter === "Високий" ? "selected" : ""}>Високий</option>
@@ -602,7 +603,7 @@ function renderTasks() {
             </select>
             <select id="task-responsible-filter">
               <option value="all">Всі відповідальні</option>
-              ${responsibleOptions.map((name) => `<option value="${name}" ${state.taskResponsibleFilter === name ? "selected" : ""}>${name}</option>`).join("")}
+              ${responsibleOptions.map((name) => `<option value="${escapeHtml(name)}" ${state.taskResponsibleFilter === name ? "selected" : ""}>${escapeHtml(name)}</option>`).join("")}
             </select>
             <button class="secondary">${icon("filter")} Фільтри</button>
           </div>
@@ -619,8 +620,8 @@ function renderTasks() {
                       <span class="task-drag-handle" draggable="true" data-task-drag="${task.key}" title="Перемістити задачу" aria-label="Перемістити задачу"></span>
                       <input type="checkbox" data-select-task-row="${task.key}" ${selectedTaskSet.has(task.key) ? "checked" : ""} aria-label="Вибрати задачу" />
                       <div>
-                        <strong>${task.title}</strong>
-                        <span>${task.caseTitle}</span>
+                        <strong>${escapeHtml(task.title)}</strong>
+                        <span>${escapeHtml(task.caseTitle)}</span>
                         <div class="task-row-meta">
                           ${renderTaskSubtasksMenu(task)}
                           ${task.teamTask ? `<b>Співвиконавці: ${task.coexecutors.length}</b>` : ""}
@@ -631,8 +632,8 @@ function renderTasks() {
                     </div>
                   </td>
                   <td>${badge(task.priority, riskTone(task.priority))}</td>
-                  <td><a href="#" data-open-task-case="${task.caseId}">№${task.caseId}</a><span>${task.clientName}</span></td>
-                  <td><span class="task-assignee">${advocatePhoto(task.responsible, "mini")}${task.responsible}</span></td>
+                  <td><a href="#" data-open-task-case="${task.caseId}">№${task.caseId}</a><span>${escapeHtml(task.clientName)}</span></td>
+                  <td><span class="task-assignee">${advocatePhoto(task.responsible, "mini")}${escapeHtml(task.responsible)}</span></td>
                   <td class="${task.overdue ? "danger-text" : ""}">${task.dueText}<span>${task.overdue ? "Просрочено" : "За планом"}</span></td>
                   <td>
                     <span class="task-status-icon ${taskStatusUiTone(task.overdue ? "Просрочено" : task.status)}" data-tooltip="${task.overdue ? "Просрочено" : task.status || "Без статусу"}" tabindex="0" role="img" aria-label="Статус: ${task.overdue ? "Просрочено" : task.status || "Без статусу"}">
@@ -703,7 +704,7 @@ function renderTasks() {
               <div class="task-plan-row ${planTone(task)}">
                 <time>${planTime(task)}</time>
                 <span>
-                  <strong>${task.title}</strong>
+                  <strong>${escapeHtml(task.title)}</strong>
                   <em>№${task.caseId}</em>
                 </span>
               </div>

@@ -1337,12 +1337,12 @@ export function renderDocumentsScreen(ctx) {
                       <input type="checkbox" data-select-document-row="${doc.key}" ${selectedDocumentSet.has(doc.key) ? "checked" : ""} aria-label="Вибрати документ" />
                       <button class="document-title-button" type="button" data-select-document="${doc.key}">
                         ${icon("file")}
-                        <span><strong>${doc.name}</strong><small>${doc.type || "Документ"}</small></span>
+                        <span><strong>${escapeHtml(doc.name)}</strong><small>${escapeHtml(doc.type || "Документ")}</small></span>
                       </button>
                     </div>
                   </td>
-                  <td><button class="case-link-button" type="button" data-open-document-case="${doc.caseId}">№${doc.caseId}</button><small>${doc.client}</small></td>
-                  <td>${doc.folderName}</td>
+                  <td><button class="case-link-button" type="button" data-open-document-case="${doc.caseId}">№${doc.caseId}</button><small>${escapeHtml(doc.client)}</small></td>
+                  <td>${escapeHtml(doc.folderName)}</td>
                   <td>
                     <span class="document-status-icon ${documentStatusUiTone(doc.status)}" data-tooltip="${doc.status || "Без статусу"}" tabindex="0" role="img" aria-label="Статус: ${doc.status || "Без статусу"}">
                       ${icon(documentStatusIconName(doc.status))}
@@ -1382,8 +1382,8 @@ export function renderDocumentsScreen(ctx) {
             <div class="documents-side-head">
               <span>${icon("file")}</span>
               <div>
-                <h3>${selected.name}</h3>
-                <p>№${selected.caseId} · ${selected.client}</p>
+                <h3>${escapeHtml(selected.name)}</h3>
+                <p>№${selected.caseId} · ${escapeHtml(selected.client)}</p>
               </div>
             </div>
             <div class="documents-status-line">
@@ -1406,9 +1406,9 @@ export function renderDocumentsScreen(ctx) {
               </details>
             </div>
             <dl class="documents-meta">
-              <div><dt>Тип</dt><dd>${selected.type || "Не вказано"}</dd></div>
-              <div><dt>Папка</dt><dd>${selected.folderName}</dd></div>
-              <div><dt>Відповідальний</dt><dd class="documents-responsible">${advocatePhoto?.(selected.responsible, "mini") || ""}${selected.responsible}</dd></div>
+              <div><dt>Тип</dt><dd>${escapeHtml(selected.type || "Не вказано")}</dd></div>
+              <div><dt>Папка</dt><dd>${escapeHtml(selected.folderName)}</dd></div>
+              <div><dt>Відповідальний</dt><dd class="documents-responsible">${advocatePhoto?.(selected.responsible, "mini") || ""}${escapeHtml(selected.responsible)}</dd></div>
               <div>
                 <dt>Дата подання</dt>
                 <dd>
@@ -1424,7 +1424,7 @@ export function renderDocumentsScreen(ctx) {
               <div><dt>Контроль</dt><dd>${badge(selected.dueState.label, selected.dueState.tone === "muted" ? "blue" : selected.dueState.tone)}</dd></div>
               <div><dt>Джерело</dt><dd>${selected.sourceLabel}</dd></div>
             </dl>
-            <p class="documents-comment">${selected.comment || "Коментар по документу ще не додано."}</p>
+            <p class="documents-comment">${escapeHtml(selected.comment || "Коментар по документу ще не додано.")}</p>
             <div class="documents-side-actions">
               <button class="secondary documents-action-button" type="button" data-view-global-document="${selected.key}">${icon("eye")} Відкрити</button>
               <button class="secondary documents-action-button" type="button" data-edit-global-document="${selected.key}">${icon("edit")} Редагувати</button>
@@ -1500,8 +1500,8 @@ export function renderDocumentsScreen(ctx) {
       archiveTarget.innerHTML = `
         <span aria-hidden="true">DOC</span>
         <div>
-          <strong>${doc.name}</strong>
-          <small>№${doc.caseId} · ${doc.client}</small>
+          <strong>${escapeHtml(doc.name)}</strong>
+          <small>№${doc.caseId} · ${escapeHtml(doc.client)}</small>
         </div>
       `;
     }

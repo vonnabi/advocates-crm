@@ -1180,7 +1180,7 @@ function financeOperationRow(item, badge, icon, options = {}) {
       <span>${item.date}</span>
       ${tree ? "" : caseCell}
       <strong class="${item.type === "Витрата" ? "danger" : "success"}">${item.type}</strong>
-      <span>${item.title}</span>
+      <span>${escapeHtml(item.title)}</span>
       <b class="${item.amount < 0 ? "danger" : ""}">${amountText}</b>
       ${badge(financeStatusLabel(item.status), statusTone)}
       <span>${item.method}</span>
@@ -1269,7 +1269,7 @@ function financeCaseWorkspace(state, rows, currencyText, badge, icon) {
       ${pagination.items.length ? pagination.items.map((item) => `
         <div class="finance-workspace-row">
           <button class="case-link-button" type="button" data-finance-open-case="${item.id}">№${item.id}</button>
-          <span>${item.client}</span>
+          <span>${escapeHtml(item.client)}</span>
           <strong>${currencyText(item.total)}</strong>
           <span>${currencyText(item.paid)}</span>
           <b class="${item.debt ? "danger" : ""}">${currencyText(item.debt)}</b>
@@ -1372,7 +1372,7 @@ function financeSalaryWorkspace(state, icon, currencyText) {
         <select data-salary-filter>
           <option value="all" ${selectedEmployee === "all" ? "selected" : ""}>Усі співробітники</option>
           ${employees.map((employee) => `
-            <option value="${employee.name}" ${selectedEmployee === employee.name ? "selected" : ""}>${employee.name} · ${employee.role}</option>
+            <option value="${escapeHtml(employee.name)}" ${selectedEmployee === employee.name ? "selected" : ""}>${escapeHtml(employee.name)} · ${escapeHtml(employee.role)}</option>
           `).join("")}
         </select>
       </label>
@@ -1386,7 +1386,7 @@ function financeSalaryWorkspace(state, icon, currencyText) {
     <div class="salary-history-card ${rows.length ? "" : "is-empty"}">
       <div>
         <span class="section-kicker">Динаміка за 12 місяців</span>
-        <h3>${selectedEmployee === "all" ? "Нарахування команди" : selectedEmployee}</h3>
+        <h3>${selectedEmployee === "all" ? "Нарахування команди" : escapeHtml(selectedEmployee)}</h3>
         <p>${rows.length ? "Ставка, бонуси та загальна сума для швидкої перевірки." : "Додайте перше нарахування, і тут з'явиться реальна динаміка."}</p>
       </div>
       <div class="salary-history-bars">
@@ -1410,10 +1410,10 @@ function financeSalaryWorkspace(state, icon, currencyText) {
       ${rows.length ? pagination.items.map((row) => `
         <div class="finance-workspace-row">
           <div class="salary-person">
-            <strong>${row.name}</strong>
-            <small>${row.comment || "Поточне нарахування"}</small>
+            <strong>${escapeHtml(row.name)}</strong>
+            <small>${escapeHtml(row.comment || "Поточне нарахування")}</small>
           </div>
-          <span>${row.role}</span>
+          <span>${escapeHtml(row.role)}</span>
           <span>${currencyText(row.base)}</span>
           <span>${currencyText(row.bonus)}</span>
           <b>${currencyText(row.total)}</b>
@@ -1674,7 +1674,7 @@ function openFinanceActionDialog(ctx, action, operationId = "", options = {}) {
   }
   document.querySelector("#finance-action-case").innerHTML = state.cases.map((item) => {
     const client = clientById(item.clientId)?.name || "Клієнт не вказаний";
-    return `<option value="${item.id}">№${item.id} · ${client}</option>`;
+    return `<option value="${item.id}">№${item.id} · ${escapeHtml(client)}</option>`;
   }).join("");
   form.elements.caseId.value = operation?.caseId || selected?.id || state.cases[0]?.id || "";
   const caseField = form.querySelector(".finance-action-case-field");
@@ -1916,7 +1916,7 @@ function openSalaryDialog(ctx, salaryId = "") {
   const row = salaryId ? findSalaryRow(state, salaryId) : null;
   form.reset();
   document.querySelector("#salary-employee").innerHTML = employees.map((employee) => (
-    `<option value="${employee.name}" data-role="${employee.role}">${employee.name} · ${employee.role}</option>`
+    `<option value="${escapeHtml(employee.name)}" data-role="${escapeHtml(employee.role)}">${escapeHtml(employee.name)} · ${escapeHtml(employee.role)}</option>`
   )).join("");
   form.elements.salaryId.value = row?.id || "";
   form.elements.employee.value = row?.name || employees[0]?.name || "";
@@ -2144,9 +2144,9 @@ export function renderFinanceScreen(ctx) {
     ? { trend, detail }
     : { trend: "Без даних", detail: emptyKpiDetail };
   const financeKpis = [
-    { title: "Загальний дохід", value: currencyText(totals.income), ...financeTrend(totals.income, "+12%"), iconName: "briefcase", tone: "blue" },
-    { title: "Витрати", value: currencyText(totals.expenses), ...financeTrend(totals.expenses, "+8%"), trendTone: totals.expenses > 0 ? "danger" : "", iconName: "file", tone: "red" },
-    { title: "Чистий прибуток", value: currencyText(totals.profit), ...financeTrend(totals.profit, "+15%"), iconName: "check", tone: "green" },
+    { title: "Загальний дохід", value: currencyText(totals.income), ...financeTrend(totals.income, "", "за поточний період"), iconName: "briefcase", tone: "blue" },
+    { title: "Витрати", value: currencyText(totals.expenses), ...financeTrend(totals.expenses, "", "за поточний період"), trendTone: totals.expenses > 0 ? "danger" : "", iconName: "file", tone: "red" },
+    { title: "Чистий прибуток", value: currencyText(totals.profit), ...financeTrend(totals.profit, "", "за поточний період"), iconName: "check", tone: "green" },
     { title: "Очікувані надходження", value: currencyText(totals.expected), ...financeTrend(totals.expected, "Очікується", "за виставленими рахунками"), iconName: "clock", tone: "amber" },
     { title: "Заборгованість клієнтів", value: currencyText(totals.debt), ...financeTrend(totals.debt, "До сплати", "за активними справами"), trendTone: totals.debt > 0 ? "danger" : "", iconName: "mail", tone: "red" }
   ];
@@ -2308,7 +2308,7 @@ export function renderFinanceScreen(ctx) {
             <p class="muted">Всього: ${currencyText(totals.debt)}</p>
             ${debtRows.map((item, index) => `
               <button type="button" data-finance-open-case="${item.id}">
-                <span>${item.client}</span>
+                <span>${escapeHtml(item.client)}</span>
                 <strong>${currencyText(item.debt)}</strong>
                 <small>${debtOverdueLabel(item)}</small>
               </button>

@@ -10,6 +10,7 @@ import {
   rowsWithPercent
 } from "../derived-data.js?v=live-demo-1";
 import { setupScreenCustomSelects } from "../custom-selects.js";
+import { escapeHtml } from "../ui.js";
 
 const typeColors = ["#1f7ae0", "#27ae6f", "#f59e0b", "#7c5ce8", "#64748b", "#9aa7b7"];
 
@@ -178,7 +179,7 @@ function kpiCard({ title, value, trend, detail = "порівняно з попе
 function horizontalRows(rows, max = Math.max(1, ...rows.map((row) => row[1]))) {
   return rows.map(([label, value, color]) => `
     <div class="analytics-hbar">
-      <span>${label}</span>
+      <span>${escapeHtml(label)}</span>
       <em><i style="width:${Math.round((value / max) * 100)}%; background:${color}"></i></em>
       <strong>${value}</strong>
     </div>
@@ -188,7 +189,7 @@ function horizontalRows(rows, max = Math.max(1, ...rows.map((row) => row[1]))) {
 function renderDonutLegend(rows) {
   return rows.map(([label, value, percent, color]) => `
     <div class="analytics-donut-legend">
-      <span style="--legend-color:${color}">${label}</span>
+      <span style="--legend-color:${color}">${escapeHtml(label)}</span>
       <strong>${value} (${percent}%)</strong>
     </div>
   `).join("");
@@ -251,8 +252,8 @@ export function renderAnalyticsScreen(ctx) {
     efficiency: "Ефективність",
     reports: "Детальні звіти"
   }[state.analyticsTab];
-  const analyticsTrend = (metricValue, value) => hasCaseData && metricValue ? value : "Без даних";
-  const analyticsTrendDetail = hasCaseData ? undefined : "даних ще немає";
+  // Немає історії зрізів для period-over-period — не вигадуємо «+12%». Показуємо лише реальне значення.
+  const analyticsTrendDetail = hasCaseData ? "" : "даних ще немає";
 
   $("#analytics").innerHTML = `
     <div class="analytics-screen analytics-reference">
@@ -299,7 +300,7 @@ export function renderAnalyticsScreen(ctx) {
         <label>За адвокатом
           <select data-analytics-responsible>
             <option value="all">Всі адвокати</option>
-            ${responsibles.map((name) => `<option value="${name}" ${state.analyticsResponsible === name ? "selected" : ""}>${name}</option>`).join("")}
+            ${responsibles.map((name) => `<option value="${escapeHtml(name)}" ${state.analyticsResponsible === name ? "selected" : ""}>${escapeHtml(name)}</option>`).join("")}
           </select>
         </label>
         <label>За статусом справи
@@ -313,7 +314,7 @@ export function renderAnalyticsScreen(ctx) {
         <label>За типом справи
           <select data-analytics-type>
             <option value="all">Всі типи</option>
-            ${caseTypes.map((type) => `<option value="${type}" ${state.analyticsTypeFilter === type ? "selected" : ""}>${type}</option>`).join("")}
+            ${caseTypes.map((type) => `<option value="${escapeHtml(type)}" ${state.analyticsTypeFilter === type ? "selected" : ""}>${escapeHtml(type)}</option>`).join("")}
           </select>
         </label>
         <label>За пріоритетом
@@ -341,12 +342,12 @@ export function renderAnalyticsScreen(ctx) {
 
       <section class="analytics-kpi-grid">
         ${[
-          { title: "Всього справ", value: stats.totalCases, trend: analyticsTrend(stats.totalCases, "+12%"), detail: analyticsTrendDetail, iconName: "briefcase", tone: "blue" },
-          { title: "Нові справи", value: stats.newCases, trend: analyticsTrend(stats.newCases, "+6%"), detail: analyticsTrendDetail, iconName: "calendar", tone: "green" },
-          { title: "Завершені справи", value: stats.finishedCases, trend: analyticsTrend(stats.finishedCases, "+20%"), detail: analyticsTrendDetail, iconName: "check", tone: "violet" },
-          { title: "В роботі", value: stats.inWork, trend: analyticsTrend(stats.inWork, "+8%"), detail: analyticsTrendDetail, iconName: "search", tone: "amber" },
-          { title: "Середній час ведення справи", value: `${stats.avgDays} днів`, trend: analyticsTrend(stats.avgDays, "-5%"), detail: analyticsTrendDetail, iconName: "clock", tone: "gray" },
-          { title: "% успішних справ", value: `${stats.success}%`, trend: analyticsTrend(stats.success, "+7%"), detail: analyticsTrendDetail, iconName: "check", tone: "green" }
+          { title: "Всього справ", value: stats.totalCases, trend: "", detail: analyticsTrendDetail, iconName: "briefcase", tone: "blue" },
+          { title: "Нові справи", value: stats.newCases, trend: "", detail: analyticsTrendDetail, iconName: "calendar", tone: "green" },
+          { title: "Завершені справи", value: stats.finishedCases, trend: "", detail: analyticsTrendDetail, iconName: "check", tone: "violet" },
+          { title: "В роботі", value: stats.inWork, trend: "", detail: analyticsTrendDetail, iconName: "search", tone: "amber" },
+          { title: "Середній час ведення справи", value: `${stats.avgDays} днів`, trend: "", detail: analyticsTrendDetail, iconName: "clock", tone: "gray" },
+          { title: "% успішних справ", value: `${stats.success}%`, trend: "", detail: analyticsTrendDetail, iconName: "check", tone: "green" }
         ].map((item) => kpiCard(item, icon)).join("")}
       </section>
 
@@ -403,7 +404,7 @@ export function renderAnalyticsScreen(ctx) {
               <div class="analytics-lawyer-row">
                 <span>${index + 1}</span>
                 ${advocatePhoto(name, "small")}
-                <strong>${name}</strong>
+                <strong>${escapeHtml(name)}</strong>
                 <em><i style="width:${percent}%"></i></em>
                 <b>${percent}%</b>
               </div>

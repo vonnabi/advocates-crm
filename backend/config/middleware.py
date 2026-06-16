@@ -10,7 +10,8 @@ from django.http import JsonResponse
 
 # Endpoints that must stay reachable without a session even in secured mode.
 # Paths must match config/urls.py exactly (login/logout live under /api/auth/).
-OPEN_API_PREFIXES = ("/api/session", "/api/auth/login", "/api/auth/logout")
+# /api/health is the platform health-check (Render) and must answer 200 anonymously.
+OPEN_API_PREFIXES = ("/api/health", "/api/session", "/api/auth/login", "/api/auth/logout")
 
 
 class RequireApiAuthMiddleware:

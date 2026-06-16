@@ -2450,6 +2450,9 @@ def users_api(request):
         user = upsert_system_user(parse_body(request))
         log_crm_action(request, AuditLog.Action.CREATE, "user", user.id, user_name(user), f"Додано користувача {user_name(user)}.")
         return json_response(serialize_system_user(user))
+    forbidden = require_permission(request, "manage_users", "Перегляд списку користувачів доступний лише адміністратору.")
+    if forbidden:
+        return forbidden
     return json_response({"results": [serialize_system_user(user) for user in system_users_queryset()]})
 
 
@@ -2462,6 +2465,9 @@ def user_detail_api(request, user_id):
     except get_user_model().DoesNotExist as exc:
         raise Http404("User not found") from exc
     if request.method == "GET":
+        viewer = current_demo_user(request)
+        if not (viewer and viewer.id == user.id) and "manage_users" not in permissions_for_user(viewer):
+            return json_response({"error": "Forbidden", "message": "Недостатньо прав для перегляду користувача."}, status=403)
         return json_response(serialize_system_user(user))
     if request.method == "DELETE":
         forbidden = require_permission(request, "manage_users", "Користувачами може керувати тільки адміністратор.")

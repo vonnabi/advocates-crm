@@ -9,6 +9,7 @@ import {
   formatDisplayDate,
   osintSummaryFromData
 } from "../derived-data.js?v=live-demo-1";
+import { escapeHtml } from "../ui.js";
 
 const dashboardToday = dateFromAny(DEMO_END);
 const closedStatuses = new Set(["Закрито", "Завершено", "Архів"]);
@@ -119,8 +120,8 @@ function eventRows(ctx, events) {
       <button class="dashboard-row dashboard-row-button" type="button" data-dashboard-event="event-${event.id}">
         <i>${event.time || "10:00"}</i>
         <span>
-          <strong>${event.title}</strong>
-          <small>${formatDisplayDate(event.date)} · ${client?.name || "Клієнт не вказаний"} · №${event.caseId}</small>
+          <strong>${escapeHtml(event.title)}</strong>
+          <small>${formatDisplayDate(event.date)} · ${escapeHtml(client?.name || "Клієнт не вказаний")} · №${event.caseId}</small>
         </span>
         ${dashboardStatusIcon(event.status, icon)}
       </button>
@@ -133,8 +134,8 @@ function taskRows(tasks, icon) {
     <button class="dashboard-row dashboard-row-button" type="button" data-dashboard-task="${task.key}">
       <i>${formatDisplayDate(task.due)}</i>
       <span>
-        <strong>${task.title}</strong>
-        <small>№${task.caseId} · ${task.client} · ${task.responsible || "Відповідального не вказано"}</small>
+        <strong>${escapeHtml(task.title)}</strong>
+        <small>№${task.caseId} · ${escapeHtml(task.client)} · ${escapeHtml(task.responsible || "Відповідального не вказано")}</small>
       </span>
       ${dashboardStatusIcon(task.status, icon, taskUrgencyTone(task))}
     </button>
@@ -148,8 +149,8 @@ function caseRows(state, cases, currency, icon) {
       <button class="dashboard-row dashboard-row-button" type="button" data-dashboard-case="${item.id}">
         <i>№${item.id}</i>
         <span>
-          <strong>${item.title}</strong>
-          <small>${clientName(state, item)} · ${item.responsible} · дедлайн ${formatDisplayDate(item.deadline)}</small>
+          <strong>${escapeHtml(item.title)}</strong>
+          <small>${escapeHtml(clientName(state, item))} · ${escapeHtml(item.responsible)} · дедлайн ${formatDisplayDate(item.deadline)}</small>
         </span>
         <b>${finance.debt ? currency(finance.debt) : "Без боргу"}</b>
         ${dashboardStatusIcon(item.priority, icon, "", "Пріоритет")}
@@ -301,8 +302,8 @@ export function renderDashboardScreen(ctx) {
                 <button class="dashboard-row dashboard-row-button" type="button" data-dashboard-task="${task.key}">
                   <i>${formatDisplayDate(task.due)}</i>
                   <span>
-                    <strong>${task.title}</strong>
-                    <small>№${task.caseId} · ${task.client}</small>
+                    <strong>${escapeHtml(task.title)}</strong>
+                    <small>№${task.caseId} · ${escapeHtml(task.client)}</small>
                   </span>
                   ${dashboardStatusIcon(task.status, icon, taskUrgencyTone(task))}
                 </button>

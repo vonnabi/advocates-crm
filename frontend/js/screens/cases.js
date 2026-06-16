@@ -3,7 +3,7 @@ import { setupScreenCustomSelects } from "../custom-selects.js";
 import { normalizeCase, normalizeTask } from "../state.js";
 import { copyDocumentInCase, openDocumentArchiveDialog, openDocumentSendDialog } from "./documents.js";
 import { inferCaseDocumentFolder } from "../case-documents.js";
-import { formatDate } from "../ui.js";
+import { formatDate, escapeHtml } from "../ui.js";
 
 let currentContext;
 let state;
@@ -217,7 +217,7 @@ function caseFinanceBlock(item) {
       </div>
       <div class="case-finance-note">
         <span>Оплачено ${percent}%</span>
-        <p>${item.financeComment || "Коментар по оплаті ще не додано."}</p>
+        <p>${escapeHtml(item.financeComment || "Коментар по оплаті ще не додано.")}</p>
       </div>
     </article>
   `;
@@ -395,8 +395,8 @@ function casePreviewDocuments(item, mode = "accordion") {
   return rows.map(({ folder, folderIndex, file, fileIndex }) => `
     <div class="preview-list-row preview-document-row ${mode === "stat" ? "case-stat-action-row" : ""}" ${mode === "stat" ? `tabindex="0" data-stat-doc="${item.id}|folder:${folderIndex}:${fileIndex}"` : ""}>
       <div>
-        <div class="preview-document-title">${icon("file")}<strong>${file.name}</strong></div>
-        <span class="preview-document-meta">${folder.name} ${badge(file.status || "Без статусу", documentStatusTone(file.status))}</span>
+        <div class="preview-document-title">${icon("file")}<strong>${escapeHtml(file.name)}</strong></div>
+        <span class="preview-document-meta">${escapeHtml(folder.name)} ${badge(file.status || "Без статусу", documentStatusTone(file.status))}</span>
       </div>
       ${mode === "stat" ? `
         <div class="case-stat-row-actions" aria-label="Дії документа">
@@ -420,8 +420,8 @@ function casePreviewTasks(item, mode = "accordion") {
   return item.tasks.map((task, index) => `
     <div class="preview-list-row ${mode === "stat" ? "case-stat-action-row" : ""}" ${mode === "stat" ? `tabindex="0" data-stat-task="${item.id}|${index}"` : ""}>
       <div>
-        <strong>${task.title}</strong>
-        <span>${task.due || "Без строку"} · ${task.responsible || item.responsible}</span>
+        <strong>${escapeHtml(task.title)}</strong>
+        <span>${task.due || "Без строку"} · ${escapeHtml(task.responsible || item.responsible)}</span>
       </div>
       ${badge(task.status, taskTone(task.status))}
       ${mode === "stat" ? `
@@ -445,8 +445,8 @@ function casePreviewEvents(item, mode = "accordion") {
     return `
       <div class="preview-list-row ${mode === "stat" ? "case-stat-action-row" : ""}" ${mode === "stat" ? `tabindex="0" data-stat-event="${item.id}|${index}"` : ""}>
         <div>
-          <strong>${action || "Подія без назви"}</strong>
-          <span>${due || "Без дати"}</span>
+          <strong>${escapeHtml(action || "Подія без назви")}</strong>
+          <span>${escapeHtml(due || "Без дати")}</span>
         </div>
         ${badge(status || "Не розпочато", semanticTone(status))}
         ${mode === "stat" ? `
@@ -524,8 +524,8 @@ function casePreviewCard(item) {
       <div class="case-preview-hero">
         <span class="case-preview-icon">${icon("briefcase")}</span>
         <div>
-          <h2>${item.title}</h2>
-          <p>№${item.id} · ${client?.name || "Клієнт не вказаний"}</p>
+          <h2>${escapeHtml(item.title)}</h2>
+          <p>№${item.id} · ${escapeHtml(client?.name || "Клієнт не вказаний")}</p>
         </div>
       </div>
       <div class="case-preview-pills">
@@ -539,16 +539,16 @@ function casePreviewCard(item) {
         </div>
       </div>
       <div class="case-preview-rows">
-        <div><span>Клієнт</span><strong>${client?.name || "Не вказано"}</strong></div>
-        <div><span>Відповідальний</span><strong class="case-preview-person">${advocatePhoto(item.responsible, "mini")}${item.responsible}</strong></div>
-        <div><span>Тип / етап</span><strong>${item.type}<br><em>${item.stage}</em></strong></div>
+        <div><span>Клієнт</span><strong>${escapeHtml(client?.name || "Не вказано")}</strong></div>
+        <div><span>Відповідальний</span><strong class="case-preview-person">${advocatePhoto(item.responsible, "mini")}${escapeHtml(item.responsible)}</strong></div>
+        <div><span>Тип / етап</span><strong>${escapeHtml(item.type)}<br><em>${escapeHtml(item.stage)}</em></strong></div>
         <div><span>Відкрито</span><strong>${item.opened}</strong></div>
         <div><span>Дедлайн</span><strong>${item.deadline}</strong></div>
-        <div><span>Суд / орган</span><strong>${item.court}</strong></div>
+        <div><span>Суд / орган</span><strong>${escapeHtml(item.court)}</strong></div>
       </div>
       <div class="case-preview-summary">
         <h3>Суть справи</h3>
-        <p>${item.description}</p>
+        <p>${escapeHtml(item.description)}</p>
       </div>
       <div class="case-preview-links">
         <div class="case-preview-primary-actions">
@@ -663,11 +663,11 @@ function renderCaseList() {
           </div>
         </td>
         <td>
-          <strong>${item.title}</strong>
-          <span>${item.type}</span>
+          <strong>${escapeHtml(item.title)}</strong>
+          <span>${escapeHtml(item.type)}</span>
           <div class="case-materials">${caseMaterialBadges(item)}</div>
         </td>
-        <td>${item.stage}</td>
+        <td>${escapeHtml(item.stage)}</td>
         <td>${caseDeadlineChip(item)}</td>
         <td>${caseTableStatusIcon(item.priority, casePriorityIconName(item.priority), casePriorityUiTone(item.priority), "Пріоритет")}</td>
         <td>${caseTableStatusIcon(item.status, caseStatusIconName(item.status), caseStatusUiTone(item.status))}</td>
@@ -692,7 +692,7 @@ function renderCaseList() {
     <div class="case-list-screen">
       <div class="case-list-head">
         <div class="case-list-global-search">
-          <input id="case-search" value="${state.caseQuery || ""}" placeholder="Пошук клієнта, справи, події..." />
+          <input id="case-search" value="${escapeHtml(state.caseQuery || "")}" placeholder="Пошук клієнта, справи, події..." />
           <button class="icon-button" type="button">${icon("filter")}</button>
           <button class="primary" id="create-case-from-list">+ Додати справу</button>
         </div>
@@ -704,18 +704,18 @@ function renderCaseList() {
         <button class="panel case-kpi-card ${quickFilter === "debt" ? "active" : ""}" type="button" data-case-kpi="debt"><span>Борг по справах</span><strong>${currency(totalDebt)}</strong><i class="violet">${icon("briefcase")}</i></button>
       </div>
       <div class="case-list-toolbar">
-        <input id="case-list-search-secondary" value="${state.caseQuery || ""}" placeholder="Пошук справи..." />
+        <input id="case-list-search-secondary" value="${escapeHtml(state.caseQuery || "")}" placeholder="Пошук справи..." />
         <select id="case-status-filter">
           <option value="all">Всі статуси</option>
-          ${[...new Set(state.cases.map((item) => item.status))].map((status) => `<option value="${status}" ${status === selectedStatus ? "selected" : ""}>${status}</option>`).join("")}
+          ${[...new Set(state.cases.map((item) => item.status))].map((status) => `<option value="${escapeHtml(status)}" ${status === selectedStatus ? "selected" : ""}>${escapeHtml(status)}</option>`).join("")}
         </select>
         <select id="case-type-filter">
           <option value="all">Всі типи</option>
-          ${[...new Set(state.cases.map((item) => item.type))].map((type) => `<option value="${type}" ${type === selectedType ? "selected" : ""}>${type}</option>`).join("")}
+          ${[...new Set(state.cases.map((item) => item.type))].map((type) => `<option value="${escapeHtml(type)}" ${type === selectedType ? "selected" : ""}>${escapeHtml(type)}</option>`).join("")}
         </select>
         <select id="case-responsible-filter">
           <option value="all">Всі адвокати</option>
-          ${[...new Set(state.cases.map((item) => item.responsible).filter(Boolean))].map((responsible) => `<option value="${responsible}" ${responsible === selectedResponsible ? "selected" : ""}>${responsible}</option>`).join("")}
+          ${[...new Set(state.cases.map((item) => item.responsible).filter(Boolean))].map((responsible) => `<option value="${escapeHtml(responsible)}" ${responsible === selectedResponsible ? "selected" : ""}>${escapeHtml(responsible)}</option>`).join("")}
         </select>
       </div>
       <div class="case-list-layout">
@@ -1107,6 +1107,7 @@ function renderCaseList() {
         }
         state.cases = state.cases.filter((item) => !selectedIds.has(item.id));
         state.events = state.events.filter((event) => !selectedIds.has(event.caseId));
+        state.financeOperations = (state.financeOperations || []).filter((operation) => !selectedIds.has(operation.caseId));
         state.selectedCaseKeys = [];
         state.selectedCaseId = state.cases[0]?.id || "";
         state.casePage = 1;
@@ -1171,10 +1172,10 @@ function caseActionRows(item, filter = "all") {
     return `<tr><td colspan="6" class="empty-cell">У цій справі немає ${label} дій</td></tr>`;
   }
   return filteredTasks.map(({ task, index }) => `<tr class="task-action-row ${task.status === "Виконано" ? "task-done-row" : ""}">
-    <td><input type="checkbox" data-toggle-task-done="${index}" aria-label="${task.title}" ${task.status === "Виконано" ? "checked" : ""} /></td>
+    <td><input type="checkbox" data-toggle-task-done="${index}" aria-label="${escapeHtml(task.title)}" ${task.status === "Виконано" ? "checked" : ""} /></td>
     <td>
       <span class="row-title-with-actions">
-        <span class="row-title-text">${task.title}</span>
+        <span class="row-title-text">${escapeHtml(task.title)}</span>
         <span class="hover-row-actions">
           ${actionMenu([
             { label: "Редагувати", icon: "edit", attrs: { "data-edit-task": index } },
@@ -1265,7 +1266,7 @@ function caseProceduralRows(item) {
     return `<tr class="procedural-action-row">
     <td>
       <span class="row-title-with-actions">
-        <span class="row-title-text">${action}</span>
+        <span class="row-title-text">${escapeHtml(action)}</span>
         <span class="hover-row-actions procedural-row-actions">
           ${actionMenu([
             { label: "Редагувати", icon: "edit", attrs: { "data-edit-procedural-action": index } },
@@ -1274,10 +1275,10 @@ function caseProceduralRows(item) {
         </span>
       </span>
     </td>
-    <td>${initiator || "-"}</td>
-    <td>${initiated || "-"}</td>
-    <td>${due || "-"}</td>
-    <td><span class="dot-status ${tone || ""}">${status || "Не розпочато"}</span></td>
+    <td>${escapeHtml(initiator || "-")}</td>
+    <td>${escapeHtml(initiated || "-")}</td>
+    <td>${escapeHtml(due || "-")}</td>
+    <td><span class="dot-status ${tone || ""}">${escapeHtml(status || "Не розпочато")}</span></td>
   </tr>`;
   }).join("");
 }
@@ -1295,7 +1296,7 @@ function caseDocumentRows(item) {
     return `<tr class="procedural-doc-row">
       <td>
         <span class="procedural-doc-name">
-          <span class="procedural-doc-title">${doc.name}</span>
+          <span class="procedural-doc-title">${escapeHtml(doc.name)}</span>
           <span class="procedural-actions">
             ${documentMenu([
               { label: "Відкрити", icon: "eye", attrs: { "data-view-document": encoded } },
@@ -1467,7 +1468,7 @@ function caseFolderRows(item) {
       <td>
         <div class="folder-row-content">
           <button class="folder-cell folder-open-button" data-toggle-folder="${index}">
-            <span class="folder-caret">${isOpen ? "⌄" : "›"}</span><span class="folder-icon"></span><span class="folder-title-text">${folder.name}</span>
+            <span class="folder-caret">${isOpen ? "⌄" : "›"}</span><span class="folder-icon"></span><span class="folder-title-text">${escapeHtml(folder.name)}</span>
           </button>
           <span class="folder-row-actions">
             ${actionMenu([
@@ -1486,7 +1487,7 @@ function caseFolderRows(item) {
           <div class="folder-file-name">
             <div class="folder-file-title">
               ${icon("file")}
-              <span>${file.name}</span>
+              <span>${escapeHtml(file.name)}</span>
             </div>
             <div class="folder-actions">
               ${(() => {
@@ -1517,7 +1518,7 @@ function caseFolderRows(item) {
 
 function renderCaseProfile(id) {
   const item = caseById(id);
-  const client = clientById(item.clientId);
+  const client = clientById(item.clientId) || {};
   const clientAddress = client.address || "м. Київ, вул. Хрещатик, 10, кв. 5";
   state.selectedCaseId = item.id;
   state.caseScreen = "detail";
@@ -1531,7 +1532,7 @@ function renderCaseProfile(id) {
         </div>
         <div class="case-meta-line">
           <span class="muted">Створено: ${item.opened}</span>
-          <span class="muted case-owner">○ Відповідальний: <strong>${item.responsible}</strong></span>
+          <span class="muted case-owner">○ Відповідальний: <strong>${escapeHtml(item.responsible)}</strong></span>
         </div>
       </div>
       <div class="case-detail-actions">
@@ -1544,28 +1545,28 @@ function renderCaseProfile(id) {
           <div class="case-card-title"><span>1. КЛІЄНТ</span>${editOnlyMenu("data-edit-client-row", client.id, "Редагувати клієнта")}</div>
           <div class="case-client-box">
             ${advocatePhoto(client.name, "case-profile-photo")}
-            <strong>${client.name}</strong>
+            <strong>${escapeHtml(client.name)}</strong>
           </div>
           <div class="case-contact-list">
-            <div>${icon("phone")} <span>${client.phone}</span></div>
-            <div>${icon("mail")} <span>${client.email}</span></div>
-            <div>${icon("tag")} <span>${clientAddress}</span></div>
+            <div>${icon("phone")} <span>${escapeHtml(client.phone)}</span></div>
+            <div>${icon("mail")} <span>${escapeHtml(client.email)}</span></div>
+            <div>${icon("tag")} <span>${escapeHtml(clientAddress)}</span></div>
           </div>
         </article>
         <article class="case-card">
           <div class="case-card-title"><span>2. СУТЬ СПРАВИ</span>${editOnlyMenu("data-edit-case-section", item.id, "Редагувати суть справи")}</div>
-          <p>${item.description}</p>
+          <p>${escapeHtml(item.description)}</p>
         </article>
         <article class="case-card">
           <div class="case-card-title"><span>3. ОРГАН, ДО ЯКОГО ЗВЕРНЕННЯ</span>${editOnlyMenu("data-edit-authority", item.id, "Редагувати орган")}</div>
           <div class="authority-box">
             <div class="authority-icon">▥</div>
-            <strong>${item.court}</strong>
+            <strong>${escapeHtml(item.court)}</strong>
           </div>
-          <p class="muted">Тип органу: ${item.authorityType || "Не вказано"}</p>
-          <p class="muted">Адреса: ${item.authorityAddress || "Не вказано"}</p>
-          <p class="muted">Контакт: ${item.authorityContact || "Не вказано"}</p>
-          <p class="muted">Email: ${item.authorityEmail || "Не вказано"}</p>
+          <p class="muted">Тип органу: ${escapeHtml(item.authorityType || "Не вказано")}</p>
+          <p class="muted">Адреса: ${escapeHtml(item.authorityAddress || "Не вказано")}</p>
+          <p class="muted">Контакт: ${escapeHtml(item.authorityContact || "Не вказано")}</p>
+          <p class="muted">Email: ${escapeHtml(item.authorityEmail || "Не вказано")}</p>
         </article>
       </section>
       <section class="case-main-column">
@@ -1622,7 +1623,7 @@ function renderCaseProfile(id) {
     <article class="case-card case-history-card">
       <h3>ІСТОРІЯ СПРАВИ</h3>
       <div class="case-history-list">
-        ${item.history.map((entry) => `<div class="case-history-row"><span></span><strong>${entry.date}</strong><p>${entry.text}</p></div>`).join("")}
+        ${item.history.map((entry) => `<div class="case-history-row"><span></span><strong>${escapeHtml(entry.date)}</strong><p>${escapeHtml(entry.text)}</p></div>`).join("")}
       </div>
     </article>
   `;

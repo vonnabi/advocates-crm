@@ -18,6 +18,10 @@ services:
         value: "false"
       - key: DJANGO_SECURE_SSL_REDIRECT
         value: "true"
+      # Secured demo: anonymous /api/ requests are rejected (no anonymous-as-admin).
+      # The customer signs in; CORS allow-list auto-binds to the Render host (settings.py).
+      - key: CRM_REQUIRE_AUTH
+        value: "true"
       - key: PYTHON_VERSION
         value: "3.11.4"
       - key: WEB_CONCURRENCY

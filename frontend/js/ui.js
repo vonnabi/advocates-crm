@@ -67,6 +67,19 @@ export function calendarViewDays(date, mode) {
   });
 }
 
+export function escapeHtml(value = "") {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+export function escapeAttribute(value = "") {
+  return escapeHtml(value);
+}
+
 export function currency(value) {
   return new Intl.NumberFormat("uk-UA").format(value) + " ₴";
 }
@@ -77,7 +90,7 @@ export function currencyText(value) {
 
 export function badge(text, tone = "") {
   const resolvedTone = tone || semanticTone(text);
-  return `<span class="badge ${resolvedTone}">${text}</span>`;
+  return `<span class="badge ${resolvedTone}">${escapeHtml(text)}</span>`;
 }
 
 const profilePhotos = {
@@ -96,7 +109,7 @@ export function advocatePhoto(name = "Адвокат", extraClass = "") {
   const photoUrl = profilePhotos[name];
   const photoClass = photoUrl ? "has-photo" : "";
   const photoStyle = photoUrl ? ` style="--profile-photo: url('${photoUrl}')"` : "";
-  return `<span class="advocate-photo ${photoClass} ${extraClass}"${photoStyle} aria-label="${name}"><span>${initial}</span></span>`;
+  return `<span class="advocate-photo ${photoClass} ${extraClass}"${photoStyle} aria-label="${escapeAttribute(name)}"><span>${escapeHtml(initial)}</span></span>`;
 }
 
 export function documentStatusTone(status) {

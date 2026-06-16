@@ -1,5 +1,5 @@
 import { clearAuditLogsFromApi, deleteSettingsUserFromApi, getAuditLogsFromApi, getMailingProviderStatusFromApi, saveCrmSettingsToApi, saveSettingsUserToApi, shouldUseApi, testMailingProviderInApi } from "../api.js?v=mailings-api-69";
-import { icon, navIconName } from "../ui.js?v=settings-icons-5";
+import { icon, navIconName, escapeHtml } from "../ui.js?v=settings-icons-5";
 import { normalizeAuditLog, normalizeSettingsUser } from "../state.js?v=mailings-api-69";
 
 const roleAccessMap = {
@@ -703,7 +703,7 @@ function renderCasePreview(user) {
   if (user.caseScope === "all") return "Повний доступ до всіх справ бюро";
   const cases = Array.isArray(user.assignedCases) ? user.assignedCases.slice(0, 2) : [];
   if (!cases.length) return "Доступ до справ ще не налаштовано";
-  return cases.map((caseItem) => `№${caseItem.id} · ${caseItem.client || caseItem.title || "справа"}`).join(" / ");
+  return cases.map((caseItem) => `№${caseItem.id} · ${cleanSettingValue(caseItem.client || caseItem.title || "справа")}`).join(" / ");
 }
 
 function selectedCaseIds(user) {
@@ -875,7 +875,7 @@ function renderCaseCheckboxes(cases, checkedIds = new Set(), state = {}, emptyTe
     return `
       <details class="settings-case-group" data-case-client="${cleanAttribute(client)}" ${shouldOpen ? "open" : ""}>
         <summary class="settings-case-group-head">
-          <strong>${client}</strong>
+          <strong>${cleanSettingValue(client)}</strong>
           <span>Доступ: ${selectedCount}/${clientCases.length}</span>
           <button type="button" class="settings-case-group-clear" data-settings-clear-client-cases="${cleanAttribute(client)}">Зняти доступ</button>
         </summary>
@@ -888,9 +888,9 @@ function renderCaseCheckboxes(cases, checkedIds = new Set(), state = {}, emptyTe
                 <input type="checkbox" name="assignedCaseIds" value="${caseAccessKey(caseItem)}" ${hasAccess ? "checked" : ""} />
                 <span>
                   <strong>№${caseAccessKey(caseItem)}</strong>
-                  <em>${caseItem.stage || "Стадія не вказана"}</em>
+                  <em>${cleanSettingValue(caseItem.stage || "Стадія не вказана")}</em>
                 </span>
-                <small>${caseItem.title || ""}</small>
+                <small>${cleanSettingValue(caseItem.title || "")}</small>
               </label>
               <span class="settings-case-access-badge">${hasAccess ? "Доступ є" : "Без доступу"}</span>
               <button type="button" class="settings-case-hide" data-settings-hide-case="${cleanAttribute(caseAccessKey(caseItem))}" aria-label="Прибрати справу №${cleanAttribute(caseAccessKey(caseItem))} зі списку" title="Прибрати зі списку">${icon("x")}</button>
@@ -1081,7 +1081,7 @@ function renderClientPickerList(dialog, state) {
         <summary class="settings-client-dialog-summary">
           <input class="settings-client-dialog-master" type="checkbox" name="clientScope" value="${cleanAttribute(client)}" data-client-scope-client="${cleanAttribute(client)}" aria-label="Вибрати всі справи клієнта ${cleanAttribute(client)}" ${allSelected ? "checked" : ""}>
           <span class="settings-client-dialog-copy">
-            <strong>${client}</strong>
+            <strong>${cleanSettingValue(client)}</strong>
             <em>${partialSelected ? "Вибрані тільки окремі справи" : "Галочка зліва вибирає всі справи"}</em>
           </span>
           <span class="settings-client-dialog-count">${selectedCount}/${clientCases.length} справ</span>
@@ -1092,7 +1092,7 @@ function renderClientPickerList(dialog, state) {
               <input type="checkbox" name="clientCaseScope" value="${cleanAttribute(caseAccessKey(caseItem))}" data-client-case-client="${cleanAttribute(client)}" ${selectedIds.has(caseAccessKey(caseItem)) ? "checked" : ""}>
               <span>
                 <strong>№${caseAccessKey(caseItem)}</strong>
-                <em>${caseItem.title || caseItem.stage || "Справу не названо"}</em>
+                <em>${cleanSettingValue(caseItem.title || caseItem.stage || "Справу не названо")}</em>
               </span>
             </label>
           `).join("")}
@@ -2051,9 +2051,9 @@ export function renderSettingsScreen(ctx) {
             <div class="settings-user-identity">
               ${renderUserAvatar(viewUser)}
               <div class="settings-user-main">
-                <strong>${viewUser.name}</strong>
-                <span>${viewUser.email || "email не вказано"}</span>
-                <em>${viewUser.role}</em>
+                <strong>${escapeHtml(viewUser.name)}</strong>
+                <span>${escapeHtml(viewUser.email || "email не вказано")}</span>
+                <em>${escapeHtml(viewUser.role)}</em>
               </div>
             </div>
             <div class="settings-user-details">

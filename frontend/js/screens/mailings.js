@@ -1,5 +1,6 @@
 import { deleteMailingCampaignFromApi, deleteMailingTemplateFromApi, saveMailingAutomationRuleToApi, saveMailingCampaignToApi, saveMailingTemplateToApi, sendMailingCampaignInApi, shouldUseApi, updateMailingDeliveryInApi } from "../api.js?v=mailings-api-69";
 import { setupScreenCustomSelects } from "../custom-selects.js";
+import { escapeHtml } from "../ui.js";
 
 export function setMailingTab(ctx, tab, remember = true) {
   const { state } = ctx;
@@ -95,7 +96,7 @@ export function renderMailingsScreen(ctx) {
     return `<div class="mailing-delivery-panel">
       <div class="mailing-delivery-head"><strong>Доставки по клиентам</strong><span>${item.deliveryStats?.total || rows.length} записей</span></div>
       ${rows.map((delivery) => `<div class="mailing-delivery-row">
-        <span><strong>${delivery.client}</strong><em>${delivery.channel}</em></span>
+        <span><strong>${escapeHtml(delivery.client)}</strong><em>${escapeHtml(delivery.channel)}</em></span>
         <b class="mailing-channel-mini ${statusTone(delivery.status)}">${icon(statusIcon(delivery.status))}${delivery.statusLabel || delivery.status}</b>
         <div class="mailing-delivery-actions">
           ${delivery.status !== "sent" && delivery.status !== "delivered" ? `<button type="button" class="secondary" data-update-delivery="${delivery.id}" data-delivery-status="sent" data-campaign-index="${rowIndex}">${icon("check")} Отправлено</button>` : ""}
@@ -125,8 +126,8 @@ export function renderMailingsScreen(ctx) {
     return `<div class="mailing-campaign-block"><div class="mailing-history-row ${statusMeta.tone}">
       <i class="mailing-campaign-icon">${icon(statusMeta.icon)}</i>
       <div class="mailing-campaign-main">
-        <strong>${item.title}</strong>
-        <em>${item.meta || item.createdAt}</em>
+        <strong>${escapeHtml(item.title)}</strong>
+        <em>${escapeHtml(item.meta || item.createdAt)}</em>
         <span>${channels.map((channel) => `<b class="mailing-channel-mini ${channel.toLowerCase()}">${icon(channel === "Telegram" ? "telegram" : channel === "SMS" ? "message" : "mail")}${channel}</b>`).join("") || `<b class="mailing-channel-mini muted">${statusMeta.label}</b>`}</span>
         ${deliverySummary(item)}
       </div>
@@ -139,8 +140,8 @@ export function renderMailingsScreen(ctx) {
   const templateRowsMarkup = state.mailingTemplates.map((item, index) => `<div class="template-library-row">
     <i class="template-channel-icon ${channelClass(item.type)}">${icon(channelIcon(item.type))}</i>
     <div>
-      <strong>${item.title}</strong>
-      <em>${item.text}</em>
+      <strong>${escapeHtml(item.title)}</strong>
+      <em>${escapeHtml(item.text)}</em>
     </div>
     <span class="mailing-channel-mini ${channelClass(item.type)}">${icon(channelIcon(item.type))}${item.type}</span>
     <div class="mailing-row-actions">${actionMenu([{ label: "Использовать", icon: "check", attrs: { "data-use-template": index } }, { label: "Редактировать", icon: "edit", attrs: { "data-edit-template": index } }, { label: "Удалить", icon: "trash", danger: true, attrs: { "data-delete-template": index } }], { label: "Дії шаблона" })}</div>
@@ -156,7 +157,7 @@ export function renderMailingsScreen(ctx) {
     <label>
       <input type="checkbox" data-toggle-automation="${index}" ${rule.enabled ? "checked" : ""} />
       <i class="automation-rule-icon ${rule.enabled ? "green" : "red"}">${icon(rule.enabled ? "check" : "bell")}</i>
-      <span><strong>${rule.title}</strong><em>${rule.description}</em></span>
+      <span><strong>${escapeHtml(rule.title)}</strong><em>${escapeHtml(rule.description)}</em></span>
     </label>
     <span class="mailing-channel-mini ${channelClass(rule.channel)}">${icon(channelIcon(rule.channel))}${rule.channel}</span>
     <select data-automation-channel="${index}">${["Telegram", "SMS", "Email", "Все каналы"].map((channel) => `<option ${rule.channel === channel ? "selected" : ""}>${channel}</option>`).join("")}</select>
@@ -183,8 +184,8 @@ export function renderMailingsScreen(ctx) {
           <button class="primary" data-mailing-action="schedule">${icon("calendar")} Запланировать рассылку</button>
         </div>
       </div>
-      ${state.mailingStatusNotice ? `<div class="mailing-notice">${state.mailingStatusNotice}</div>` : ""}
-      ${mainTab === "campaigns" ? `<section class="panel mailing-section"><div class="mailing-section-head"><h2>Мои рассылки</h2><div class="mailing-section-actions"><button type="button" class="secondary" data-export-mailings>${icon("file")} Экспорт CSV</button><button type="button" class="primary" data-new-mailing>${icon("telegram")} Новая рассылка</button></div></div>${campaignStatsMarkup}<div class="mailing-list-tools"><div class="mailing-filter-tabs">${[{ id: "all", label: "Все" }, { id: "scheduled", label: "Запланированные" }, { id: "test", label: "Тестовые" }, { id: "ready", label: "Готовые" }].map((item) => `<button type="button" class="${campaignFilter === item.id ? "active" : ""}" data-campaign-filter="${item.id}">${item.label}</button>`).join("")}</div><label class="mailing-search">${icon("search")}<input type="search" value="${state.mailingCampaignQuery}" placeholder="Поиск по рассылкам..." data-campaign-search /></label></div><div class="mailing-history-list">${campaignRowsMarkup}</div></section>` : ""}
+      ${state.mailingStatusNotice ? `<div class="mailing-notice">${escapeHtml(state.mailingStatusNotice)}</div>` : ""}
+      ${mainTab === "campaigns" ? `<section class="panel mailing-section"><div class="mailing-section-head"><h2>Мои рассылки</h2><div class="mailing-section-actions"><button type="button" class="secondary" data-export-mailings>${icon("file")} Экспорт CSV</button><button type="button" class="primary" data-new-mailing>${icon("telegram")} Новая рассылка</button></div></div>${campaignStatsMarkup}<div class="mailing-list-tools"><div class="mailing-filter-tabs">${[{ id: "all", label: "Все" }, { id: "scheduled", label: "Запланированные" }, { id: "test", label: "Тестовые" }, { id: "ready", label: "Готовые" }].map((item) => `<button type="button" class="${campaignFilter === item.id ? "active" : ""}" data-campaign-filter="${item.id}">${item.label}</button>`).join("")}</div><label class="mailing-search">${icon("search")}<input type="search" value="${escapeHtml(state.mailingCampaignQuery)}" placeholder="Поиск по рассылкам..." data-campaign-search /></label></div><div class="mailing-history-list">${campaignRowsMarkup}</div></section>` : ""}
       ${mainTab === "templates" ? `<section class="panel mailing-section"><div class="mailing-section-head"><h2>Шаблоны сообщений</h2><button type="button" class="secondary" data-new-mailing>${icon("telegram")} Создать из сообщения</button></div>${templateStatsMarkup}<div class="template-library-list">${templateRowsMarkup}</div></section>` : ""}
       ${mainTab === "automation" ? `<section class="panel mailing-section"><div class="mailing-section-head"><h2>Автоматизация</h2><button type="button" class="secondary" data-mailing-main-tab="new">${icon("telegram")} Новая рассылка</button></div>${automationStatsMarkup}<div class="automation-grid">${automationRowsMarkup}</div></section>` : ""}
       ${mainTab === "new" ? `
@@ -202,7 +203,7 @@ export function renderMailingsScreen(ctx) {
               <div class="manual-recipient-list">
                 ${state.clients.map((client) => `<label>
                   <input type="checkbox" data-manual-recipient="${client.id}" ${state.mailingManualClientIds.includes(client.id) ? "checked" : ""} />
-                  <span><strong>${client.name}</strong><em>${client.phone} · ${client.telegram ? "Telegram подключен" : "Telegram нет"}</em></span>
+                  <span><strong>${escapeHtml(client.name)}</strong><em>${escapeHtml(client.phone)} · ${client.telegram ? "Telegram подключен" : "Telegram нет"}</em></span>
                 </label>`).join("")}
               </div>
             </div>` : ""}
@@ -238,7 +239,7 @@ export function renderMailingsScreen(ctx) {
                   <button type="button" data-wrap-mailing="**">B</button><button type="button" data-wrap-mailing="_">I</button><button type="button" data-wrap-mailing="__">U</button><button type="button" data-insert-mailing="1. Пункт рассылки&#10;2. Следующий пункт">≡</button><button type="button" data-insert-mailing="- Пункт рассылки">•</button><button type="button" data-mail-var="{{unsubscribe_link}}">${icon("tag")}</button><button type="button" data-mail-var="🙂">☺</button>
                   <button type="button" class="variables-button" data-mail-var="{{client_name}}">Переменные⌄</button>
                 </div>
-                <textarea id="mailing-text" rows="10">${state.mailingText}</textarea>
+                <textarea id="mailing-text" rows="10">${escapeHtml(state.mailingText)}</textarea>
               </div>
               <aside class="variables-panel">
                 <h3>Доступные переменные</h3>
@@ -281,7 +282,7 @@ export function renderMailingsScreen(ctx) {
                 ${state.mailingTestContacts.map((contact, index) => `<label>
                   <input type="checkbox" data-test-contact="${index}" ${contact.enabled ? "checked" : ""} />
                   ${icon(contact.channel === "Telegram" ? "telegram" : contact.channel === "SMS" ? "message" : "mail")}
-                  <span><strong>${contact.channel}</strong><em>${contact.value}</em></span>
+                  <span><strong>${escapeHtml(contact.channel)}</strong><em>${escapeHtml(contact.value)}</em></span>
                 </label>`).join("")}
               </div>
             </div>

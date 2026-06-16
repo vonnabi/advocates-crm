@@ -228,6 +228,56 @@ test("empty API mode does not show demo charts or static counts", async ({ page 
   await expect(page.locator("#mailings")).not.toContainText("1245");
 });
 
+test("user-entered fields are HTML-escaped on render (no stored XSS)", async ({ page }) => {
+  // A client whose fields carry markup. If any sink renders it raw, the <img>
+  // onerror / <script> fires and flips window.__xssFired.
+  const marker = `<img src=x onerror="window.__xssFired=true">`;
+  const xssPayload = {
+    ...emptyApiPayload,
+    clients: [{
+      id: 9001,
+      name: `Євіл ${marker}`,
+      phone: "099",
+      email: `evil@x.com<script>window.__xssFired=true</script>`,
+      request: `Позов ${marker}`,
+      notes: marker,
+      status: "Активний",
+      source: "Інше",
+      manager: "Адмін",
+      added: "2026-06-09",
+      telegram: false,
+      communications: []
+    }],
+    meta: { ...emptyApiPayload.meta, clients: 1 }
+  };
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+    window.localStorage.setItem("crmApiBase", window.location.origin);
+  });
+  await page.route("**/api/bootstrap/", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(xssPayload) });
+  });
+  await page.route("**/api/demo-data/", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(xssPayload.meta.demoData) });
+  });
+
+  await page.goto("/");
+  await page.locator('.nav-item[data-view="clients"]').click();
+  await expect(page.locator("#clients")).toHaveClass(/active/);
+
+  // Markup must appear as literal TEXT, and no injected <img> element may exist.
+  await expect(page.locator("#clients")).toContainText("onerror");
+  await expect(page.locator("#clients img")).toHaveCount(0);
+
+  // Profile path renders name/request/notes too — cover it.
+  await page.locator('#clients [data-open-client="9001"]').first().click();
+  await expect(page.locator("#client-profile")).toContainText("onerror");
+  await expect(page.locator("#client-profile img")).toHaveCount(0);
+
+  // The injected onerror/script must never have executed.
+  expect(await page.evaluate(() => window.__xssFired)).toBeFalsy();
+});
+
 test("golden workflow creates and persists client, case, task, event, document and finance", async ({ page, request }) => {
   const created = { operationIds: [], documentIds: [], taskIds: [], eventIds: [] };
   const label = stamp();
