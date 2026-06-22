@@ -3582,11 +3582,37 @@ button {
 }
 
 .dashboard-hero {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
   padding: 16px;
+}
+
+.dashboard-hero-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.dashboard-hero-close:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .dashboard-hero span {
@@ -5212,7 +5238,7 @@ button {
 
 .documents-table th,
 .documents-table td {
-  padding: 10px 8px;
+  padding: 13px 8px;
   vertical-align: middle;
 }
 
@@ -12912,7 +12938,7 @@ td a,
 
 .case-list-table th,
 .case-list-table td {
-  padding: 10px 8px;
+  padding: 14px 10px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: normal;
@@ -18448,6 +18474,62 @@ td a,
 
 .case-history-card {
   margin-top: 10px;
+}
+
+.case-history-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 7px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: #eef1f4;
+  color: #57606a;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.case-history-more {
+  margin-top: 10px;
+}
+
+.case-history-more > summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--line, #d0d7de);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand, #1f3a5f);
+  background: #f6f8fa;
+  user-select: none;
+}
+
+.case-history-more > summary::-webkit-details-marker { display: none; }
+
+.case-history-more > summary::after {
+  content: "⌄";
+  font-size: 13px;
+  line-height: 1;
+}
+
+.case-history-more[open] > summary::after {
+  content: "⌃";
+}
+
+.case-history-more > summary:hover {
+  background: #eef1f4;
+}
+
+.case-history-more .case-history-list {
+  margin-top: 12px;
 }
 
 .case-history-list {
@@ -42168,6 +42250,15 @@ body #cases .case-party-details a {
   font-size: var(--font-size-body-sm) !important;
   font-weight: 700 !important;
   overflow-wrap: anywhere !important;
+}
+
+/* Soft placeholder for empty values (less "technical" than plain "Не вказано"). */
+.field-empty,
+body #cases .field-empty,
+body #cases .case-party-details .field-empty {
+  color: #9aa3af !important;
+  font-weight: 400 !important;
+  font-style: italic;
 }
 
 body #cases .case-party-details a {

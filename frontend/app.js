@@ -26,7 +26,7 @@ import {
   renderCaseListScreen,
   renderCaseProfileScreen,
   renderCasesScreen
-} from "./js/screens/cases.js?v=finance-donut-1";
+} from "./js/screens/cases.js?v=case-history-collapse-1";
 import {
   calendarEntries as calendarEntriesScreen,
   calendarEventMeta as calendarEventMetaScreen,
@@ -39,7 +39,7 @@ import {
   renderClientRows as renderClientRowsScreen,
   renderClientsScreen
 } from "./js/screens/clients.js?v=clients-filter-1";
-import { renderDashboardScreen } from "./js/screens/dashboard.js?v=quick-actions-1";
+import { renderDashboardScreen } from "./js/screens/dashboard.js?v=hero-dismiss-1";
 import { renderDocumentsScreen } from "./js/screens/documents.js?v=docflow-declutter-1";
 import {
   renderMailingsScreen,

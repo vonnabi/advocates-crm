@@ -1333,15 +1333,15 @@ function casePartyCards(item) {
     ${rows.map((party) => `<details class="case-party-card">
       <summary>
         <span class="case-party-main">
-          <strong>${escapeHtml(party.name || "Не вказано")}</strong>
-          <em>${escapeHtml(party.status || "Статус не вказано")}</em>
+          <strong>${party.name ? escapeHtml(party.name) : `<span class="field-empty">Без назви</span>`}</strong>
+          <em>${party.status ? escapeHtml(party.status) : `<span class="field-empty">статус не вказано</span>`}</em>
         </span>
         <span class="case-party-toggle">Деталі</span>
       </summary>
       <div class="case-party-details">
-        <div><span>Адреса</span><strong>${escapeHtml(party.address || "Не вказано")}</strong></div>
-        <div><span>Контакт</span><strong>${escapeHtml(party.contact || "Не вказано")}</strong></div>
-        <div><span>Email</span><strong>${party.email ? `<a href="mailto:${escapeAttribute(party.email)}">${escapeHtml(party.email)}</a>` : "Не вказано"}</strong></div>
+        <div><span>Адреса</span><strong>${party.address ? escapeHtml(party.address) : `<span class="field-empty">не вказано</span>`}</strong></div>
+        <div><span>Контакт</span><strong>${party.contact ? escapeHtml(party.contact) : `<span class="field-empty">не вказано</span>`}</strong></div>
+        <div><span>Email</span><strong>${party.email ? `<a href="mailto:${escapeAttribute(party.email)}">${escapeHtml(party.email)}</a>` : `<span class="field-empty">не вказано</span>`}</strong></div>
       </div>
     </details>`).join("")}
   </div>`;
@@ -1678,10 +1678,16 @@ function renderCaseProfile(id) {
     </div>
     ${caseFinanceBlock(item)}
     <article class="case-card case-history-card">
-      <h3>ІСТОРІЯ СПРАВИ</h3>
+      <h3>ІСТОРІЯ СПРАВИ <span class="case-history-count">${item.history.length}</span></h3>
       <div class="case-history-list">
-        ${item.history.map((entry) => `<div class="case-history-row"><span></span><strong>${escapeHtml(entry.date)}</strong><p>${escapeHtml(entry.text)}</p></div>`).join("")}
+        ${item.history.slice(0, 5).map((entry) => `<div class="case-history-row"><span></span><strong>${escapeHtml(entry.date)}</strong><p>${escapeHtml(entry.text)}</p></div>`).join("") || `<div class="case-history-row"><span></span><p class="muted">Історія порожня.</p></div>`}
       </div>
+      ${item.history.length > 5 ? `<details class="case-history-more">
+        <summary>Показати всю історію (${item.history.length})</summary>
+        <div class="case-history-list">
+          ${item.history.slice(5).map((entry) => `<div class="case-history-row"><span></span><strong>${escapeHtml(entry.date)}</strong><p>${escapeHtml(entry.text)}</p></div>`).join("")}
+        </div>
+      </details>` : ""}
     </article>
   `;
   bindActionMenus?.($("#case-detail"));

@@ -221,6 +221,11 @@ function bindDashboardDeepLinks(ctx) {
       switchView?.("cases");
     });
   });
+
+  document.querySelector("[data-dismiss-hero]")?.addEventListener("click", () => {
+    try { localStorage.setItem("crmDashboardHeroDismissed", "1"); } catch (_e) { /* ignore */ }
+    renderDashboardScreen(ctx);
+  });
 }
 
 export function renderDashboardScreen(ctx) {
@@ -248,9 +253,12 @@ export function renderDashboardScreen(ctx) {
   const finance = financeTotalsFromData(financeRows, financeOperations);
   const osint = osintSummaryFromData(state);
   const telegram = state.clients.filter((client) => client.telegram).length;
+  let heroDismissed = false;
+  try { heroDismissed = localStorage.getItem("crmDashboardHeroDismissed") === "1"; } catch (_e) { heroDismissed = false; }
 
   $("#dashboard").innerHTML = `
     <div class="dashboard-screen">
+      ${heroDismissed ? "" : `
       <section class="dashboard-hero panel">
         <div>
           <span>Оперативний центр</span>
@@ -261,7 +269,8 @@ export function renderDashboardScreen(ctx) {
           <button class="primary" type="button" data-view-link="planner">${icon("refresh")} Синхронізувати план</button>
           <button class="secondary" type="button" data-view-link="cases">${icon("briefcase")} Відкрити справи</button>
         </div>
-      </section>
+        <button class="dashboard-hero-close" type="button" data-dismiss-hero aria-label="Сховати підказку" title="Сховати підказку">×</button>
+      </section>`}
 
       <section class="dashboard-kpi-grid">
         ${[
