@@ -362,34 +362,38 @@ function renderPilotChecklist(checklist, badge) {
 function renderReadinessSection(readiness, checklist, badge, focused) {
   return `
     <section class="panel settings-readiness-card ${focused ? "is-focused" : ""}" data-settings-section="readiness">
-      <div class="settings-section-head">
-        <div>
-          <h2>Аудит готовності</h2>
-          <p class="muted">Коротка карта проєкту: що вже можна показувати, а де ще слабкі місця перед пілотом.</p>
-        </div>
-        <div class="settings-readiness-total">
-          <strong>${readiness.overall}%</strong>
-          <span>загальна готовність</span>
-        </div>
-      </div>
-      <div class="settings-readiness-grid">
-        ${readiness.items.map((item) => `<article class="settings-readiness-item tone-${readinessTone(item.score)}">
-          <div class="settings-readiness-item-head">
-            <strong>${item.title}</strong>
-            ${badge(`${item.score}%`, readinessTone(item.score))}
+      <details class="settings-readiness-details">
+        <summary class="settings-readiness-summary">
+          <div>
+            <h2>Аудит готовності</h2>
+            <p class="muted">Коротка карта проєкту: що вже можна показувати, а де ще слабкі місця перед пілотом.</p>
           </div>
-          <div class="settings-readiness-bar"><span style="width:${item.score}%"></span></div>
-          <em>${item.status}</em>
-          <p>${item.detail}</p>
-          <small>${item.next}</small>
-        </article>`).join("")}
-      </div>
-      <div class="settings-readiness-next">
-        <strong>Найслабші місця зараз</strong>
-        <span>${readiness.weakItems.map((item) => `${item.title} ${item.score}%`).join(" · ")}</span>
-      </div>
-      ${renderRemainingWork(buildRemainingWork(), badge)}
-      ${renderPilotChecklist(checklist, badge)}
+          <div class="settings-readiness-total">
+            <strong>${readiness.overall}%</strong>
+            <span>загальна готовність</span>
+          </div>
+        </summary>
+        <div class="settings-readiness-body">
+          <div class="settings-readiness-grid">
+            ${readiness.items.map((item) => `<article class="settings-readiness-item tone-${readinessTone(item.score)}">
+              <div class="settings-readiness-item-head">
+                <strong>${item.title}</strong>
+                ${badge(`${item.score}%`, readinessTone(item.score))}
+              </div>
+              <div class="settings-readiness-bar"><span style="width:${item.score}%"></span></div>
+              <em>${item.status}</em>
+              <p>${item.detail}</p>
+              <small>${item.next}</small>
+            </article>`).join("")}
+          </div>
+          <div class="settings-readiness-next">
+            <strong>Найслабші місця зараз</strong>
+            <span>${readiness.weakItems.map((item) => `${item.title} ${item.score}%`).join(" · ")}</span>
+          </div>
+          ${renderRemainingWork(buildRemainingWork(), badge)}
+          ${renderPilotChecklist(checklist, badge)}
+        </div>
+      </details>
     </section>
   `;
 }
