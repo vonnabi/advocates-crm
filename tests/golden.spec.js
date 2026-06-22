@@ -1059,15 +1059,17 @@ test("settings readiness users and integrations stay consistent after reload", a
     await openApp(page);
     await page.locator('.nav-item[data-view="settings"]').click();
     await expect(page.locator("#settings")).toHaveClass(/active/);
-    await expect(page.locator("[data-settings-section='readiness']")).toContainText("Аудит готовності");
+    // Readiness audit is collapsed by default; open it via the "готовність CRM" toggle.
+    await page.locator("[data-settings-readiness-toggle]").click();
+    await expect(page.locator("[data-settings-section='readiness']")).toContainText("Найслабші місця зараз");
     await expect(page.locator("[data-settings-section='integrations']")).toContainText("ONLYOFFICE");
     await expect(page.locator("[data-settings-section='integrations']")).toContainText("Email");
     await expect(page.locator("[data-settings-section='audit']")).toContainText("Журнал змін");
     await expect(page.locator('[data-settings-focus="users"] strong')).toHaveText(String(initialActiveUsers));
 
-    const summaryReadiness = (await page.locator('[data-settings-focus="readiness"] strong').innerText()).trim();
-    const auditReadiness = (await page.locator(".settings-readiness-total strong").innerText()).trim();
-    expect(summaryReadiness).toBe(auditReadiness);
+    // The readiness percentage now lives only on the "готовність CRM" toggle card.
+    const summaryReadiness = (await page.locator('[data-settings-readiness-toggle] strong').innerText()).trim();
+    expect(summaryReadiness).toMatch(/^\d+%$/);
 
     await page.locator('[data-settings-focus="users"]').click();
     await page.locator('[data-settings-action="invite"]').click();

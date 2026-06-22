@@ -1584,7 +1584,7 @@ h3 {
 .settings-summary-grid {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -1644,6 +1644,97 @@ h3 {
   font-size: 12px;
   font-style: normal;
   font-weight: 800;
+}
+
+.settings-summary-readiness strong {
+  color: var(--action-dark);
+}
+
+.settings-summary-readiness {
+  grid-template-columns: 42px minmax(0, 1fr) 10px;
+}
+
+.settings-summary-readiness.tone-green > span {
+  background: #eafaf1;
+  color: #059669;
+}
+
+.settings-summary-readiness.tone-green strong {
+  color: #047857;
+}
+
+.settings-summary-readiness.tone-amber > span {
+  background: #fff7e6;
+  color: #d97706;
+}
+
+.settings-summary-readiness.tone-amber strong {
+  color: #b45309;
+}
+
+.settings-summary-readiness.tone-red > span {
+  background: #fff1f2;
+  color: #dc2626;
+}
+
+.settings-summary-readiness.tone-red strong {
+  color: #b91c1c;
+}
+
+.settings-summary-readiness::after {
+  content: "";
+  justify-self: end;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  color: var(--action-dark);
+  transform: rotate(45deg);
+  transition: transform 0.18s ease;
+}
+
+.settings-summary-readiness[aria-expanded="true"]::after {
+  transform: rotate(225deg);
+}
+
+@media (min-width: 1024px) {
+  body #settings .settings-summary-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  body #settings .settings-summary-card {
+    grid-template-columns: 34px minmax(0, 1fr);
+    min-height: 74px;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  body #settings .settings-summary-readiness {
+    grid-template-columns: 34px minmax(0, 1fr) 8px;
+  }
+
+  body #settings .settings-summary-card > span {
+    width: 34px;
+    height: 34px;
+  }
+
+  body #settings .settings-summary-card strong {
+    overflow: hidden;
+    font-size: 20px;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body #settings .settings-summary-card em {
+    overflow: hidden;
+    margin-top: 3px;
+    font-size: 10.5px;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 .settings-readiness-card,
