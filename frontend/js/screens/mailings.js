@@ -728,6 +728,7 @@ function renderPracticalMailingScreen(ctx, { persistMailings }) {
   state.mailingChannels ||= { Telegram: true, SMS: false, Email: false };
   state.mailingText ||= "";
   state.mailingImageName ||= "";
+  state.mailingImageDataUrl ||= "";
   const channelConfig = {
     Telegram: { icon: "telegram", label: "Telegram", hint: "повідомлення у месенджер" },
     SMS: { icon: "message", label: "SMS", hint: "коротке текстове повідомлення" },
@@ -792,7 +793,9 @@ function renderPracticalMailingScreen(ctx, { persistMailings }) {
               <span>Advocates Bureau</span>
               <em>${enabledChannels.join(" / ") || "канал не обрано"}</em>
             </div>
-            ${state.mailingImageName ? `<div class="mailing-preview-image">${icon("file")}<span>${escapeHtml(state.mailingImageName)}</span></div>` : ""}
+            ${state.mailingImageDataUrl
+              ? `<div class="mailing-preview-image"><img src="${state.mailingImageDataUrl}" alt="${escapeHtml(state.mailingImageName || "Зображення розсилки")}" /></div>`
+              : state.mailingImageName ? `<div class="mailing-preview-image">${icon("file")}<span>${escapeHtml(state.mailingImageName)}</span></div>` : ""}
             <div class="mailing-preview-bubble">${escapeHtml(previewText)}</div>
           </div>
         </aside>
@@ -862,8 +865,20 @@ function renderPracticalMailingScreen(ctx, { persistMailings }) {
     state.mailingText = event.target.value;
   });
   document.querySelector("[data-mailing-image]")?.addEventListener("change", (event) => {
-    state.mailingImageName = event.target.files?.[0]?.name || "";
-    renderPracticalMailingScreen(ctx, { persistMailings });
+    const file = event.target.files?.[0];
+    if (!file) {
+      state.mailingImageName = "";
+      state.mailingImageDataUrl = "";
+      renderPracticalMailingScreen(ctx, { persistMailings });
+      return;
+    }
+    state.mailingImageName = file.name || "";
+    const reader = new FileReader();
+    reader.onload = () => {
+      state.mailingImageDataUrl = String(reader.result || "");
+      renderPracticalMailingScreen(ctx, { persistMailings });
+    };
+    reader.readAsDataURL(file);
   });
   document.querySelectorAll("[data-recipient-mode]").forEach((button) => button.addEventListener("click", () => {
     state.mailingRecipientMode = button.dataset.recipientMode;
@@ -896,14 +911,15 @@ function renderPracticalMailingScreen(ctx, { persistMailings }) {
     }
     const payload = {
       title: "Інформаційне повідомлення клієнтам",
-      text: state.mailingImageName ? `${state.mailingText}\n\n[Картинка: ${state.mailingImageName}]` : state.mailingText,
+      text: state.mailingText,
       channels: { ...state.mailingChannels },
       sendMode: "now",
       recipientMode: state.mailingRecipientMode,
       manualClientIds: state.mailingManualClientIds,
       filters: [],
       status: "Готова к отправке",
-      recipientCount: selectedRecipients.length
+      recipientCount: selectedRecipients.length,
+      imageDataUrl: state.mailingImageDataUrl || ""
     };
     try {
       const saved = persistMailings ? await saveMailingCampaignToApi(payload) : payload;

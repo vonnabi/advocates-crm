@@ -1178,14 +1178,6 @@ export function renderDocumentsScreen(ctx) {
         </div>
       </div>
 
-      <div class="documents-kpi-grid">
-        <button class="panel documents-kpi-card ${allKpiActive ? "active" : ""}" type="button" data-document-kpi="all"><span>${icon("file")}</span><div><strong>${rows.length}</strong><em>Усього документів</em></div></button>
-        <button class="panel documents-kpi-card ${quickFilter === "submitted" ? "active" : ""}" type="button" data-document-kpi="submitted"><span class="green">${icon("check")}</span><div><strong>${submittedCount}</strong><em>Подано / отримано</em></div></button>
-        <button class="panel documents-kpi-card ${quickFilter === "overdue" ? "active" : ""}" type="button" data-document-kpi="overdue"><span class="red">${icon("bell")}</span><div><strong>${overdueCount}</strong><em>Без відповіді в строк</em></div></button>
-        <button class="panel documents-kpi-card ${quickFilter === "drafts" ? "active" : ""}" type="button" data-document-kpi="drafts"><span class="amber">${icon("edit")}</span><div><strong>${draftCount}</strong><em>Чернетки та не подано</em></div></button>
-        <button class="panel documents-kpi-card ${quickFilter === "ai" ? "active" : ""}" type="button" data-document-kpi="ai"><span class="violet">${icon("search")}</span><div><strong>${aiReadyCount}</strong><em>Готово для AI/Word</em></div></button>
-      </div>
-
       <div class="documents-filters panel">
         <label class="documents-filter-field documents-filter-search">Пошук
           <input type="search" data-document-query placeholder="Документ, справа, клієнт, папка, орган..." value="${escapeHtml(state.documentQuery || "")}">
@@ -1339,7 +1331,6 @@ export function renderDocumentsScreen(ctx) {
                         { label: "Редагувати", icon: "edit", attrs: { "data-edit-global-document": doc.key, "aria-label": "Редагувати документ" } },
                         { label: "Копіювати документ", icon: "file", attrs: { "data-copy-global-document": doc.key, "aria-label": "Копіювати документ" } },
                         { label: "Відправити", icon: "telegram", attrs: { "data-send-global-document": doc.key, "aria-label": "Відправити документ" } },
-                        { label: E_SIGN_STATUSES.has(doc.status) ? "Перевірити підпис" : "На е-підпис", icon: "signature", attrs: { "data-esign-global-document": doc.key, "aria-label": "Електронний підпис" } },
                         { label: "ONLYOFFICE", icon: "file", attrs: { "data-office-global-document": doc.key, "aria-label": "Відкрити в ONLYOFFICE" } },
                         { label: "Експорт", icon: "fileUp", attrs: { "data-export-global-document": doc.key, "aria-label": "Експортувати документ" } },
                         { label: "Додати в архів", icon: "archive", attrs: { "data-archive-global-document": doc.key, "aria-label": "Додати документ в архів" } },
@@ -1412,22 +1403,11 @@ export function renderDocumentsScreen(ctx) {
               <button class="secondary documents-action-button" type="button" data-edit-global-document="${selected.key}">${icon("edit")} Редагувати</button>
               <button class="secondary documents-action-button" type="button" data-copy-global-document="${selected.key}">${icon("file")} Копіювати</button>
               <button class="secondary documents-action-button" type="button" data-send-global-document="${selected.key}">${icon("telegram")} Відправити</button>
-              <button class="secondary documents-action-button" type="button" data-esign-global-document="${selected.key}">${icon("signature")} ${E_SIGN_STATUSES.has(selected.status) ? "Статус КЕП" : "На підпис"}</button>
               <button class="secondary documents-action-button" type="button" data-office-global-document="${selected.key}">${icon("file")} ONLYOFFICE</button>
               <button class="secondary documents-action-button" type="button" data-export-global-document="${selected.key}">${icon("fileUp")} Експорт</button>
               <button class="secondary documents-action-button" type="button" data-archive-global-document="${selected.key}">${icon("archive")} В архів</button>
               <button class="secondary documents-action-button" type="button" data-open-document-case="${selected.caseId}">${icon("briefcase")} Справа</button>
               <button class="secondary documents-action-button" type="button" data-documents-ai>${icon("search")} AI перевірка</button>
-            </div>
-            <div class="documents-esign-card ${E_SIGN_STATUSES.has(selected.status) ? "active" : ""}">
-              <div>
-                <span>${icon("signature")}</span>
-                <strong>${E_SIGN_STATUSES.has(selected.status) ? selected.status : "Документ ще не на підписі"}</strong>
-              </div>
-              <p>${E_SIGN_STATUSES.has(selected.status)
-                ? "CRM показує майбутній контроль е-підпису: очікування, перевірка, відмова або готовий підписаний файл."
-                : "Натисніть «На підпис», щоб показати замовнику демо-перехід документа в процес КЕП."}</p>
-              <small>Провайдер: ${eSignProvider}</small>
             </div>
             <div class="documents-ai-card">
               <strong>AI / Word</strong>
@@ -1769,37 +1749,10 @@ export function renderDocumentsScreen(ctx) {
     renderDocumentsScreen(ctx);
     showToast?.("Статус документа оновлено.");
   };
-  const runESignDemoAction = async (key) => {
-    const { caseId, encoded } = payloadFromKey(key);
-    const payload = getDocumentPayload(caseId, encoded);
-    const currentStatus = payload.doc?.status || payload.file?.status || payload.linked?.file?.status || "";
-    let nextStatus = "Очікує е-підпис";
-    let message = eSignEnabled
-      ? "Документ відправлено на е-підпис."
-      : "Демо: документ переведено в очікування е-підпису. Провайдера підключимо в налаштуваннях.";
-    if (currentStatus === "Очікує е-підпис") {
-      nextStatus = "Підписано КЕП";
-      message = "Демо: провайдер повернув підписаний документ.";
-    } else if (currentStatus === "Підписано КЕП") {
-      showToast?.("Підпис уже отримано. Після API тут буде завантаження підписаного файлу.", "info");
-      return;
-    } else if (["Відхилено підпис", "Підпис прострочено"].includes(currentStatus)) {
-      nextStatus = "Очікує е-підпис";
-      message = "Документ повторно поставлено в чергу е-підпису.";
-    }
-    await updateDocumentStatus(key, nextStatus);
-    showToast?.(message, eSignEnabled ? "success" : "info");
-  };
   documentsNode.querySelectorAll("[data-document-status-pick]").forEach((button) => {
     button.addEventListener("click", async (event) => {
       event.stopPropagation();
       await updateDocumentStatus(button.dataset.documentStatusPick, button.dataset.documentStatusValue);
-    });
-  });
-  documentsNode.querySelectorAll("[data-esign-global-document]").forEach((button) => {
-    button.addEventListener("click", async (event) => {
-      event.stopPropagation();
-      await runESignDemoAction(button.dataset.esignGlobalDocument);
     });
   });
   documentsNode.querySelector("[data-document-status-change]")?.addEventListener("change", async (event) => {

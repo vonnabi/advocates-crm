@@ -26,6 +26,7 @@ class Campaign(models.Model):
     title = models.CharField(max_length=255)
     body = models.TextField()
     channels = models.JSONField(default=list)
+    image = models.FileField(upload_to="mailing_images/", blank=True)
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     scheduled_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.DRAFT)

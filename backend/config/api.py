@@ -1932,6 +1932,8 @@ def serialize_mailing_campaign(item):
         "recipientCount": channels.get("__recipientCount") or campaign_delivery_stats(item)["total"],
         "deliveryStats": campaign_delivery_stats(item),
         "deliveries": [serialize_message_delivery(delivery) for delivery in deliveries],
+        "imageUrl": item.image.url if item.image else "",
+        "imageName": os.path.basename(item.image.name) if item.image else "",
     }
 
 
@@ -2100,6 +2102,37 @@ def send_campaign_deliveries(item):
     return sent_count
 
 
+CAMPAIGN_IMAGE_MAX_BYTES = 5 * 1024 * 1024  # cap the attached picture to avoid storing huge blobs
+CAMPAIGN_IMAGE_EXTENSIONS = {
+    "image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg",
+    "image/gif": "gif", "image/webp": "webp",
+}
+
+
+def save_campaign_image(item, data_url):
+    """Persist the mailing picture sent from the browser as a base64 data URL.
+    An empty value clears the existing image; a non-data-URL value is ignored."""
+    data_url = str(data_url or "")
+    if not data_url:
+        if item.image:
+            item.image.delete(save=False)
+            item.image = ""
+            item.save(update_fields=["image"])
+        return
+    if not data_url.startswith("data:"):
+        return
+    try:
+        header, b64 = data_url.split(",", 1)
+        mime = header[5:].split(";")[0].strip().lower()
+        raw = base64.b64decode(b64)
+    except (ValueError, binascii.Error):
+        return
+    if not raw or len(raw) > CAMPAIGN_IMAGE_MAX_BYTES:
+        return
+    ext = CAMPAIGN_IMAGE_EXTENSIONS.get(mime, "png")
+    item.image.save(f"campaign-{item.pk}.{ext}", ContentFile(raw), save=True)
+
+
 def upsert_mailing_campaign(data, item=None, author=None, recipient_scope=None):
     item = item or Campaign()
     send_mode = str(data.get("sendMode") or "now")
@@ -2111,6 +2144,8 @@ def upsert_mailing_campaign(data, item=None, author=None, recipient_scope=None):
     item.scheduled_at = scheduled_at_from_payload(data)
     item.status = status
     item.save()
+    if "imageDataUrl" in data:
+        save_campaign_image(item, data.get("imageDataUrl"))
     sync_campaign_deliveries(item, data, recipient_scope)
     return item
 

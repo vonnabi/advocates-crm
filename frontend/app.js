@@ -40,11 +40,11 @@ import {
   renderClientsScreen
 } from "./js/screens/clients.js?v=clients-filter-1";
 import { renderDashboardScreen } from "./js/screens/dashboard.js?v=quick-actions-1";
-import { renderDocumentsScreen } from "./js/screens/documents.js?v=document-delete-path-3";
+import { renderDocumentsScreen } from "./js/screens/documents.js?v=docflow-declutter-1";
 import {
   renderMailingsScreen,
   setMailingTab as setMailingTabScreen
-} from "./js/screens/mailings.js?v=modal-select-audit-1";
+} from "./js/screens/mailings.js?v=mailing-image-1";
 import { renderFinanceScreen } from "./js/screens/finance.js?v=finance-kpi-trend-1";
 import { renderOSINTScreen } from "./js/screens/osint.js?v=dead-code-cleanup-1";
 import { renderPlannerScreen } from "./js/screens/planner.js";

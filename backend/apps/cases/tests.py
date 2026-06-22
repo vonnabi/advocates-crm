@@ -148,6 +148,41 @@ class DemoApiTests(TestCase):
         self.assertIn(accessible_id, manual_targeted)
         self.assertNotIn(hidden_id, manual_targeted)
 
+    def test_mailing_campaign_stores_attached_image(self):
+        # The simplified mailing window can attach a picture; the browser sends it as a base64
+        # data URL and the backend persists it on the campaign and exposes its URL.
+        self.client.post(
+            "/api/auth/login/",
+            {"email": "ivanenko@advocates.crm", "password": "demo12345"},
+            content_type="application/json",
+        )
+        png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
+        create = self.client.post(
+            "/api/mailings/campaigns/",
+            {
+                "title": "Image campaign",
+                "text": "Hi",
+                "channels": ["Email"],
+                "recipientMode": "all",
+                "imageDataUrl": f"data:image/png;base64,{png}",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(create.status_code, 200)
+        data = create.json()
+        self.assertTrue(data["imageUrl"], "campaign should expose the stored image URL")
+        self.assertIn("mailing_images/", data["imageUrl"])
+        campaign = Campaign.objects.get(pk=data["id"])
+        self.assertTrue(campaign.image)
+        # Sending an empty imageDataUrl clears the stored picture.
+        cleared = self.client.put(
+            f"/api/mailings/campaigns/{data['id']}/",
+            {"title": "Image campaign", "text": "Hi", "channels": ["Email"], "recipientMode": "all", "imageDataUrl": ""},
+            content_type="application/json",
+        )
+        self.assertEqual(cleared.status_code, 200)
+        self.assertEqual(cleared.json()["imageUrl"], "")
+
     def test_demo_data_api_clears_and_restores_business_data(self):
         manual_client = Client.objects.create(
             full_name="Реальний клієнт",
