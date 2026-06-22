@@ -83,12 +83,10 @@ export function setupEventForm({
       const action = caseItem.proceduralActions[actionIndex];
       if (!action) return;
       action.action = form.get("title");
-      action.initiator = form.get("responsible") || "Адвокат";
+      action.initiator = form.get("type") || form.get("responsible") || "Адвокат";
       action.initiated = formatDate(date);
       action.time = form.get("time");
       action.due = due ? formatDate(due) : `${formatDate(date)} ${form.get("time")}`;
-      action.status = status;
-      action.tone = status === "Заплановано" ? "blue" : status === "В процесі" ? "amber" : "";
       action.description = form.get("description");
       caseItem.history.unshift({
         date: new Date().toLocaleDateString("uk-UA"),
@@ -126,12 +124,10 @@ export function setupEventForm({
       caseItem.proceduralActions = caseProceduralItems(caseItem);
       caseItem.proceduralActions.unshift({
         action: form.get("title"),
-        initiator: form.get("responsible") || "Адвокат",
+        initiator: form.get("type") || form.get("responsible") || "Адвокат",
         initiated: formatDate(date),
         time: form.get("time"),
         due: due ? formatDate(due) : `${formatDate(date)} ${form.get("time")}`,
-        status,
-        tone: semanticTone(status),
         description: form.get("description")
       });
       caseItem.history.unshift({

@@ -5,7 +5,7 @@ import {
   setupTopbarControls,
   syncTopbarNotifications
 } from "./js/chrome.js?v=secured-login-boot-2";
-import { createDialogOpeners } from "./js/dialog-openers.js?v=builtin-rich-editor-1";
+import { createDialogOpeners } from "./js/dialog-openers.js?v=onlyoffice-registry-open-1";
 import { setupDialogControls, persistSnapshotState } from "./js/dialogs.js?v=document-delete-path-3";
 import { setupCaseDetailForms } from "./js/forms/case-details.js?v=finance-operation-menu-1";
 import { setupCaseItemForms } from "./js/forms/case-items.js";
@@ -93,7 +93,7 @@ const titles = {
   tasks: "Задачі",
   calendar: "Календар",
   planner: "Планер",
-  documents: "Документи",
+  documents: "Документообіг",
   mailings: "Розсилка",
   ai: "AI помічники",
   finance: "Фінанси",

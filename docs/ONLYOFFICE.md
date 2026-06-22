@@ -48,6 +48,34 @@ docker logs -f advocates-crm-onlyoffice                   # логи
 - Document Server требует ~2 ГБ RAM — на бесплатных хостингах обычно не помещается;
   нужен отдельный сервер/инстанс, доступный CRM по сети.
 
+## Render + ONLYOFFICE Docs Cloud
+
+Для ONLYOFFICE Cloud локальные адреса (`127.0.0.1`, `localhost`) не работают:
+облачный Document Server должен сам скачать файл из CRM и отправить callback назад.
+
+На Render CRM автоматически использует публичный URL сервиса:
+
+- сначала `CRM_PUBLIC_URL`, если он задан вручную;
+- затем стандартный `RENDER_EXTERNAL_URL`;
+- затем `https://$RENDER_EXTERNAL_HOSTNAME`.
+
+Этим URL автоматически заполняются:
+
+- `serverAccessUrl`;
+- `callbackUrl`;
+- URL файла в server-side ONLYOFFICE config.
+
+В Render Environment нужно задать:
+
+```text
+ONLYOFFICE_DOCUMENT_SERVER_URL=https://<адрес>.docs.onlyoffice.com
+ONLYOFFICE_JWT_SECRET=<секретный ключ из панели Docs Cloud>
+CRM_PUBLIC_URL=https://<ваш-домен>   # опционально, если используете custom domain
+```
+
+`ONLYOFFICE_JWT_SECRET` нельзя коммитить в репозиторий. В `render.yaml` он объявлен
+как `sync: false`, поэтому значение вводится в Render Dashboard.
+
 ## Важно: два пути хранения текста
 
 - **ONLYOFFICE** редактирует и сохраняет сам **файл** документа (`.docx` и т.п.).

@@ -1,3 +1,5 @@
+import os
+
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
@@ -79,6 +81,72 @@ class DemoApiTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(hidden_task_response.status_code, 403)
+
+    def test_mailing_recipients_stay_within_caller_client_scope(self):
+        # A non-admin granted manage_mailings via custom module_permissions must not be able to
+        # enumerate or target clients outside their case scope through a campaign (IDOR): the
+        # recipient queryset is resolved against the caller's accessible clients, not all clients.
+        assistant = get_user_model().objects.get(email="kravchuk@advocates.crm")
+        profile = UserProfile.objects.get(user=assistant)
+        profile.module_permissions = ["manage_mailings"]
+        profile.save(update_fields=["module_permissions"])
+
+        assistant_name = assistant.get_full_name() or assistant.username
+        accessible_cases = Case.objects.filter(
+            Q(responsible=assistant)
+            | Q(team_members__user=assistant)
+            | Q(tasks__responsible=assistant)
+            | Q(events__responsible=assistant)
+            | Q(documents__responsible_name=assistant_name)
+        )
+        accessible_ids = set(
+            Client.objects.filter(
+                Q(responsible=assistant) | Q(cases__in=accessible_cases)
+            ).distinct().values_list("id", flat=True)
+        )
+        all_ids = set(Client.objects.values_list("id", flat=True))
+        hidden_ids = all_ids - accessible_ids
+        self.assertTrue(accessible_ids, "assistant should have at least one accessible client")
+        self.assertTrue(hidden_ids, "seed must leave at least one out-of-scope client to prove scoping")
+
+        login = self.client.post(
+            "/api/auth/login/",
+            {"email": "kravchuk@advocates.crm", "password": "demo12345"},
+            content_type="application/json",
+        )
+        self.assertEqual(login.status_code, 200)
+
+        # recipientMode "all" must resolve only the caller's accessible clients.
+        create = self.client.post(
+            "/api/mailings/campaigns/",
+            {"title": "Scope test", "text": "Hi", "channels": ["Email"], "recipientMode": "all", "sendMode": "now"},
+            content_type="application/json",
+        )
+        self.assertEqual(create.status_code, 200)
+        targeted = set(MessageDelivery.objects.filter(campaign_id=create.json()["id"]).values_list("client_id", flat=True))
+        self.assertTrue(targeted, "campaign should target the accessible clients")
+        self.assertTrue(targeted <= accessible_ids, "campaign must not reach clients outside the caller scope")
+        self.assertFalse(targeted & hidden_ids, "no out-of-scope client may receive a delivery")
+
+        # manual mode must silently drop client IDs the caller cannot access.
+        accessible_id = next(iter(accessible_ids))
+        hidden_id = next(iter(hidden_ids))
+        manual = self.client.post(
+            "/api/mailings/campaigns/",
+            {
+                "title": "Manual scope test",
+                "text": "Hi",
+                "channels": ["Email"],
+                "recipientMode": "manual",
+                "manualClientIds": [accessible_id, hidden_id],
+                "sendMode": "now",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(manual.status_code, 200)
+        manual_targeted = set(MessageDelivery.objects.filter(campaign_id=manual.json()["id"]).values_list("client_id", flat=True))
+        self.assertIn(accessible_id, manual_targeted)
+        self.assertNotIn(hidden_id, manual_targeted)
 
     def test_demo_data_api_clears_and_restores_business_data(self):
         manual_client = Client.objects.create(
@@ -318,17 +386,12 @@ class DemoApiTests(TestCase):
         self.assertEqual(download_response.status_code, 200)
         self.assertEqual(b"".join(download_response.streaming_content), b"original-docx")
 
-        class EditedResponse:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *_args):
-                return False
-
-            def read(self):
-                return b"edited-docx"
-
-        with patch("config.api.urllib.request.urlopen", return_value=EditedResponse()):
+        # The dedicated SSRF golden test covers is_safe_fetch_url; here we stub the fetch layer
+        # to focus on the callback persisting the edited document. Both helpers are patched
+        # because is_safe_fetch_url does a real DNS lookup (the example host does not resolve)
+        # and fetch_remote_document opens a real socket via build_opener().open.
+        with patch("config.api.is_safe_fetch_url", return_value=True), \
+             patch("config.api.fetch_remote_document", return_value=b"edited-docx"):
             callback_response = self.client.post(
                 f"/api/documents/{document.id}/onlyoffice/callback/",
                 {"status": 2, "url": "https://onlyoffice.example/edited.docx"},
@@ -339,6 +402,51 @@ class DemoApiTests(TestCase):
         self.assertEqual(callback_response.json(), {"error": 0})
         document.refresh_from_db()
         self.assertEqual(document.file.read(), b"edited-docx")
+
+    def test_onlyoffice_uses_render_public_url_from_environment(self):
+        self.client.post(
+            "/api/auth/login/",
+            {"email": "ivanenko@advocates.crm", "password": "demo12345"},
+            content_type="application/json",
+        )
+        crm_settings, _created = CRMSettings.objects.get_or_create(key="global")
+        crm_settings.integration_settings = {
+            **crm_settings.integration_settings,
+            "ONLYOFFICE": {
+                "documentServerUrl": "",
+                "serverAccessUrl": "",
+                "callbackUrl": "http://127.0.0.1:8001/api/documents/{id}/onlyoffice/callback/",
+                "jwtSecret": "",
+            },
+        }
+        crm_settings.save(update_fields=["integration_settings"])
+        document = CaseDocument.objects.create(
+            case=Case.objects.first(),
+            title="Render ONLYOFFICE sync.docx",
+            document_type="Запит",
+            status="Чернетка",
+            folder="Папка справи",
+        )
+        document.file.save("render-sync.docx", SimpleUploadedFile("render-sync.docx", b"docx"), save=True)
+
+        with patch.dict(os.environ, {
+            "RENDER_EXTERNAL_URL": "https://advocates-crm.onrender.com",
+            "ONLYOFFICE_DOCUMENT_SERVER_URL": "https://docs.example.onlyoffice.com",
+            "ONLYOFFICE_JWT_SECRET": "render-secret",
+        }):
+            settings_response = self.client.get("/api/settings/")
+            self.assertEqual(settings_response.status_code, 200)
+            onlyoffice_settings = settings_response.json()["settings"]["integrationSettings"]["ONLYOFFICE"]
+            self.assertEqual(onlyoffice_settings["documentServerUrl"], "https://docs.example.onlyoffice.com")
+            self.assertEqual(onlyoffice_settings["serverAccessUrl"], "https://advocates-crm.onrender.com")
+            self.assertEqual(onlyoffice_settings["callbackUrl"], "https://advocates-crm.onrender.com/api/documents/{id}/onlyoffice/callback/")
+
+            config_response = self.client.get(f"/api/documents/{document.id}/onlyoffice/config/")
+            self.assertEqual(config_response.status_code, 200)
+            config = config_response.json()
+            self.assertTrue(config["document"]["url"].startswith("https://advocates-crm.onrender.com/api/documents/"))
+            self.assertEqual(config["editorConfig"]["callbackUrl"], f"https://advocates-crm.onrender.com/api/documents/{document.id}/onlyoffice/callback/")
+            self.assertIn("token", config)
 
     def test_finance_invoice_and_act_create_real_docx_files(self):
         self.client.post(

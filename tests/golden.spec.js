@@ -221,9 +221,9 @@ test("empty API mode does not show demo charts or static counts", async ({ page 
   await expect(page.locator("#analytics")).toContainText("Фінансової аналітики ще немає");
 
   await page.locator('.nav-item[data-view="mailings"]').click();
-  await expect(page.locator(".coverage-row")).toContainText("Клиенты0");
-  await expect(page.locator(".forecast-card")).toContainText("Всего получателей0");
-  await expect(page.locator(".forecast-card")).toContainText("0 сообщений");
+  await expect(page.locator(".coverage-row")).toContainText("Клієнти0");
+  await expect(page.locator(".forecast-card")).toContainText("Отримувачі0");
+  await expect(page.locator(".forecast-card")).toContainText("Повідомлення0");
   await expect(page.locator(".forecast-card")).not.toContainText("744");
   await expect(page.locator("#mailings")).not.toContainText("1245");
 });
@@ -421,10 +421,7 @@ test("client and case UI forms persist edits after reload", async ({ page, reque
     await page.locator('#case-form select[name="clientId"]').selectOption(String(created.client.id), { force: true });
     await page.locator('#case-form input[name="title"]').fill(caseTitle);
     await page.locator('#case-form select[name="type"]').selectOption("Цивільна", { force: true });
-    await page.locator('#case-form input[name="stage"]').fill("Первинний аналіз");
     await page.locator('#case-form select[name="status"]').selectOption("В роботі", { force: true });
-    await page.locator('#case-form select[name="priority"]').selectOption("Високий", { force: true });
-    await page.locator('#case-form input[name="deadline"]').fill("2026-06-30");
     await page.locator('#case-form select[name="responsible"]').selectOption({ label: "Admin" }, { force: true });
     await page.locator("#case-submit-button").click();
     await expect(page.locator("#case-dialog")).not.toHaveJSProperty("open", true);
@@ -440,7 +437,6 @@ test("client and case UI forms persist edits after reload", async ({ page, reque
     await page.locator(`.case-preview-card [data-edit-case-row="${created.matter.id}"]`).click();
     await expect(page.locator("#case-dialog")).toHaveJSProperty("open", true);
     await page.locator('#case-form input[name="title"]').fill(updatedCaseTitle);
-    await page.locator('#case-form input[name="stage"]').fill("Підготовка документів");
     await page.locator('#case-form select[name="status"]').selectOption("Очікує відповідь", { force: true });
     await page.locator("#case-submit-button").click();
     await expect(page.locator("#case-dialog")).not.toHaveJSProperty("open", true);
@@ -458,7 +454,6 @@ test("client and case UI forms persist edits after reload", async ({ page, reque
     await page.locator("#case-search").fill(updatedCaseTitle);
     await expect(page.locator("#case-detail")).toContainText(updatedCaseTitle);
     await expect(page.locator("#case-detail")).toContainText(updatedClientName);
-    await expect(page.locator("#case-detail")).toContainText("Підготовка документів");
     await expect(page.locator("#case-detail")).not.toContainText(caseTitle);
   } finally {
     const bootstrap = await apiJson(await request.get("/api/bootstrap/"), "GET /api/bootstrap/");
@@ -713,8 +708,15 @@ test("documents send and ONLYOFFICE actions open from the document registry", as
     await expect(page.locator("#office-editor-dialog")).toHaveJSProperty("open", true);
     await expect(page.locator("#office-editor-title")).toContainText(invoiceTitle);
     await expect(page.locator("#onlyoffice-editor-container")).toBeVisible();
-    const officeConfig = await page.evaluate(() => window.__onlyOfficeSmoke?.config || null);
-    expect(officeConfig?.document?.url, "ONLYOFFICE should receive a document URL").toContain("/api/documents/");
+    // The editor mounts asynchronously (fetch the server-signed config, then load the
+    // Document Server API script before calling DocsAPI.DocEditor). Poll for the mount
+    // instead of reading window.__onlyOfficeSmoke the instant the container appears.
+    await expect
+      .poll(() => page.evaluate(() => window.__onlyOfficeSmoke?.config?.document?.url ?? null), {
+        message: "ONLYOFFICE should receive a document URL",
+        timeout: 5000
+      })
+      .toContain("/api/documents/");
     await page.locator("#office-editor-close").click();
   } finally {
     await cleanupGoldenMatter(request, created);
@@ -853,7 +855,7 @@ test("calendar-created event stays a calendar event after reload", async ({ page
   }
 });
 
-test("mailing preview templates and scheduled campaigns use live recipients", async ({ page, request }) => {
+test("simple mailing creates a campaign with live recipients", async ({ page, request }) => {
   const created = {};
   const label = stamp();
   const signature = `mailing-smoke-${label}`;
@@ -865,37 +867,15 @@ test("mailing preview templates and scheduled campaigns use live recipients", as
     await openApp(page);
     await page.locator('.nav-item[data-view="mailings"]').click();
     await expect(page.locator("#mailings")).toHaveClass(/active/);
-    await expect(page.locator(".coverage-row")).toContainText("Клиенты");
-    await expect(page.locator(".forecast-card")).toContainText("Всего получателей");
+    await expect(page.locator(".coverage-row")).toContainText("Клієнти");
+    await expect(page.locator(".forecast-card")).toContainText("Отримувачі");
 
     await page.locator("#mailing-text").fill(message);
-    await expect(page.locator("#mail-preview")).toContainText(signature);
-    await expect(page.locator("#mail-preview")).toContainText("Шановні клієнти!");
-    await expect(page.locator("#mailing-char-count")).toHaveText(String(message.length));
-
-    await page.locator('[data-preview-channel="SMS"]').click();
-    await expect(page.locator("#mail-preview")).toContainText(signature);
-    await page.locator('[data-preview-channel="Email"]').click();
-    await expect(page.locator("#mail-preview")).toContainText("Тема: Важливе повідомлення");
-    await expect(page.locator("#mail-preview")).toContainText(signature);
-
-    await page.locator("[data-save-mailing-template]").click();
-    await expect(page.locator("#mailings")).toContainText("Шаблон сохранён");
-    await page.locator('[data-mailing-main-tab="templates"]').click();
-    await expect(page.locator(".template-library-list")).toContainText(signature);
-
-    await page.locator('[data-mailing-main-tab="new"]').click();
-    await page.locator("#mailing-text").fill(message);
-    await page.locator('input[name="send-time"][value="later"]').check();
-    await page.locator("[data-mailing-schedule-date]").fill("2026-06-22");
-    await page.locator("[data-mailing-schedule-time]").fill("11:30");
-    await page.locator('[data-mailing-action="schedule"]').click();
-    await expect(page.locator(".mailing-history-list")).toContainText("Информационное сообщение клиентам");
-    await expect(page.locator(".mailing-history-list")).toContainText("Запланирована");
-    await expect(page.locator(".mailing-history-list")).toContainText("22.06.2026 11:30");
+    await page.locator('[data-mailing-channel-toggle-button="Email"]').click();
+    await page.locator('[data-mailing-simple-send]').click();
+    await expect(page.locator("#toast-stack")).toContainText("Розсилку створено");
 
     const bootstrap = await apiJson(await request.get("/api/bootstrap/"), "GET /api/bootstrap/");
-    expect((bootstrap.mailing?.templates || []).some((item) => String(item.text || "").includes(signature))).toBeTruthy();
     expect((bootstrap.mailing?.campaigns || []).some((item) => String(item.text || "").includes(signature))).toBeTruthy();
   } finally {
     await cleanupMailingArtifacts(request, (item) => String(item.text || "").includes(signature));

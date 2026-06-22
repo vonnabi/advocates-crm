@@ -26,6 +26,15 @@ services:
         value: "3.11.4"
       - key: WEB_CONCURRENCY
         value: "2"
+      # ONLYOFFICE Docs Cloud / Document Server.
+      # Render also provides RENDER_EXTERNAL_URL automatically; CRM uses it as the public
+      # URL for ONLYOFFICE callbacks unless CRM_PUBLIC_URL is set to a custom domain.
+      - key: CRM_PUBLIC_URL
+        sync: false
+      - key: ONLYOFFICE_DOCUMENT_SERVER_URL
+        sync: false
+      - key: ONLYOFFICE_JWT_SECRET
+        sync: false
 
 databases:
   - name: advocates-crm-db

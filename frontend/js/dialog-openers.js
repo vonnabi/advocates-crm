@@ -74,6 +74,51 @@ export function createDialogOpeners({
     responsibleSelect.value = selectedValue;
   }
 
+  function emptyCaseParty() {
+    return { name: "", status: "", address: "", contact: "", email: "" };
+  }
+
+  function casePartyRows(item = {}) {
+    if (Array.isArray(item.parties) && item.parties.length) return item.parties;
+    const hasLegacyParty = [item.court, item.authorityType, item.authorityAddress, item.authorityContact, item.authorityEmail]
+      .some((value) => String(value || "").trim() && value !== "Не вказано");
+    if (!hasLegacyParty) return [emptyCaseParty()];
+    return [{
+      name: item.court === "Не вказано" ? "" : item.court || "",
+      status: item.authorityType || "",
+      address: item.authorityAddress || "",
+      contact: item.authorityContact || "",
+      email: item.authorityEmail || ""
+    }];
+  }
+
+  function renderCasePartyEditor(form, parties = [emptyCaseParty()]) {
+    const list = form.querySelector("[data-case-party-list]");
+    if (!list) return;
+    const rows = parties.length ? parties : [emptyCaseParty()];
+    list.innerHTML = rows.map((party, index) => `
+      <fieldset class="case-party-editor-row" data-case-party-row>
+        <legend>Сторона ${index + 1}</legend>
+        <label>Найменування сторони по справі
+          <input name="partyName" value="${escapeHtml(party.name || "")}" placeholder="Суд, РТЦК та СП, фізична особа, юридична особа" />
+        </label>
+        <label>Статус сторони по справі
+          <input name="partyStatus" value="${escapeHtml(party.status || "")}" placeholder="Позивач, відповідач, третя сторона, державний орган" />
+        </label>
+        <label>Адреса сторони по справі
+          <input name="partyAddress" value="${escapeHtml(party.address || "")}" placeholder="Адреса сторони" />
+        </label>
+        <label>Контакт сторони по справі
+          <input name="partyContact" value="${escapeHtml(party.contact || "")}" placeholder="Телефон або контактна особа" />
+        </label>
+        <label>Email сторони по справі
+          <input name="partyEmail" type="email" value="${escapeHtml(party.email || "")}" placeholder="email@example.com" />
+        </label>
+        <button class="ghost danger-text" type="button" data-remove-case-party ${rows.length === 1 ? "disabled" : ""}>Видалити сторону</button>
+      </fieldset>
+    `).join("");
+  }
+
   function syncTaskCoexecutorOptions(form, values = []) {
     const menu = form.querySelector(".task-coexecutors-menu");
     if (!menu) return;
@@ -328,7 +373,7 @@ export function createDialogOpeners({
     form.reset();
     $("#case-client").innerHTML = state.clients.map((client) => `<option value="${client.id}">${escapeHtml(client.name)}</option>`).join("");
     form.elements.caseId.value = "";
-    form.elements.stage.value = "Первинна консультація";
+    form.elements.number.value = "";
     $("#case-dialog-title").textContent = "Нова справа";
     $("#case-submit-button").textContent = "Створити справу";
     syncCaseResponsibleOptions(form);
@@ -340,13 +385,11 @@ export function createDialogOpeners({
         return;
       }
       form.elements.caseId.value = item.id;
+      form.elements.number.value = item.id;
       form.elements.clientId.value = item.clientId;
       form.elements.title.value = item.title;
       form.elements.type.value = item.type;
-      form.elements.stage.value = item.stage;
       form.elements.status.value = item.status;
-      form.elements.deadline.value = parseDisplayDate(item.deadline);
-      form.elements.priority.value = item.priority;
       syncCaseResponsibleOptions(form, item.responsible);
       $("#case-dialog-title").textContent = "Редагувати справу";
       $("#case-submit-button").textContent = "Зберегти справу";
@@ -372,12 +415,36 @@ export function createDialogOpeners({
     const form = $("#authority-form");
     form.reset();
     form.elements.caseId.value = item.id;
-    form.elements.court.value = item.court === "Не вказано" ? "" : item.court;
-    form.elements.authorityType.value = item.authorityType || "";
-    form.elements.authorityAddress.value = item.authorityAddress || "";
-    form.elements.authorityContact.value = item.authorityContact || "";
-    form.elements.authorityEmail.value = item.authorityEmail || "";
+    renderCasePartyEditor(form, casePartyRows(item));
+    if (!form.dataset.partyEditorBound) {
+      form.dataset.partyEditorBound = "true";
+      form.addEventListener("click", (event) => {
+        const addButton = event.target.closest("[data-add-case-party]");
+        if (addButton) {
+          const current = collectCaseParties(form);
+          renderCasePartyEditor(form, [...current, emptyCaseParty()]);
+          return;
+        }
+        const removeButton = event.target.closest("[data-remove-case-party]");
+        if (removeButton) {
+          const rows = [...form.querySelectorAll("[data-case-party-row]")];
+          if (rows.length <= 1) return;
+          removeButton.closest("[data-case-party-row]")?.remove();
+          renderCasePartyEditor(form, collectCaseParties(form));
+        }
+      });
+    }
     $("#authority-dialog").showModal();
+  }
+
+  function collectCaseParties(form) {
+    return [...form.querySelectorAll("[data-case-party-row]")].map((row) => ({
+      name: row.querySelector('[name="partyName"]')?.value.trim() || "",
+      status: row.querySelector('[name="partyStatus"]')?.value.trim() || "",
+      address: row.querySelector('[name="partyAddress"]')?.value.trim() || "",
+      contact: row.querySelector('[name="partyContact"]')?.value.trim() || "",
+      email: row.querySelector('[name="partyEmail"]')?.value.trim() || ""
+    })).filter((party) => Object.values(party).some(Boolean));
   }
 
   function openFinanceDialog(caseId) {
@@ -868,6 +935,23 @@ export function createDialogOpeners({
     return String(value || "").trim().replace(/\/+$/, "");
   }
 
+  function isLocalOnlyOfficeUrl(value = "") {
+    try {
+      const url = new URL(normalizedServerUrl(value));
+      return ["localhost", "127.0.0.1", "0.0.0.0", "host.docker.internal", "host.lima.internal"].includes(url.hostname);
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function isOnlyOfficeCloudUrl(value = "") {
+    try {
+      return new URL(normalizedServerUrl(value)).hostname.endsWith(".docs.onlyoffice.com");
+    } catch (_error) {
+      return false;
+    }
+  }
+
   function loadOnlyOfficeApi(documentServerUrl) {
     return new Promise((resolve, reject) => {
       if (window.DocsAPI?.DocEditor) {
@@ -1162,8 +1246,23 @@ export function createDialogOpeners({
       `;
     }
     const canUseBuiltInEditor = documentType === "word";
+    // A saved CRM document (backendDocId) opens in ONLYOFFICE via the server-signed config alone —
+    // that config carries the signed file URL, so a missing client-side documentUrl must NOT
+    // short-circuit to the built-in editor. Only bail when there is no Document Server URL, or no
+    // way at all to resolve a file URL (neither a client url nor a backend id to fetch a config).
+    const backendDocId = documentData.id ?? documentData.documentId;
+    const hasBackendConfig = backendDocId !== undefined && backendDocId !== null && backendDocId !== "";
     dialog.showModal();
-    if (!documentServerUrl || !documentUrl) {
+    if (isOnlyOfficeCloudUrl(documentServerUrl) && (!settings.serverAccessUrl || isLocalOnlyOfficeUrl(settings.serverAccessUrl))) {
+      body.innerHTML = officeEditorSetupView(
+        documentData,
+        settings,
+        "ONLYOFFICE Cloud не бачить локальний CRM URL"
+      );
+      showToast("Для ONLYOFFICE Cloud потрібен публічний HTTPS URL CRM.", "warning");
+      return;
+    }
+    if (!documentServerUrl || (!documentUrl && !hasBackendConfig)) {
       if (canUseBuiltInEditor) {
         mountBuiltInDocEditor(documentData, dialog, body);
       } else {
@@ -1177,13 +1276,17 @@ export function createDialogOpeners({
       // signed with the shared jwtSecret, and that secret must never reach the browser. The
       // unsigned client-built config below is a fallback for unsaved docs / a JWT-off dev server.
       let editorConfig = null;
-      const backendDocId = documentData.id ?? documentData.documentId;
-      if (backendDocId !== undefined && backendDocId !== null && backendDocId !== "") {
+      if (hasBackendConfig) {
         try {
           editorConfig = await apiRequest(`/api/documents/${backendDocId}/onlyoffice/config/`);
         } catch (_configError) {
           editorConfig = null;
         }
+      }
+      if (!editorConfig && !documentUrl) {
+        // No server-signed config and no client-side URL — nothing valid to hand ONLYOFFICE.
+        // Throw so the catch below falls back to the built-in editor instead of a broken config.
+        throw new Error("ONLYOFFICE config unavailable");
       }
       if (!editorConfig) {
         editorConfig = {
@@ -1853,7 +1956,7 @@ export function createDialogOpeners({
     form.elements.time.value = "09:00";
     form.elements.endTime.value = "10:00";
     form.elements.status.value = "Заплановано";
-    form.elements.type.value = "Судове засідання";
+    form.elements.type.value = context.caseId && !context.eventId ? "Адвокат" : "Судове засідання";
     form.elements.authority.value = initialCase?.court === "Не вказано" ? "" : initialCase?.court || "";
     form.elements.location.value = initialCase?.authorityAddress || "";
     syncCaseResponsibleOptions(form, initialCase?.responsible);
@@ -1900,6 +2003,7 @@ export function createDialogOpeners({
       if (!action || Array.isArray(action)) return;
       form.elements.actionIndex.value = actionIndex;
       form.elements.title.value = action.action || "";
+      form.elements.type.value = action.initiator || "Адвокат";
       form.elements.date.value = parseDisplayDate(action.initiated);
       form.elements.time.value = action.time || "09:00";
       form.elements.due.value = parseDisplayDate(action.due);

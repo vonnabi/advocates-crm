@@ -16,6 +16,8 @@ export function renderMailingsScreen(ctx) {
   const rerender = () => renderMailingsScreen(ctx);
   const realDataMode = state.dataSource === "api";
   const persistMailings = shouldUseApi(state);
+  renderPracticalMailingScreen(ctx, { persistMailings });
+  return;
   if (!realDataMode && !state.mailingTemplates.length) {
     state.mailingTemplates = [
       { title: "Нагадування про подію", type: "Нагадування", text: "Шановний {{client_name}}, нагадуємо про заплановану подію у вашій справі." },
@@ -717,4 +719,198 @@ export function renderMailingsScreen(ctx) {
   }));
   update();
   syncNavigationState();
+}
+
+function renderPracticalMailingScreen(ctx, { persistMailings }) {
+  const { state, $, icon, showToast } = ctx;
+  state.mailingRecipientMode ||= "all";
+  state.mailingManualClientIds ||= [];
+  state.mailingChannels ||= { Telegram: true, SMS: false, Email: false };
+  state.mailingText ||= "";
+  state.mailingImageName ||= "";
+  const channelConfig = {
+    Telegram: { icon: "telegram", label: "Telegram", hint: "повідомлення у месенджер" },
+    SMS: { icon: "message", label: "SMS", hint: "коротке текстове повідомлення" },
+    Email: { icon: "mail", label: "Email", hint: "лист на пошту клієнта" }
+  };
+  const selectedRecipients = state.mailingRecipientMode === "manual"
+    ? state.clients.filter((client) => state.mailingManualClientIds.includes(client.id))
+    : state.clients;
+  const enabledChannels = Object.entries(state.mailingChannels).filter(([, enabled]) => enabled).map(([name]) => name);
+  const recipientLabel = state.mailingRecipientMode === "manual"
+    ? `${selectedRecipients.length} обрано`
+    : `${state.clients.length} клієнтів`;
+  const estimatedMessages = selectedRecipients.length && enabledChannels.length ? selectedRecipients.length * enabledChannels.length : 0;
+  const previewText = state.mailingText.trim() || "Текст повідомлення з'явиться тут після введення.";
+  const previewRecipient = selectedRecipients[0]?.name || "Отримувач";
+  const selectedRecipientNames = selectedRecipients.slice(0, 3).map((client) => client.name).join(", ");
+
+  $("#mailings").innerHTML = `
+    <div class="mailing-screen mailing-simple-screen">
+      <section class="panel mailing-simple-hero">
+        <div class="mailing-section-head">
+          <div>
+            <h2>Розсилка</h2>
+            <p>Підготуйте текст, додайте зображення, оберіть отримувачів і канал відправки.</p>
+          </div>
+          <div class="mailing-simple-hero-badges">
+            <span>${icon("user")} ${recipientLabel}</span>
+            <span>${icon("message")} ${enabledChannels.length || 0} каналів</span>
+            <span>${icon("file")} ${state.mailingImageName ? "є зображення" : "без зображення"}</span>
+          </div>
+        </div>
+      </section>
+
+      <div class="mailing-simple-layout">
+        <section class="panel mailing-composer-card">
+          <div class="mailing-simple-block-head">
+            <span class="mailing-step">01</span>
+            <div>
+              <h3>Повідомлення</h3>
+              <p>Один текст використовується для вибраних каналів: Telegram, SMS або Email.</p>
+            </div>
+          </div>
+          <label class="mailing-message-field">Текст SMS / повідомлення
+            <textarea id="mailing-text" rows="9" placeholder="Наприклад: Шановний клієнте, нагадуємо про важливу подію у вашій справі...">${escapeHtml(state.mailingText || "")}</textarea>
+          </label>
+          <label class="mailing-image-picker">Картинка
+            <input type="file" accept="image/*" data-mailing-image />
+            <span>${icon("file")} ${escapeHtml(state.mailingImageName || "Додати зображення до розсилки")}</span>
+          </label>
+        </section>
+
+        <aside class="panel mailing-preview-card">
+          <div class="mailing-simple-block-head">
+            <span class="mailing-step">PRE</span>
+            <div>
+              <h3>Попередній перегляд</h3>
+              <p>${escapeHtml(previewRecipient)}</p>
+            </div>
+          </div>
+          <div class="mailing-phone-preview">
+            <div class="mailing-phone-top">
+              <span>Advocates Bureau</span>
+              <em>${enabledChannels.join(" / ") || "канал не обрано"}</em>
+            </div>
+            ${state.mailingImageName ? `<div class="mailing-preview-image">${icon("file")}<span>${escapeHtml(state.mailingImageName)}</span></div>` : ""}
+            <div class="mailing-preview-bubble">${escapeHtml(previewText)}</div>
+          </div>
+        </aside>
+
+        <section class="panel mailing-simple-block mailing-recipients-card">
+          <div class="mailing-simple-block-head">
+            <span class="mailing-step">02</span>
+            <div>
+              <h3>Кому направити</h3>
+              <p>${state.mailingRecipientMode === "manual" ? "Оберіть одного або декількох клієнтів вручну." : "Розсилка буде створена для всіх клієнтів у базі."}</p>
+            </div>
+          </div>
+            <div class="recipient-mode-grid compact">
+              <button class="recipient-mode-card ${state.mailingRecipientMode === "all" ? "selected" : ""}" type="button" data-recipient-mode="all">${icon("filter")}<span><strong>Всім</strong><em>${state.clients.length} клієнтів</em></span></button>
+              <button class="recipient-mode-card ${state.mailingRecipientMode === "manual" ? "selected" : ""}" type="button" data-recipient-mode="manual">${icon("user")}<span><strong>Комусь одному / обраним</strong><em>${selectedRecipients.length} обрано</em></span></button>
+            </div>
+            ${state.mailingRecipientMode === "manual" ? `<div class="manual-recipient-list mailing-simple-recipients">
+              ${state.clients.map((client) => `<label>
+                <input type="checkbox" data-manual-recipient="${client.id}" ${state.mailingManualClientIds.includes(client.id) ? "checked" : ""} />
+                <span><strong>${escapeHtml(client.name)}</strong><em>${escapeHtml(client.phone || client.email || client.telegramUsername || "Контакт не вказано")}</em></span>
+              </label>`).join("") || `<p class="muted">Клієнтів ще немає.</p>`}
+            </div>` : ""}
+        </section>
+
+        <section class="panel mailing-simple-block mailing-channels-card">
+          <div class="mailing-simple-block-head">
+            <span class="mailing-step">03</span>
+            <div>
+              <h3>Спосіб направлення</h3>
+              <p>Можна увімкнути один або декілька каналів для однієї розсилки.</p>
+            </div>
+          </div>
+            <div class="message-channel-tabs mailing-simple-channels">
+              ${["Telegram", "SMS", "Email"].map((channel) => `<button type="button" class="${state.mailingChannels[channel] ? "active" : ""}" data-mailing-channel-toggle-button="${channel}">
+                ${icon(channelConfig[channel].icon)}
+                <span><strong>${channelConfig[channel].label}</strong><em>${channelConfig[channel].hint}</em></span>
+              </button>`).join("")}
+            </div>
+        </section>
+
+        <section class="panel mailing-send-panel">
+          <div>
+            <span class="eyebrow">Підсумок перед створенням</span>
+            <h3>${estimatedMessages ? `${estimatedMessages} повідомлень до створення` : "Розсилка ще не готова"}</h3>
+            <p>${escapeHtml(selectedRecipientNames || "Оберіть отримувачів")} ${enabledChannels.length ? `· ${enabledChannels.join(", ")}` : "· канали не обрано"}</p>
+          </div>
+          <div class="mailing-simple-summary coverage-row forecast-card">
+            <span class="coverage-user">${icon("user")}<strong>Клієнти</strong><em>${selectedRecipients.length}</em></span>
+            <span class="coverage-user">${icon("filter")}<strong>Отримувачі</strong><em>${selectedRecipients.length}</em></span>
+            <span class="coverage-telegram">${icon("message")}<strong>Канали</strong><em>${enabledChannels.length || 0}</em></span>
+            <span class="coverage-email">${icon("file")}<strong>Картинка</strong><em>${state.mailingImageName ? "Так" : "Ні"}</em></span>
+            <span class="coverage-sms">${icon("telegram")}<strong>Повідомлення</strong><em>${estimatedMessages}</em></span>
+          </div>
+          <div class="mailing-send-actions">
+            <div class="mailing-send-note">
+              <strong>Реальна відправка</strong>
+              <span>CRM створить кампанію, а відправка залежить від підключених Telegram, SMS та поштових провайдерів.</span>
+            </div>
+            <button class="primary" type="button" data-mailing-simple-send>${icon("telegram")} Створити розсилку</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  `;
+
+  $("#mailing-text")?.addEventListener("input", (event) => {
+    state.mailingText = event.target.value;
+  });
+  document.querySelector("[data-mailing-image]")?.addEventListener("change", (event) => {
+    state.mailingImageName = event.target.files?.[0]?.name || "";
+    renderPracticalMailingScreen(ctx, { persistMailings });
+  });
+  document.querySelectorAll("[data-recipient-mode]").forEach((button) => button.addEventListener("click", () => {
+    state.mailingRecipientMode = button.dataset.recipientMode;
+    renderPracticalMailingScreen(ctx, { persistMailings });
+  }));
+  document.querySelectorAll("[data-manual-recipient]").forEach((input) => input.addEventListener("change", () => {
+    const clientId = Number(input.dataset.manualRecipient);
+    state.mailingManualClientIds = input.checked
+      ? [...new Set([...state.mailingManualClientIds, clientId])]
+      : state.mailingManualClientIds.filter((id) => id !== clientId);
+    renderPracticalMailingScreen(ctx, { persistMailings });
+  }));
+  document.querySelectorAll("[data-mailing-channel-toggle-button]").forEach((button) => button.addEventListener("click", () => {
+    const channel = button.dataset.mailingChannelToggleButton;
+    state.mailingChannels[channel] = !state.mailingChannels[channel];
+    renderPracticalMailingScreen(ctx, { persistMailings });
+  }));
+  document.querySelector("[data-mailing-simple-send]")?.addEventListener("click", async () => {
+    if (!state.mailingText.trim()) {
+      showToast("Додайте текст повідомлення.", "warning");
+      return;
+    }
+    if (!selectedRecipients.length) {
+      showToast("Оберіть отримувачів.", "warning");
+      return;
+    }
+    if (!enabledChannels.length) {
+      showToast("Оберіть Telegram, SMS або Email.", "warning");
+      return;
+    }
+    const payload = {
+      title: "Інформаційне повідомлення клієнтам",
+      text: state.mailingImageName ? `${state.mailingText}\n\n[Картинка: ${state.mailingImageName}]` : state.mailingText,
+      channels: { ...state.mailingChannels },
+      sendMode: "now",
+      recipientMode: state.mailingRecipientMode,
+      manualClientIds: state.mailingManualClientIds,
+      filters: [],
+      status: "Готова к отправке",
+      recipientCount: selectedRecipients.length
+    };
+    try {
+      const saved = persistMailings ? await saveMailingCampaignToApi(payload) : payload;
+      state.mailingCampaigns = [saved, ...(state.mailingCampaigns || [])];
+      showToast("Розсилку створено. Реальна відправка залежить від підключених провайдерів.", "success");
+    } catch (_error) {
+      showToast("Не вдалося створити розсилку.", "danger");
+    }
+  });
 }

@@ -163,9 +163,23 @@ export function normalizeCase(caseItem) {
     ...caseItem,
     opened: displayDate(caseItem.opened, caseItem.opened || ""),
     deadline: displayDate(caseItem.deadline, caseItem.deadline || "Без строку"),
+    parties: Array.isArray(caseItem.parties) ? caseItem.parties : legacyCaseParty(caseItem),
     documents: (caseItem.documents || []).map(normalizeDocument),
     tasks: (caseItem.tasks || []).map(normalizeTask)
   };
+}
+
+function legacyCaseParty(caseItem) {
+  const hasLegacyParty = [caseItem.court, caseItem.authorityType, caseItem.authorityAddress, caseItem.authorityContact, caseItem.authorityEmail]
+    .some((value) => String(value || "").trim() && value !== "Не вказано");
+  if (!hasLegacyParty) return [];
+  return [{
+    name: caseItem.court === "Не вказано" ? "" : caseItem.court || "",
+    status: caseItem.authorityType || "",
+    address: caseItem.authorityAddress || "",
+    contact: caseItem.authorityContact || "",
+    email: caseItem.authorityEmail || ""
+  }];
 }
 
 export function normalizeEvent(event) {

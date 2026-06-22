@@ -6,6 +6,16 @@ function moneyValue(value) {
   return Number.isFinite(number) && number > 0 ? number : 0;
 }
 
+function collectCaseParties(formElement) {
+  return [...formElement.querySelectorAll("[data-case-party-row]")].map((row) => ({
+    name: row.querySelector('[name="partyName"]')?.value.trim() || "",
+    status: row.querySelector('[name="partyStatus"]')?.value.trim() || "",
+    address: row.querySelector('[name="partyAddress"]')?.value.trim() || "",
+    contact: row.querySelector('[name="partyContact"]')?.value.trim() || "",
+    email: row.querySelector('[name="partyEmail"]')?.value.trim() || ""
+  })).filter((party) => Object.values(party).some(Boolean));
+}
+
 export function setupCaseDetailForms({ state, $, caseById, formatDate, currency, renderAll, switchView, showToast }) {
   $("#essence-form").addEventListener("submit", (event) => {
     if (event.submitter?.value === "cancel") return;
@@ -32,20 +42,22 @@ export function setupCaseDetailForms({ state, $, caseById, formatDate, currency,
     const form = new FormData(event.currentTarget);
     const item = caseById(form.get("caseId"));
     if (!item) return;
-    item.court = form.get("court") || "Не вказано";
-    item.authorityType = form.get("authorityType") || "";
-    item.authorityAddress = form.get("authorityAddress") || "";
-    item.authorityContact = form.get("authorityContact") || "";
-    item.authorityEmail = form.get("authorityEmail") || "";
+    item.parties = collectCaseParties(event.currentTarget);
+    const firstParty = item.parties[0] || {};
+    item.court = firstParty.name || "Не вказано";
+    item.authorityType = firstParty.status || "";
+    item.authorityAddress = firstParty.address || "";
+    item.authorityContact = firstParty.contact || "";
+    item.authorityEmail = firstParty.email || "";
     item.history.unshift({
       date: new Date().toLocaleDateString("uk-UA"),
-      text: "Оновлено орган звернення по справі."
+      text: "Оновлено сторони по справі."
     });
     if (shouldUseApi(state)) {
       try {
         Object.assign(item, normalizeCase(await saveCaseToApi(item)));
       } catch (_error) {
-        showToast("Не вдалося зберегти орган звернення в базі.", "danger");
+        showToast("Не вдалося зберегти сторони по справі в базі.", "danger");
         return;
       }
     }
@@ -54,7 +66,7 @@ export function setupCaseDetailForms({ state, $, caseById, formatDate, currency,
     $("#authority-dialog").close();
     renderAll();
     switchView("cases");
-    showToast("Орган звернення збережено.");
+    showToast("Сторони по справі збережено.");
   });
 
   $("#finance-form").addEventListener("submit", async (event) => {

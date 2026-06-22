@@ -7,18 +7,16 @@ export function setupCaseForm({ state, $, caseById, formatDate, renderAll, switc
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const caseId = form.get("caseId");
-    const deadline = form.get("deadline");
+    const number = String(form.get("number") || "").trim();
 
     if (caseId) {
       const item = caseById(caseId);
+      item.id = number || item.id;
       item.clientId = Number(form.get("clientId"));
       item.title = form.get("title");
       item.type = form.get("type");
-      item.stage = form.get("stage") || "Первинна консультація";
       item.status = form.get("status");
-      item.priority = form.get("priority");
       item.responsible = form.get("responsible");
-      item.deadline = deadline ? formatDate(deadline) : "Не вказано";
       item.history.unshift({
         date: new Date().toLocaleDateString("uk-UA"),
         text: "Дані справи оновлено."
@@ -41,30 +39,28 @@ export function setupCaseForm({ state, $, caseById, formatDate, renderAll, switc
     }
 
     const currentYear = new Date().getFullYear();
-    // Derive the next number from the highest existing case number, not from the
-    // list length — otherwise deleting a case rolls the counter back and a new
-    // case can collide with an existing id (the primary key all relations hang on).
     const existingNumbers = state.cases
       .map((caseItem) => Number(String(caseItem.id).split("/")[1]))
       .filter(Number.isFinite);
     const nextNumber = String((existingNumbers.length ? Math.max(...existingNumbers) : 1111) + 1).padStart(4, "0");
-    const nextId = `${currentYear}/${nextNumber}`;
+    const nextId = number || `${currentYear}/${nextNumber}`;
     const newCase = {
       id: nextId,
       clientId: Number(form.get("clientId")),
       title: form.get("title"),
       type: form.get("type"),
       status: form.get("status"),
-      stage: form.get("stage") || "Первинна консультація",
-      priority: form.get("priority"),
+      stage: "",
+      priority: "",
       responsible: form.get("responsible"),
       court: "Не вказано",
       authorityType: "",
       authorityAddress: "",
       authorityContact: "",
       authorityEmail: "",
+      parties: [],
       opened: new Date().toLocaleDateString("uk-UA"),
-      deadline: deadline ? formatDate(deadline) : "Не вказано",
+      deadline: "",
       debt: 0,
       income: 0,
       description: "Опис справи буде додано пізніше.",
@@ -82,7 +78,7 @@ export function setupCaseForm({ state, $, caseById, formatDate, renderAll, switc
     let savedCase = newCase;
     if (shouldUseApi(state)) {
       try {
-        savedCase = normalizeCase(await saveCaseToApi({ ...newCase, id: "" }));
+        savedCase = normalizeCase(await saveCaseToApi({ ...newCase, id: number }));
       } catch (_error) {
         showToast("Не вдалося створити справу в базі.", "danger");
         return;

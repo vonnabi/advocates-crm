@@ -23,6 +23,7 @@ class Case(models.Model):
     authority_address = models.CharField(max_length=255, blank=True)
     authority_contact = models.CharField(max_length=128, blank=True)
     authority_email = models.EmailField(blank=True)
+    parties = models.JSONField(default=list, blank=True)
     description = models.TextField(blank=True)
     opened_at = models.DateField(null=True, blank=True)
     deadline_at = models.DateField(null=True, blank=True)

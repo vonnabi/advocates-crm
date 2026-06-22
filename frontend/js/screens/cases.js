@@ -321,6 +321,24 @@ function caseDeadlineChip(item) {
   `;
 }
 
+function caseParties(item = {}) {
+  if (Array.isArray(item.parties) && item.parties.length) return item.parties;
+  const hasLegacyParty = [item.court, item.authorityType, item.authorityAddress, item.authorityContact, item.authorityEmail]
+    .some((value) => String(value || "").trim() && value !== "Не вказано");
+  if (!hasLegacyParty) return [];
+  return [{
+    name: item.court === "Не вказано" ? "" : item.court || "",
+    status: item.authorityType || "",
+    address: item.authorityAddress || "",
+    contact: item.authorityContact || "",
+    email: item.authorityEmail || ""
+  }];
+}
+
+function primaryCaseParty(item = {}) {
+  return caseParties(item)[0] || null;
+}
+
 function escapeAttribute(value = "") {
   return String(value).replaceAll("&", "&amp;").replaceAll("\"", "&quot;").replaceAll("<", "&lt;");
 }
@@ -344,15 +362,18 @@ function caseDateValue(value = "") {
   return new Date(year, month - 1, day).getTime();
 }
 
-function caseClientCell(client, casesCount = 1) {
+function caseClientCell(client, casesCount = 1, { clientKey = "", expanded = false } = {}) {
   const hasPhoto = Boolean(client?.showPhoto && client?.photoUrl);
   const photoStyle = hasPhoto ? ` style="--client-photo: url('${escapeAttribute(client.photoUrl)}')"` : "";
   const name = client?.name || "Клієнт не вказаний";
+  const toggleAttrs = casesCount > 1
+    ? ` data-toggle-client-cases="${escapeAttribute(clientKey)}" role="button" tabindex="0" aria-expanded="${expanded ? "true" : "false"}" title="${expanded ? "Згорнути справи клієнта" : "Показати всі справи клієнта"}"`
+    : "";
   return `
-    <div class="case-client-cell">
+    <div class="case-client-cell ${casesCount > 1 ? "has-case-toggle" : ""}"${toggleAttrs}>
       <span class="client-avatar case-client-avatar ${hasPhoto ? "has-client-photo" : ""}"${photoStyle}>${hasPhoto ? "" : clientInitials(name)}</span>
       <span class="case-client-text">
-        <strong>${clientShortName(name)}${casesCount > 1 ? `<em>${casesCount}</em>` : ""}</strong>
+        <strong><span class="case-client-name">${clientShortName(name)}</span>${casesCount > 1 ? `<button class="case-client-count-toggle ${expanded ? "expanded" : ""}" type="button" tabindex="-1" aria-hidden="true">${icon("file")}<span class="case-client-count-value">${casesCount}</span></button>` : ""}</strong>
         <span>${icon("phone")}<em>${client?.phone || "Телефон не вказано"}</em></span>
       </span>
     </div>
@@ -530,10 +551,6 @@ function casePreviewCard(item) {
       </div>
       <div class="case-preview-pills">
         <div class="case-preview-pill-row">
-          <span>Пріоритет</span>
-          ${casePillPicker(item, "priority")}
-        </div>
-        <div class="case-preview-pill-row">
           <span>Статус</span>
           ${casePillPicker(item, "status")}
         </div>
@@ -541,10 +558,9 @@ function casePreviewCard(item) {
       <div class="case-preview-rows">
         <div><span>Клієнт</span><strong>${escapeHtml(client?.name || "Не вказано")}</strong></div>
         <div><span>Відповідальний</span><strong class="case-preview-person">${advocatePhoto(item.responsible, "mini")}${escapeHtml(item.responsible)}</strong></div>
-        <div><span>Тип / етап</span><strong>${escapeHtml(item.type)}<br><em>${escapeHtml(item.stage)}</em></strong></div>
+        <div><span>Тип</span><strong>${escapeHtml(item.type)}</strong></div>
         <div><span>Відкрито</span><strong>${item.opened}</strong></div>
-        <div><span>Дедлайн</span><strong>${item.deadline}</strong></div>
-        <div><span>Суд / орган</span><strong>${escapeHtml(item.court)}</strong></div>
+        <div><span>Сторона</span><strong>${escapeHtml(primaryCaseParty(item)?.name || "Не вказано")}</strong></div>
       </div>
       <div class="case-preview-summary">
         <h3>Суть справи</h3>
@@ -611,7 +627,7 @@ function renderCaseList() {
       const text = `${item.id} ${client?.name} ${item.title} ${item.type} ${item.status} ${item.court} ${item.responsible}`.toLowerCase();
       const byQuick =
         quickFilter === "all" ||
-        (quickFilter === "urgent" && (item.priority === "Високий" || item.status === "Терміново")) ||
+        (quickFilter === "urgent" && item.status === "Терміново") ||
         (quickFilter === "tasks" && item.tasks.length > 0) ||
         (quickFilter === "debt" && (item.debt || 0) > 0);
       return (!query || text.includes(query))
@@ -645,14 +661,19 @@ function renderCaseList() {
   const selected = pageCases.find((item) => item.id === state.selectedCaseId) || pageCases[0] || filteredCases[0] || state.cases[0];
   if (selected) state.selectedCaseId = selected.id;
   const visibleClientKeys = new Set();
+  state.caseExpandedClientKeys ||= [];
+  state.caseExpandAllClients ||= false;
+  const expandAllClientCases = Boolean(state.caseExpandAllClients);
+  const expandedClientSet = expandAllClientCases ? new Set(clientCaseCounts.keys()) : new Set(state.caseExpandedClientKeys || []);
   const rows = pageCases
     .map((item) => {
       const client = clientById(item.clientId);
       const clientKey = String(item.clientId ?? "unknown");
       const showClient = !visibleClientKeys.has(clientKey);
       visibleClientKeys.add(clientKey);
+      if (!showClient && !expandedClientSet.has(clientKey)) return "";
       return `<tr class="${item.id === selected.id ? "selected" : ""} ${isCaseCompleted(item) ? "case-completed-row" : ""}" data-preview-case="${item.id}">
-        <td>${showClient ? caseClientCell(client, clientCaseCounts.get(clientKey) || 1) : `<span class="case-client-repeat-cell" aria-label="Такий самий клієнт"></span>`}</td>
+        <td>${showClient ? caseClientCell(client, clientCaseCounts.get(clientKey) || 1, { clientKey, expanded: expandedClientSet.has(clientKey) }) : `<span class="case-client-repeat-cell" aria-label="Такий самий клієнт"></span>`}</td>
         <td>
           <div class="case-number-cell">
             <input type="checkbox" data-select-case-row="${item.id}" ${selectedCaseSet.has(item.id) ? "checked" : ""} aria-label="Вибрати справу" />
@@ -667,10 +688,8 @@ function renderCaseList() {
           <span>${escapeHtml(item.type)}</span>
           <div class="case-materials">${caseMaterialBadges(item)}</div>
         </td>
-        <td>${escapeHtml(item.stage)}</td>
-        <td>${caseDeadlineChip(item)}</td>
-        <td>${caseTableStatusIcon(item.priority, casePriorityIconName(item.priority), casePriorityUiTone(item.priority), "Пріоритет")}</td>
         <td>${caseTableStatusIcon(item.status, caseStatusIconName(item.status), caseStatusUiTone(item.status))}</td>
+        <td>${escapeHtml(primaryCaseParty(item)?.name || "Не вказано")}</td>
         <td>${caseFinanceSummary(item)}</td>
         <td class="case-actions-cell">
           <span class="case-row-actions">
@@ -683,7 +702,7 @@ function renderCaseList() {
         </td>
       </tr>`;
     }).join("");
-  const urgentCases = state.cases.filter((item) => item.priority === "Високий" || item.status === "Терміново").length;
+  const urgentCases = state.cases.filter((item) => item.status === "Терміново").length;
   const totalTasks = state.cases.reduce((sum, item) => sum + item.tasks.length, 0);
   const totalDebt = state.cases.reduce((sum, item) => sum + item.debt, 0);
   const hasManualCaseFilters = Boolean(query) || selectedStatus !== "all" || selectedType !== "all" || selectedResponsible !== "all";
@@ -724,18 +743,16 @@ function renderCaseList() {
             <table class="case-list-table">
               <thead>
                 <tr>
-                  <th>Клієнт</th>
+                  <th><span class="case-client-head"><span>Клієнт</span><button class="case-client-expand-switch ${expandAllClientCases ? "active" : ""}" type="button" data-toggle-all-client-cases aria-pressed="${expandAllClientCases ? "true" : "false"}" title="${expandAllClientCases ? "Згорнути справи клієнтів" : "Показати всі справи клієнтів"}"><span></span></button></span></th>
                   <th><span class="case-title-head"><input type="checkbox" data-select-case-page aria-label="Вибрати всі справи на сторінці" ${allCasesSelected ? "checked" : ""} /><span class="case-title-label">Справа</span><span class="tasks-bulk-bar case-bulk-bar ${selectedCasesCount ? "active" : ""}" aria-label="Масові дії справ"><em>${selectedCasesCount}</em><button class="task-bulk-icon bulk-work" type="button" data-case-bulk-action="work" data-tooltip="В роботу" aria-label="Позначити справи в роботі">${icon("refresh")}</button><button class="task-bulk-icon bulk-planner" type="button" data-case-bulk-action="waiting" data-tooltip="Очікує відповідь" aria-label="Позначити очікування відповіді">${icon("clock")}</button><button class="task-bulk-icon bulk-done" type="button" data-case-bulk-action="urgent" data-tooltip="Терміново" aria-label="Позначити терміновими">${icon("bell")}</button><button class="task-bulk-icon bulk-delete" type="button" data-case-bulk-action="delete" data-tooltip="Видалити вибрані" aria-label="Видалити вибрані справи">${icon("trash")}</button><button class="task-bulk-icon bulk-clear" type="button" data-case-bulk-action="clear" data-tooltip="Скинути вибір" aria-label="Скинути вибір справ">×</button></span></span></th>
                   <th>Назва</th>
-                  <th>Етап</th>
-                  <th>Дедлайн</th>
-                  <th>Пріоритет</th>
                   <th>Статус</th>
+                  <th>Сторона</th>
                   <th>Фінанси</th>
                   <th></th>
                 </tr>
               </thead>
-              <tbody>${rows || `<tr><td colspan="9">Справ не знайдено</td></tr>`}</tbody>
+              <tbody>${rows || `<tr><td colspan="7">Справ не знайдено</td></tr>`}</tbody>
             </table>
           </div>
           <div class="case-pagination">
@@ -1074,6 +1091,31 @@ function renderCaseList() {
     state.selectedCaseKeys = [...next];
     renderCaseList();
   });
+  document.querySelector("[data-toggle-all-client-cases]")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    state.caseExpandAllClients = !state.caseExpandAllClients;
+    state.caseExpandedClientKeys = state.caseExpandAllClients ? [...clientCaseCounts.keys()] : [];
+    renderCaseList();
+  });
+  const toggleClientCases = (node, event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const clientKey = node.dataset.toggleClientCases;
+      state.caseExpandAllClients = false;
+      const next = new Set(state.caseExpandedClientKeys || []);
+      if (next.has(clientKey)) next.delete(clientKey);
+      else next.add(clientKey);
+      state.caseExpandedClientKeys = [...next];
+      renderCaseList();
+  };
+  document.querySelectorAll("[data-toggle-client-cases]").forEach((node) => {
+    node.addEventListener("click", (event) => toggleClientCases(node, event));
+    node.addEventListener("keydown", (event) => {
+      if (!["Enter", " "].includes(event.key)) return;
+      toggleClientCases(node, event);
+    });
+  });
   document.querySelectorAll("[data-select-case-row]").forEach((input) => {
     input.addEventListener("click", (event) => event.stopPropagation());
     input.addEventListener("change", () => {
@@ -1158,7 +1200,7 @@ function renderCaseList() {
 
 function caseActionRows(item, filter = "all") {
   if (!item.tasks.length) {
-    return `<tr><td colspan="6" class="empty-cell">Запланованих дій поки немає</td></tr>`;
+    return `<tr><td colspan="6" class="empty-cell">Задач поки немає</td></tr>`;
   }
   const filteredTasks = item.tasks
     .map((task, index) => ({ task, index }))
@@ -1168,8 +1210,8 @@ function caseActionRows(item, filter = "all") {
       return true;
     });
   if (!filteredTasks.length) {
-    const label = filter === "urgent" ? "термінових" : filter === "not-urgent" ? "нетермінових" : "запланованих";
-    return `<tr><td colspan="6" class="empty-cell">У цій справі немає ${label} дій</td></tr>`;
+    const label = filter === "urgent" ? "термінових" : filter === "not-urgent" ? "нетермінових" : "";
+    return `<tr><td colspan="6" class="empty-cell">У цій справі немає ${label} задач</td></tr>`;
   }
   return filteredTasks.map(({ task, index }) => `<tr class="task-action-row ${task.status === "Виконано" ? "task-done-row" : ""}">
     <td><input type="checkbox" data-toggle-task-done="${index}" aria-label="${escapeHtml(task.title)}" ${task.status === "Виконано" ? "checked" : ""} /></td>
@@ -1254,15 +1296,15 @@ export function caseProceduralItems(item) {
 function caseProceduralRows(item) {
   const rows = caseProceduralItems(item);
   if (!rows.length) {
-    return `<tr><td colspan="5" class="empty-cell">Процесуальних дій поки немає</td></tr>`;
+    return `<tr><td colspan="4" class="empty-cell">Процесуальних дій поки немає</td></tr>`;
   }
   return rows.map((row, index) => {
     const action = Array.isArray(row) ? row[0] : row.action;
     const initiator = Array.isArray(row) ? row[1] : row.initiator;
     const initiated = Array.isArray(row) ? row[2] : row.initiated;
-    const due = Array.isArray(row) ? row[3] : row.due;
-    const status = Array.isArray(row) ? row[4] : row.status;
-    const tone = semanticTone(status);
+    const time = Array.isArray(row) ? "" : row.time;
+    const description = Array.isArray(row) ? "" : row.description;
+    const dateLabel = `${initiated || "-"} ${time || ""}`.trim();
     return `<tr class="procedural-action-row">
     <td>
       <span class="row-title-with-actions">
@@ -1276,11 +1318,33 @@ function caseProceduralRows(item) {
       </span>
     </td>
     <td>${escapeHtml(initiator || "-")}</td>
-    <td>${escapeHtml(initiated || "-")}</td>
-    <td>${escapeHtml(due || "-")}</td>
-    <td><span class="dot-status ${tone || ""}">${escapeHtml(status || "Не розпочато")}</span></td>
+    <td>${escapeHtml(dateLabel || "-")}</td>
+    <td>${escapeHtml(description || "-")}</td>
   </tr>`;
   }).join("");
+}
+
+function casePartyCards(item) {
+  const rows = caseParties(item);
+  if (!rows.length) {
+    return `<div class="case-parties-list"><p class="case-party-empty">Сторони по справі ще не додано</p></div>`;
+  }
+  return `<div class="case-parties-list">
+    ${rows.map((party) => `<details class="case-party-card">
+      <summary>
+        <span class="case-party-main">
+          <strong>${escapeHtml(party.name || "Не вказано")}</strong>
+          <em>${escapeHtml(party.status || "Статус не вказано")}</em>
+        </span>
+        <span class="case-party-toggle">Деталі</span>
+      </summary>
+      <div class="case-party-details">
+        <div><span>Адреса</span><strong>${escapeHtml(party.address || "Не вказано")}</strong></div>
+        <div><span>Контакт</span><strong>${escapeHtml(party.contact || "Не вказано")}</strong></div>
+        <div><span>Email</span><strong>${party.email ? `<a href="mailto:${escapeAttribute(party.email)}">${escapeHtml(party.email)}</a>` : "Не вказано"}</strong></div>
+      </div>
+    </details>`).join("")}
+  </div>`;
 }
 
 function caseDocumentRows(item) {
@@ -1558,20 +1622,13 @@ function renderCaseProfile(id) {
           <p>${escapeHtml(item.description)}</p>
         </article>
         <article class="case-card">
-          <div class="case-card-title"><span>3. ОРГАН, ДО ЯКОГО ЗВЕРНЕННЯ</span>${editOnlyMenu("data-edit-authority", item.id, "Редагувати орган")}</div>
-          <div class="authority-box">
-            <div class="authority-icon">▥</div>
-            <strong>${escapeHtml(item.court)}</strong>
-          </div>
-          <p class="muted">Тип органу: ${escapeHtml(item.authorityType || "Не вказано")}</p>
-          <p class="muted">Адреса: ${escapeHtml(item.authorityAddress || "Не вказано")}</p>
-          <p class="muted">Контакт: ${escapeHtml(item.authorityContact || "Не вказано")}</p>
-          <p class="muted">Email: ${escapeHtml(item.authorityEmail || "Не вказано")}</p>
+          <div class="case-card-title"><span>3. СТОРОНИ ПО СПРАВІ</span>${editOnlyMenu("data-edit-authority", item.id, "Редагувати сторони")}</div>
+          ${casePartyCards(item)}
         </article>
       </section>
       <section class="case-main-column">
         <article class="case-card">
-          <h3>4. ЗАПЛАНОВАНІ ДІЇ</h3>
+          <div class="case-card-title"><span>4. ЗАДАЧІ ПО СПРАВІ</span></div>
           <div class="case-tabs">
             <button class="${(state.caseActionFilter || "all") === "all" ? "active" : ""}" data-case-action-filter="all">Всі</button>
             <button class="${state.caseActionFilter === "urgent" ? "active" : ""}" data-case-action-filter="urgent">Термінові</button>
@@ -1580,13 +1637,13 @@ function renderCaseProfile(id) {
           <div class="case-table-wrap">
             <table class="case-inner-table case-actions-table"><tbody>${caseActionRows(item, state.caseActionFilter || "all")}</tbody></table>
           </div>
-          <button class="case-link-button" data-add-task="${item.id}">+ Додати дію</button>
+          <button class="case-link-button" data-add-task="${item.id}">+ Додати задачу</button>
         </article>
         <article class="case-card">
-          <h3>5. ПРОЦЕСУАЛЬНІ ДІЇ ПО СПРАВІ</h3>
+          <div class="case-card-title"><span>5. ПРОЦЕСУАЛЬНІ ДІЇ ПО СПРАВІ</span></div>
           <div class="case-table-wrap">
             <table class="case-inner-table procedural-actions-table">
-              <thead><tr><th>Дія</th><th>Ініціатор</th><th>Дата ініціації</th><th>Строк виконання</th><th>Статус</th></tr></thead>
+              <thead><tr><th>Подія</th><th>Ініціатор події</th><th>Дата і час</th><th>Опис</th></tr></thead>
               <tbody>${caseProceduralRows(item)}</tbody>
             </table>
           </div>
@@ -1595,7 +1652,7 @@ function renderCaseProfile(id) {
       </section>
       <section class="case-side-column">
         <article class="case-card scroll-card case-documents-card">
-          <h3>6. ПРОЦЕСУАЛЬНІ ДОКУМЕНТИ</h3>
+          <div class="case-card-title"><span>6. ПРОЦЕСУАЛЬНІ ДОКУМЕНТИ</span></div>
           <div class="case-table-wrap scroll-area">
             <table class="case-inner-table case-documents-table">
               <thead><tr><th>Документ</th><th>Дата подання</th><th>Строк отримання відповіді</th><th>Статус</th></tr></thead>
@@ -1605,7 +1662,7 @@ function renderCaseProfile(id) {
           <button class="case-link-button" data-add-document="${item.id}">+ Додати документ</button>
         </article>
         <article class="case-card scroll-card case-folders-card">
-          <h3>7. ДОКУМЕНТИ СПРАВИ</h3>
+          <div class="case-card-title"><span>7. ДОКУМЕНТИ СПРАВИ</span></div>
           <div class="case-table-wrap scroll-area">
             <table class="case-inner-table folders-table">
               <thead><tr><th>Назва</th><th>Файлів</th><th>Оновлено</th></tr></thead>

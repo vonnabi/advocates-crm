@@ -393,6 +393,7 @@ function escapeHtml(value = "") {
 function ensureDocumentStorageArchive(state) {
   if (!Array.isArray(state.documentArchiveFolders)) {
     state.documentArchiveFolders = [
+      { id: "samples", name: "Зразки документів", documents: [], children: [] },
       { id: "finished", name: "Завершені документи", documents: [], children: [] },
       { id: "saved", name: "На зберіганні", documents: [], children: [] }
     ];
@@ -403,6 +404,9 @@ function ensureDocumentStorageArchive(state) {
     normalize(folder.children);
   });
   normalize(state.documentArchiveFolders);
+  if (!findArchiveFolder(state.documentArchiveFolders, "samples")) {
+    state.documentArchiveFolders.unshift({ id: "samples", name: "Зразки документів", documents: [], children: [] });
+  }
   if (!state.documentStorageArchiveFolderId) state.documentStorageArchiveFolderId = "all";
   return state.documentArchiveFolders;
 }
@@ -1164,8 +1168,8 @@ export function renderDocumentsScreen(ctx) {
     <div class="documents-screen">
       <div class="documents-toolbar panel">
         <div>
-          <h2>Документи</h2>
-          <p>Файли, процесуальні документи та матеріали по всіх справах</p>
+          <h2>Документообіг</h2>
+          <p>Самостійні папки, збережені документи та зразки без обов'язкової прив'язки до справи</p>
         </div>
         <div class="documents-toolbar-actions">
           <button class="secondary" type="button" data-documents-ai ${selected ? "" : "disabled"}>${icon("search")} AI аналіз</button>
@@ -1179,30 +1183,8 @@ export function renderDocumentsScreen(ctx) {
         <button class="panel documents-kpi-card ${quickFilter === "submitted" ? "active" : ""}" type="button" data-document-kpi="submitted"><span class="green">${icon("check")}</span><div><strong>${submittedCount}</strong><em>Подано / отримано</em></div></button>
         <button class="panel documents-kpi-card ${quickFilter === "overdue" ? "active" : ""}" type="button" data-document-kpi="overdue"><span class="red">${icon("bell")}</span><div><strong>${overdueCount}</strong><em>Без відповіді в строк</em></div></button>
         <button class="panel documents-kpi-card ${quickFilter === "drafts" ? "active" : ""}" type="button" data-document-kpi="drafts"><span class="amber">${icon("edit")}</span><div><strong>${draftCount}</strong><em>Чернетки та не подано</em></div></button>
-        <button class="panel documents-kpi-card ${quickFilter === "esign" ? "active" : ""}" type="button" data-document-kpi="esign"><span class="violet">${icon("signature")}</span><div><strong>${eSignCount}</strong><em>Електронний підпис</em></div></button>
         <button class="panel documents-kpi-card ${quickFilter === "ai" ? "active" : ""}" type="button" data-document-kpi="ai"><span class="violet">${icon("search")}</span><div><strong>${aiReadyCount}</strong><em>Готово для AI/Word</em></div></button>
       </div>
-
-      <section class="panel documents-esign-overview">
-        <div class="documents-esign-title">
-          <span>${icon("signature")}</span>
-          <div>
-            <h3>Електронний підпис</h3>
-            <p>Чернетка майбутнього сценарію: CRM готує документ, провайдер підписує КЕП, статус повертається у справу.</p>
-          </div>
-        </div>
-        <div class="documents-esign-steps">
-          <span class="active">1. Обрати документ</span>
-          <span>2. Надіслати клієнту</span>
-          <span>3. Отримати КЕП</span>
-          <span>4. Зберегти в архів</span>
-        </div>
-        <div class="documents-esign-provider">
-          ${badge(eSignEnabled ? "Підключено" : "Не підключено", eSignEnabled ? "green" : "amber")}
-          <strong>${eSignProvider}</strong>
-          <em>${eSignEnabled ? "Дані провайдера збережені в інтеграціях." : "Після вибору провайдера тут буде бойова відправка і перевірка статусу."}</em>
-        </div>
-      </section>
 
       <div class="documents-filters panel">
         <label class="documents-filter-field documents-filter-search">Пошук
@@ -1240,7 +1222,7 @@ export function renderDocumentsScreen(ctx) {
         <div class="documents-left-rail">
           <aside class="documents-archive panel">
             <div class="documents-archive-head">
-              <h3>Архів справ</h3>
+              <h3>Документи у справах</h3>
               <span>${state.cases.length} справ</span>
             </div>
             <div class="documents-tree">
@@ -1290,7 +1272,7 @@ export function renderDocumentsScreen(ctx) {
 
           <aside class="documents-archive documents-storage-archive panel">
             <div class="documents-archive-head">
-              <h3>Архів</h3>
+              <h3>Папки документообігу</h3>
               <span>${storageArchiveTotal} док.</span>
             </div>
             <button class="secondary documents-storage-add-folder" type="button" data-archive-folder-add-root><i class="folder-icon" aria-hidden="true"></i> Додати папку</button>

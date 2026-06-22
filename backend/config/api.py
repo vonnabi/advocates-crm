@@ -83,6 +83,8 @@ def is_safe_fetch_url(url):
         infos = socket.getaddrinfo(parts.hostname, port, proto=socket.IPPROTO_TCP)
     except (socket.gaierror, ValueError):
         return False
+    if is_configured_onlyoffice_origin(parts):
+        return True
     for info in infos:
         try:
             ip = ipaddress.ip_address(info[4][0])
@@ -115,11 +117,69 @@ def fetch_remote_document(url):
 
 
 def onlyoffice_jwt_secret():
+    return str(onlyoffice_settings().get("jwtSecret") or "").strip()
+
+
+def onlyoffice_settings():
     config = crm_settings_instance().integration_settings or {}
     onlyoffice = config.get("ONLYOFFICE") if isinstance(config, dict) else {}
-    if not isinstance(onlyoffice, dict):
-        return ""
-    return str(onlyoffice.get("jwtSecret") or "").strip()
+    result = {**onlyoffice} if isinstance(onlyoffice, dict) else {}
+    document_server_url = normalized_onlyoffice_url(os.environ.get("ONLYOFFICE_DOCUMENT_SERVER_URL"))
+    jwt_secret = str(os.environ.get("ONLYOFFICE_JWT_SECRET") or "").strip()
+    public_url = deployment_public_url()
+    if document_server_url:
+        result["documentServerUrl"] = document_server_url
+    if jwt_secret:
+        result["jwtSecret"] = jwt_secret
+    if public_url:
+        if not normalized_onlyoffice_url(result.get("serverAccessUrl")) or is_local_resource_url(result.get("serverAccessUrl")):
+            result["serverAccessUrl"] = public_url
+        if not normalized_onlyoffice_url(result.get("callbackUrl")) or is_local_resource_url(result.get("callbackUrl")):
+            result["callbackUrl"] = f"{public_url}/api/documents/{{id}}/onlyoffice/callback/"
+    return result
+
+
+def normalized_onlyoffice_url(value):
+    value = str(value or "").strip().rstrip("/")
+    return value if value.startswith(("http://", "https://")) else ""
+
+
+def deployment_public_url():
+    explicit_url = normalized_onlyoffice_url(os.environ.get("CRM_PUBLIC_URL"))
+    render_url = normalized_onlyoffice_url(os.environ.get("RENDER_EXTERNAL_URL"))
+    render_host = str(os.environ.get("RENDER_EXTERNAL_HOSTNAME") or "").strip().strip("/")
+    if explicit_url:
+        return explicit_url
+    if render_url:
+        return render_url
+    if render_host:
+        return f"https://{render_host}"
+    return ""
+
+
+def is_local_resource_url(value):
+    try:
+        hostname = urlsplit(str(value or "")).hostname or ""
+    except ValueError:
+        return False
+    return hostname.lower() in {"localhost", "127.0.0.1", "0.0.0.0", "host.docker.internal", "host.lima.internal"}
+
+
+def is_configured_onlyoffice_origin(parts):
+    document_server_url = normalized_onlyoffice_url(onlyoffice_settings().get("documentServerUrl"))
+    if not document_server_url:
+        return False
+    try:
+        server_parts = urlsplit(document_server_url)
+    except ValueError:
+        return False
+    server_port = server_parts.port or (443 if server_parts.scheme == "https" else 80)
+    url_port = parts.port or (443 if parts.scheme == "https" else 80)
+    return (
+        parts.scheme == server_parts.scheme
+        and (parts.hostname or "").lower() == (server_parts.hostname or "").lower()
+        and url_port == server_port
+    )
 
 
 def _b64url_decode(segment):
@@ -208,17 +268,19 @@ def build_onlyoffice_config(request, document, user=None):
     file_type = onlyoffice_file_type(document)
     editable = file_type != "pdf"
     fallback_name = os.path.basename(document.file.name) if document.file else f"{document.title}.{file_type}"
+    document_url = onlyoffice_server_resource_url(request, document_file_url(request, document))
+    callback_url = onlyoffice_server_resource_url(request, document_callback_url(request, document))
     config = {
         "document": {
             "fileType": file_type,
             "key": onlyoffice_document_key(document),
             "title": document.title or fallback_name,
-            "url": document_file_url(request, document),
+            "url": document_url,
             "permissions": {"edit": editable, "download": True, "print": True},
         },
         "documentType": onlyoffice_document_type(file_type),
         "editorConfig": {
-            "callbackUrl": document_callback_url(request, document),
+            "callbackUrl": callback_url,
             "lang": "uk",
             "mode": "edit" if editable else "view",
             "user": {
@@ -586,6 +648,19 @@ def upsert_case(data, case=None):
     case.authority_address = data.get("authorityAddress", case.authority_address or "")
     case.authority_contact = data.get("authorityContact", case.authority_contact or "")
     case.authority_email = data.get("authorityEmail", case.authority_email or "")
+    parties = data.get("parties")
+    if isinstance(parties, list):
+        case.parties = [
+            {
+                "name": str(row.get("name") or "").strip()[:255],
+                "status": str(row.get("status") or "").strip()[:128],
+                "address": str(row.get("address") or "").strip()[:255],
+                "contact": str(row.get("contact") or "").strip()[:128],
+                "email": str(row.get("email") or "").strip()[:255],
+            }
+            for row in parties
+            if isinstance(row, dict) and any(str(row.get(key) or "").strip() for key in ("name", "status", "address", "contact", "email"))
+        ]
     case.description = data.get("description", case.description or "")
     case.opened_at = parse_date(data.get("opened")) or case.opened_at or timezone.localdate()
     case.deadline_at = parse_date(data.get("deadline")) or case.deadline_at
@@ -688,6 +763,16 @@ def document_file_url(request, document):
 def document_callback_url(request, document):
     path = reverse("document_onlyoffice_callback", kwargs={"document_id": document.id})
     return request.build_absolute_uri(path) if request else path
+
+
+def onlyoffice_server_resource_url(request, url):
+    server_access_url = normalized_onlyoffice_url(onlyoffice_settings().get("serverAccessUrl"))
+    if not server_access_url or not request or not url:
+        return url
+    current_origin = request.build_absolute_uri("/").rstrip("/")
+    if url.startswith(current_origin):
+        return f"{server_access_url}{url[len(current_origin):]}"
+    return url
 
 
 def has_valid_document_file_token(request, document):
@@ -1551,6 +1636,7 @@ def serialize_case(item, include_finance=True):
         "authorityAddress": item.authority_address,
         "authorityContact": item.authority_contact,
         "authorityEmail": item.authority_email,
+        "parties": item.parties or [],
         "opened": date_value(item.opened_at),
         "deadline": date_value(item.deadline_at),
         **finance_payload,
@@ -1642,10 +1728,15 @@ def crm_settings_instance():
 
 def serialize_crm_settings(settings=None):
     settings = settings or crm_settings_instance()
+    integration_settings = clean_nested_string_map(settings.integration_settings, CRMSettings.DEFAULT_INTEGRATION_SETTINGS)
+    integration_settings["ONLYOFFICE"] = {
+        **integration_settings.get("ONLYOFFICE", {}),
+        **onlyoffice_settings(),
+    }
     return {
         "bureau": clean_string_map(settings.bureau, CRMSettings.DEFAULT_BUREAU, {"logo": 200000}),
         "integrations": clean_bool_map(settings.integrations, CRMSettings.DEFAULT_INTEGRATIONS),
-        "integrationSettings": clean_nested_string_map(settings.integration_settings, CRMSettings.DEFAULT_INTEGRATION_SETTINGS),
+        "integrationSettings": integration_settings,
         "notifications": clean_bool_map(settings.notifications, CRMSettings.DEFAULT_NOTIFICATIONS),
         "documentArchiveFolders": settings.document_archive_folders or [],
     }
@@ -1897,9 +1988,14 @@ def status_values_for_filter(filter_text):
     return values
 
 
-def campaign_recipient_queryset(data):
+def campaign_recipient_queryset(data, base_queryset=None):
+    # Recipients must never escape the requesting user's client scope: a user granted
+    # manage_mailings via custom module_permissions is not necessarily an admin, so
+    # "all"/"segment"/"manual" modes are resolved against the caller's accessible clients,
+    # not the whole client table (prevents enumerating/targeting clients out of scope).
     mode = data.get("recipientMode") or "segment"
-    queryset = Client.objects.exclude(status__in=["do_not_contact", "Не турбувати"])
+    base = base_queryset if base_queryset is not None else Client.objects.all()
+    queryset = base.exclude(status__in=["do_not_contact", "Не турбувати"])
     if mode == "manual":
         ids = [int(client_id) for client_id in data.get("manualClientIds") or [] if str(client_id).isdigit()]
         return queryset.filter(pk__in=ids)
@@ -1920,12 +2016,12 @@ def campaign_recipient_queryset(data):
     return queryset
 
 
-def sync_campaign_deliveries(item, data):
+def sync_campaign_deliveries(item, data, recipient_scope=None):
     if campaign_status_label(item) == "Тест отправлен":
         item.deliveries.all().delete()
         return
     enabled_channels = [channel for channel, enabled in mailing_channels_payload(item.channels).items() if enabled]
-    recipients = list(campaign_recipient_queryset(data).order_by("full_name", "id"))
+    recipients = list(campaign_recipient_queryset(data, recipient_scope).order_by("full_name", "id"))
     item.deliveries.all().delete()
     rows = []
     queued_status = "pending" if item.status == Campaign.Status.PLANNED else "queued"
@@ -2004,7 +2100,7 @@ def send_campaign_deliveries(item):
     return sent_count
 
 
-def upsert_mailing_campaign(data, item=None, author=None):
+def upsert_mailing_campaign(data, item=None, author=None, recipient_scope=None):
     item = item or Campaign()
     send_mode = str(data.get("sendMode") or "now")
     status = mailing_status_from_label(data.get("status"), send_mode)
@@ -2015,7 +2111,7 @@ def upsert_mailing_campaign(data, item=None, author=None):
     item.scheduled_at = scheduled_at_from_payload(data)
     item.status = status
     item.save()
-    sync_campaign_deliveries(item, data)
+    sync_campaign_deliveries(item, data, recipient_scope)
     return item
 
 
@@ -2359,21 +2455,31 @@ def accessible_case_filter_for_user(user):
     )
 
 
-def accessible_case_queryset(request):
-    user = current_demo_user(request)
+def accessible_case_queryset_for_user(user):
     queryset = Case.objects.all()
     if user_can_see_all_cases(user):
         return queryset
+    if not user:
+        return queryset.none()
     return queryset.filter(accessible_case_filter_for_user(user)).distinct()
 
 
-def accessible_client_queryset(request):
-    user = current_demo_user(request)
+def accessible_case_queryset(request):
+    return accessible_case_queryset_for_user(current_demo_user(request))
+
+
+def accessible_client_queryset_for_user(user):
     if user_can_see_all_cases(user):
         return Client.objects.all()
+    if not user:
+        return Client.objects.none()
     return Client.objects.filter(
-        Q(responsible=user) | Q(cases__in=accessible_case_queryset(request))
+        Q(responsible=user) | Q(cases__in=accessible_case_queryset_for_user(user))
     ).distinct()
+
+
+def accessible_client_queryset(request):
+    return accessible_client_queryset_for_user(current_demo_user(request))
 
 
 def accessible_task_queryset(request):
@@ -3237,7 +3343,11 @@ def mailing_campaigns_api(request):
     if forbidden:
         return forbidden
     if request.method == "POST":
-        item = upsert_mailing_campaign(parse_body(request), author=current_demo_user(request))
+        item = upsert_mailing_campaign(
+            parse_body(request),
+            author=current_demo_user(request),
+            recipient_scope=accessible_client_queryset(request),
+        )
         log_crm_action(request, AuditLog.Action.CREATE, "mailing_campaign", item.id, item.title, f"Створено розсилку «{item.title}».")
         return json_response(serialize_mailing_campaign(item))
     return json_response({"results": mailing_payload()["campaigns"]})
@@ -3261,7 +3371,12 @@ def mailing_campaign_detail_api(request, campaign_id):
         item.delete()
         log_crm_action(request, AuditLog.Action.DELETE, "mailing_campaign", campaign_id, title, f"Видалено розсилку «{title}».")
         return json_response({"deleted": campaign_id})
-    updated = upsert_mailing_campaign(parse_body(request), item, author=current_demo_user(request))
+    updated = upsert_mailing_campaign(
+        parse_body(request),
+        item,
+        author=current_demo_user(request),
+        recipient_scope=accessible_client_queryset(request),
+    )
     log_crm_action(request, AuditLog.Action.UPDATE, "mailing_campaign", updated.id, updated.title, f"Оновлено розсилку «{updated.title}».")
     return json_response(serialize_mailing_campaign(updated))
 
