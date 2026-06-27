@@ -444,7 +444,7 @@ function ensurePasswordChangeOverlay(ctx) {
   overlay.hidden = true;
   overlay.innerHTML = `
     <section class="logout-card password-change-card" role="dialog" aria-modal="true" aria-labelledby="password-change-title">
-      <div class="logout-mark">AB</div>
+      <div class="logout-mark">CRM</div>
       <h2 id="password-change-title">Змініть тимчасовий пароль</h2>
       <p>Цей пароль виданий адміністратором. Щоб продовжити роботу, створіть власний пароль.</p>
       <form class="login-form" data-password-change-form>
@@ -532,7 +532,7 @@ function ensureLogoutOverlay(ctx) {
   const returnButton = secured ? "" : `<button class="secondary" type="button" data-login-return>Повернутися в демо</button>`;
   overlay.innerHTML = `
     <section class="logout-card" role="dialog" aria-modal="true" aria-labelledby="logout-title">
-      <div class="logout-mark">AB</div>
+      <div class="logout-mark">CRM</div>
       <h2 id="logout-title">${heading}</h2>
       <p>${subtitle}</p>
       <form class="login-form" data-login-form>
