@@ -51,6 +51,12 @@ services:
       - onlyoffice_log:/var/log/onlyoffice
     expose:
       - "80"
+    # The Document Server fetches document files from the public CRM URL. On a single host
+    # that would hairpin out to the public IP and often fail, so route those hostnames back
+    # to this machine (Caddy) over the internal Docker gateway instead.
+    extra_hosts:
+      - "advokatcrm.com:host-gateway"
+      - "www.advokatcrm.com:host-gateway"
 
   caddy:
     image: caddy:2-alpine
