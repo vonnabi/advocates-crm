@@ -42647,3 +42647,14 @@ body #cases .case-list-table .case-finance-stack span {
 .admin-avatar.admin-photo span {
   opacity: 1;
 }
+.admin-avatar.admin-photo.has-photo {
+  background: none;
+  padding: 0;
+  overflow: hidden;
+}
+.admin-avatar.admin-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}

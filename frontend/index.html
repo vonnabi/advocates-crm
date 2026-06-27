@@ -150,6 +150,38 @@
           </div>
         </div>
       </header>
+      <script>
+        // Hydrate the topbar profile (name, role, avatar) from the last-known value so it
+        // shows instantly on reload instead of flashing the placeholder while the API loads.
+        (function () {
+          try {
+            var u = JSON.parse(localStorage.getItem("crmUserCache") || "null");
+            if (!u) return;
+            var setText = function (sel, text) {
+              var el = document.querySelector(sel);
+              if (el && text) el.textContent = text;
+            };
+            setText("#admin-profile-toggle > div:nth-of-type(2) strong", u.name);
+            setText("#admin-profile-toggle > div:nth-of-type(2) span", u.role);
+            setText("#admin-profile-menu .profile-panel-head > div:nth-of-type(2) strong", u.name);
+            setText("#admin-profile-menu .profile-panel-head > div:nth-of-type(2) span", u.panelRole);
+            document.querySelectorAll(".admin-photo").forEach(function (node) {
+              node.textContent = "";
+              if (u.photoImg) {
+                node.classList.add("has-photo");
+                var img = document.createElement("img");
+                img.src = u.photoImg;
+                img.alt = u.name || "";
+                node.appendChild(img);
+              } else {
+                var span = document.createElement("span");
+                span.textContent = u.initials || "";
+                node.appendChild(span);
+              }
+            });
+          } catch (e) {}
+        })();
+      </script>
 
       <section id="dashboard" class="view"></section>
       <section id="cases" class="view"></section>

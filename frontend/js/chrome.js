@@ -404,21 +404,47 @@ export function syncTopbarUser($, state) {
   if (!user) return;
   const neutralDemoAdmin = shouldUseApi(state) && !state.sessionAuthenticated && state.demoDataStatus?.enabled === false;
   const displayName = neutralDemoAdmin ? "Admin" : user.name;
-  const initials = neutralDemoAdmin ? "AD" : user.photo || user.name?.slice(0, 1) || "І";
+  const photo = neutralDemoAdmin ? "" : (user.photo || "");
+  const photoIsImage = /^(https?:\/\/|\/|assets\/|data:image\/)/i.test(photo);
+  const initials = ((neutralDemoAdmin ? "AD" : (photoIsImage ? "" : photo)) || user.name?.trim()?.slice(0, 2) || "АД").slice(0, 2);
   const role = neutralDemoAdmin ? "Адміністратор" : state.sessionAuthenticated ? user.role : `${user.role || "Адміністратор"} · демо`;
   const toggleName = $("#admin-profile-toggle > div:nth-of-type(2) strong");
   const toggleRole = $("#admin-profile-toggle > div:nth-of-type(2) span");
   const panelName = $("#admin-profile-menu .profile-panel-head > div:nth-of-type(2) strong");
   const panelRole = $("#admin-profile-menu .profile-panel-head > div:nth-of-type(2) span");
-  const avatars = document.querySelectorAll(".admin-photo span");
+  const avatars = document.querySelectorAll(".admin-photo");
   if (toggleName) toggleName.textContent = displayName;
   if (toggleRole) toggleRole.textContent = role;
   if (panelName) panelName.textContent = displayName;
-  if (panelRole) panelRole.textContent = neutralDemoAdmin ? "Порожній кабінет CRM" : state.sessionAuthenticated ? user.access || user.role : "Демо-доступ до CRM";
+  const panelRoleText = neutralDemoAdmin ? "Порожній кабінет CRM" : state.sessionAuthenticated ? user.access || user.role : "Демо-доступ до CRM";
+  if (panelRole) panelRole.textContent = panelRoleText;
+  // Show the uploaded/linked photo as a real image; otherwise fall back to the initials.
   avatars.forEach((node) => {
-    node.textContent = initials.slice(0, 2);
+    node.classList.toggle("has-photo", photoIsImage);
+    node.textContent = "";
+    if (photoIsImage) {
+      const img = document.createElement("img");
+      img.src = photo;
+      img.alt = displayName || "";
+      node.appendChild(img);
+    } else {
+      const span = document.createElement("span");
+      span.textContent = initials;
+      node.appendChild(span);
+    }
   });
   document.documentElement.dataset.authenticated = state.sessionAuthenticated ? "true" : "false";
+  // Cache for the inline hydration script so the topbar profile shows instantly on reload
+  // instead of flashing the static placeholder while the API data loads.
+  try {
+    localStorage.setItem("crmUserCache", JSON.stringify({
+      name: displayName || "",
+      role: role || "",
+      panelRole: panelRoleText || "",
+      photoImg: photoIsImage ? photo : "",
+      initials
+    }));
+  } catch (_e) { /* ignore */ }
 }
 
 function applySessionState(state, session) {
