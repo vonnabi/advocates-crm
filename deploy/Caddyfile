@@ -1,0 +1,13 @@
+# Caddy obtains and auto-renews Let's Encrypt certificates for every domain below,
+# as long as each domain's DNS A-record points at this server.
+#
+# CRM (frontend + API):
+advokatcrm.com, www.advokatcrm.com {
+	encode zstd gzip
+	reverse_proxy web:8001
+}
+
+# ONLYOFFICE Document Server (document editing):
+office.advokatcrm.com {
+	reverse_proxy onlyoffice:80
+}

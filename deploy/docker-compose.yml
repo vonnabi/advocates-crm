@@ -1,0 +1,75 @@
+# Advocates CRM — production stack for a single VPS.
+#   caddy       reverse proxy + automatic HTTPS (Let's Encrypt) for the CRM and ONLYOFFICE
+#   web         Django + gunicorn (serves the API and the frontend)
+#   db          PostgreSQL
+#   onlyoffice  self-hosted ONLYOFFICE Document Server
+#
+# Run from this directory:  docker compose up -d --build
+# Configuration lives in .env (copy from .env.example) — it is NOT committed to git.
+name: advokat-crm
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    volumes:
+      - media:/app/backend/media
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8001"
+
+  onlyoffice:
+    image: onlyoffice/documentserver:latest
+    restart: unless-stopped
+    environment:
+      JWT_ENABLED: "true"
+      JWT_SECRET: ${ONLYOFFICE_JWT_SECRET}
+    volumes:
+      - onlyoffice_data:/var/www/onlyoffice/Data
+      - onlyoffice_log:/var/log/onlyoffice
+    expose:
+      - "80"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - onlyoffice
+
+volumes:
+  pgdata:
+  media:
+  onlyoffice_data:
+  onlyoffice_log:
+  caddy_data:
+  caddy_config:
