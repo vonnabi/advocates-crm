@@ -528,9 +528,7 @@ function ensureLogoutOverlay(ctx) {
     : "Увійдіть під роллю користувача бюро або поверніться в демо-режим.";
   const emailValue = secured ? "" : "ivanenko@advocates.crm";
   const passwordValue = secured ? "" : "demo12345";
-  const demoHint = secured
-    ? `<small>Демо-версія: логін і пароль — <strong>demo</strong>.</small>`
-    : `<small>Демо-доступ: ivanenko@advocates.crm / demo12345</small>`;
+  const demoHint = secured ? "" : `<small>Демо-доступ: ivanenko@advocates.crm / demo12345</small>`;
   const returnButton = secured ? "" : `<button class="secondary" type="button" data-login-return>Повернутися в демо</button>`;
   overlay.innerHTML = `
     <section class="logout-card" role="dialog" aria-modal="true" aria-labelledby="logout-title">
@@ -553,21 +551,6 @@ function ensureLogoutOverlay(ctx) {
     const error = overlay.querySelector("[data-login-error]");
     const form = event.currentTarget;
     if (error) error.hidden = true;
-    // Demo entry point: logging in as "демо"/"демо" switches the app to the bundled
-    // static demo data (read-only, never touches the real database) so the live CRM can
-    // be shown without polluting the customer's clean production data.
-    const loginValue = (form.elements.email.value || "").trim().toLowerCase();
-    const passValue = (form.elements.password.value || "").trim().toLowerCase();
-    if (loginValue === "демо" || loginValue === "demo") {
-      if (passValue === "демо" || passValue === "demo") {
-        try { localStorage.setItem("crmApiMode", "static"); } catch (_e) { /* ignore */ }
-        window.location.reload();
-      } else if (error) {
-        error.textContent = "Для демо-режиму логін і пароль — «демо».";
-        error.hidden = false;
-      }
-      return;
-    }
     if (!shouldUseApi(state)) {
       if (error) {
         error.textContent = "Логін доступний, коли CRM відкрита через Django-сервер.";
@@ -611,12 +594,6 @@ function ensureLogoutOverlay(ctx) {
 
 async function openLogoutOverlay(ctx) {
   const { $, state, saveNavigationState, showToast, onSessionChange } = ctx;
-  // Exiting the bundled demo: drop the static flag and reload back to the real login screen.
-  if (localStorage.getItem("crmApiMode") === "static") {
-    try { localStorage.removeItem("crmApiMode"); } catch (_e) { /* ignore */ }
-    window.location.reload();
-    return;
-  }
   if (shouldUseApi(state)) {
     try {
       const session = await logoutFromApi();
@@ -635,26 +612,10 @@ async function openLogoutOverlay(ctx) {
   overlay.querySelector("input[name='email']")?.focus();
 }
 
-function syncDemoModeBadge() {
-  const badge = document.querySelector("[data-demo-mode-badge]");
-  if (!badge) return;
-  let inDemo = false;
-  try { inDemo = localStorage.getItem("crmApiMode") === "static"; } catch (_e) { /* ignore */ }
-  badge.hidden = !inDemo;
-  if (inDemo && !badge.dataset.wired) {
-    badge.dataset.wired = "1";
-    badge.querySelector("[data-demo-mode-exit]")?.addEventListener("click", () => {
-      try { localStorage.removeItem("crmApiMode"); } catch (_e) { /* ignore */ }
-      window.location.reload();
-    });
-  }
-}
-
 export function setupTopbarControls({ $, state, switchView, saveNavigationState, showToast, onSessionChange }) {
   syncTopbarUser($, state);
   syncTopbarNotifications($, state);
   syncDemoDataToggle(state);
-  syncDemoModeBadge();
   syncTopbarClock();
   if (!topbarClockTimer) {
     topbarClockTimer = window.setInterval(syncTopbarClock, 30000);
