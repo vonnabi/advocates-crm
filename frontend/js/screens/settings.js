@@ -72,7 +72,7 @@ const integrationConfigIcons = {
   ONLYOFFICE: "file",
   AI: "search"
 };
-const defaultBureauLogo = "assets/advocates-crm-logo.png";
+const defaultBureauLogo = "";
 
 const accessPermissionMap = {
   "Повний доступ": allPermissionKeys,
@@ -401,17 +401,17 @@ function isBureauLogoImage(value = "") {
 
 function renderBureauLogo(settings = {}) {
   const logo = bureauLogoValue(settings);
-  const name = cleanSettingValue(settings.name || "AB");
+  const name = cleanSettingValue(settings.name || "");
   if (isBureauLogoImage(logo)) {
-    return `<img src="${cleanAttribute(logo)}" alt="${cleanAttribute(name)}">`;
+    return `<img src="${cleanAttribute(logo)}" alt="${cleanAttribute(name || "CRM")}">`;
   }
-  return `<span>${cleanSettingValue(logo || userInitials(name) || "AB").slice(0, 4)}</span>`;
+  return `<span>${cleanSettingValue(logo || userInitials(name) || "CRM").slice(0, 4)}</span>`;
 }
 
 function bureauFaviconHref(settings = {}) {
   const logo = bureauLogoValue(settings);
   if (isBureauLogoImage(logo)) return logo;
-  const label = cleanSettingValue(logo || userInitials(settings.name || "") || "AB").slice(0, 4);
+  const label = cleanSettingValue(logo || userInitials(settings.name || "") || "CRM").slice(0, 4);
   const safeLabel = label.replace(/&/g, "&amp;");
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#1f4e79"/><text x="32" y="39" text-anchor="middle" font-family="Arial,sans-serif" font-size="21" font-weight="800" fill="#fff">${safeLabel}</text></svg>`;
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
@@ -419,8 +419,10 @@ function bureauFaviconHref(settings = {}) {
 
 function syncBureauBrand(settings = {}) {
   const brandLogo = document.querySelector("[data-brand-logo]");
+  const brandName = document.querySelector("[data-brand-name]");
   const favicon = document.querySelector("[data-brand-favicon]") || document.querySelector('link[rel="icon"]');
   if (brandLogo) brandLogo.innerHTML = renderBureauLogo(settings);
+  if (brandName) brandName.textContent = cleanSettingValue(settings.name || "") || "Юридичне бюро";
   if (favicon) favicon.href = bureauFaviconHref(settings);
 }
 
