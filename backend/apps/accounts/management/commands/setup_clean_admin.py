@@ -22,7 +22,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
-from apps.accounts.models import UserProfile
+from apps.accounts.models import CRMSettings, UserProfile
 from apps.audit.models import AuditLog
 from apps.cases.demo_data import clear_all_business_data
 
@@ -69,7 +69,13 @@ class Command(BaseCommand):
         if not options["keep_data"]:
             clear_all_business_data()
             AuditLog.objects.all().delete()
-            self.stdout.write("· Wiped all business data and the audit log.")
+            # Blank the bureau profile so the customer starts from empty fields. Storing
+            # explicit empty strings is required: the API only serves the built-in
+            # "Advocates Bureau" demo defaults for keys that are *missing*, not empty.
+            settings_row, _ = CRMSettings.objects.get_or_create(key="global")
+            settings_row.bureau = {key: "" for key in CRMSettings.DEFAULT_BUREAU}
+            settings_row.save(update_fields=["bureau", "updated_at"])
+            self.stdout.write("· Wiped all business data, the audit log and the bureau profile.")
 
         if not options["keep_users"]:
             removed, _ = User.objects.exclude(username=username).delete()

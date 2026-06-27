@@ -1,6 +1,5 @@
 import { changePasswordInApi, clearDemoDataInApi, getDemoDataStatusFromApi, importCrmSnapshotToApi, loginToApi, logoutFromApi, restoreDemoDataInApi, shouldUseApi } from "./api.js?v=demo-empty-state-1";
 
-const DEMO_URL = "https://vonnabi.github.io/advocates-crm/";
 const SNAPSHOT_STORAGE_KEY = "advocates-crm-snapshot";
 let topbarClockTimer = null;
 
@@ -530,7 +529,7 @@ function ensureLogoutOverlay(ctx) {
   const emailValue = secured ? "" : "ivanenko@advocates.crm";
   const passwordValue = secured ? "" : "demo12345";
   const demoHint = secured
-    ? `<small>Демо-версія: введіть <strong>демо</strong> у логін і пароль.</small>`
+    ? `<small>Демо-версія: логін і пароль — <strong>demo</strong>.</small>`
     : `<small>Демо-доступ: ivanenko@advocates.crm / demo12345</small>`;
   const returnButton = secured ? "" : `<button class="secondary" type="button" data-login-return>Повернутися в демо</button>`;
   overlay.innerHTML = `
@@ -636,15 +635,6 @@ async function openLogoutOverlay(ctx) {
   overlay.querySelector("input[name='email']")?.focus();
 }
 
-async function copyDemoLink(showToast) {
-  try {
-    await navigator.clipboard.writeText(DEMO_URL);
-    showToast("Ссылка для заказчика скопирована.");
-  } catch (error) {
-    window.prompt("Скопируйте ссылку для заказчика:", DEMO_URL);
-  }
-}
-
 export function setupTopbarControls({ $, state, switchView, saveNavigationState, showToast, onSessionChange }) {
   syncTopbarUser($, state);
   syncTopbarNotifications($, state);
@@ -702,14 +692,6 @@ export function setupTopbarControls({ $, state, switchView, saveNavigationState,
       if (action === "team") {
         switchView("settings");
         focusSettingsSection("users");
-        return;
-      }
-      if (action === "demo-link") {
-        copyDemoLink(showToast);
-        return;
-      }
-      if (action === "open-demo") {
-        window.open(DEMO_URL, "_blank", "noopener");
         return;
       }
       if (action === "compact") {
