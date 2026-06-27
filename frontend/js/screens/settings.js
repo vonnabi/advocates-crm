@@ -399,19 +399,26 @@ function isBureauLogoImage(value = "") {
   return /^(https?:\/\/|assets\/|data:image\/)/i.test(value);
 }
 
+// Initials for the bureau logo come from the bureau name only; with an empty profile we
+// fall back to "CRM" (not userInitials' generic "К" default, which is for user avatars).
+function bureauInitials(settings = {}) {
+  const name = cleanSettingValue(settings.name || "");
+  return name ? userInitials(name) : "";
+}
+
 function renderBureauLogo(settings = {}) {
   const logo = bureauLogoValue(settings);
   const name = cleanSettingValue(settings.name || "");
   if (isBureauLogoImage(logo)) {
     return `<img src="${cleanAttribute(logo)}" alt="${cleanAttribute(name || "CRM")}">`;
   }
-  return `<span>${cleanSettingValue(logo || userInitials(name) || "CRM").slice(0, 4)}</span>`;
+  return `<span>${cleanSettingValue(logo || bureauInitials(settings) || "CRM").slice(0, 4)}</span>`;
 }
 
 function bureauFaviconHref(settings = {}) {
   const logo = bureauLogoValue(settings);
   if (isBureauLogoImage(logo)) return logo;
-  const label = cleanSettingValue(logo || userInitials(settings.name || "") || "CRM").slice(0, 4);
+  const label = cleanSettingValue(logo || bureauInitials(settings) || "CRM").slice(0, 4);
   const safeLabel = label.replace(/&/g, "&amp;");
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#1f4e79"/><text x="32" y="39" text-anchor="middle" font-family="Arial,sans-serif" font-size="21" font-weight="800" fill="#fff">${safeLabel}</text></svg>`;
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
@@ -433,7 +440,7 @@ export function syncBureauBrand(settings = {}) {
     localStorage.setItem("crmBrandCache", JSON.stringify({
       name: displayName,
       logoImg: isImg ? logoVal : "",
-      logoText: isImg ? "" : cleanSettingValue(logoVal || userInitials(settings.name || "") || "CRM").slice(0, 4)
+      logoText: isImg ? "" : cleanSettingValue(logoVal || bureauInitials(settings) || "CRM").slice(0, 4)
     }));
   } catch (_e) { /* ignore */ }
 }
