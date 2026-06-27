@@ -1,7 +1,11 @@
 export function apiBaseUrl() {
   const hostname = window.location.hostname;
   if (hostname.endsWith(".onrender.com")) return window.location.origin;
+  if (hostname === "advokatcrm.com" || hostname.endsWith(".advokatcrm.com")) return window.location.origin;
   if (window.CRM_API_MODE === "static" || localStorage.getItem("crmApiMode") === "static") return "";
+  // Served over HTTPS from a real domain → the API is co-located on the same origin.
+  // (Local static dev servers run over plain HTTP, so they correctly stay in demo mode.)
+  if (window.location.protocol === "https:") return window.location.origin;
   if (window.location.port === "8001") return window.location.origin;
   const configured = window.CRM_API_BASE || localStorage.getItem("crmApiBase");
   if (configured) return configured.replace(/\/$/, "");
