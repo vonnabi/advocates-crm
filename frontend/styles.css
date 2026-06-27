@@ -42684,3 +42684,14 @@ body #cases .case-list-table .case-finance-stack span {
     max-width: 94vw;
   }
 }
+
+/* Admin topbar avatar: show the profile initials (letters), never a photo/silhouette. */
+.admin-avatar.admin-photo {
+  background: linear-gradient(135deg, #eef3fb, #d8e6f6);
+  color: #1f3a5f;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+.admin-avatar.admin-photo span {
+  opacity: 1;
+}
