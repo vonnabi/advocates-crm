@@ -467,6 +467,55 @@ function readImageAsDataUrl(file) {
   });
 }
 
+// Read an uploaded avatar and shrink it to a small square thumbnail (~200px JPEG) so the
+// stored data: URL stays a few KB instead of bloating the database and the bootstrap API.
+async function readAvatarThumbnail(file, maxSize = 200) {
+  const dataUrl = await readImageAsDataUrl(file);
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.addEventListener("load", () => {
+      const longest = Math.max(img.width, img.height) || 1;
+      const scale = Math.min(1, maxSize / longest);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(img.width * scale));
+      canvas.height = Math.max(1, Math.round(img.height * scale));
+      const context = canvas.getContext("2d");
+      if (!context) return reject(new Error("canvas unavailable"));
+      context.drawImage(img, 0, 0, canvas.width, canvas.height);
+      try {
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
+      } catch (error) {
+        reject(error);
+      }
+    });
+    img.addEventListener("error", () => reject(new Error("invalid image")));
+    img.src = dataUrl;
+  });
+}
+
+// Handle the "upload photo from computer" button in the user card: validate, shrink and
+// put the resulting thumbnail into the avatar field (persisted on «Зберегти»).
+async function applyAvatarUpload(input, form, ctx) {
+  const file = input.files?.[0];
+  if (!file) return;
+  try {
+    if (!file.type.startsWith("image/")) {
+      ctx.showToast?.("Оберіть файл зображення для аватара.", "danger");
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      ctx.showToast?.("Фото завелике. Оберіть файл до 8 MB.", "danger");
+      return;
+    }
+    form.elements.photo.value = await readAvatarThumbnail(file);
+    ctx.showToast?.("Фото готове. Натисніть «Зберегти користувача», щоб закріпити.");
+  } catch (_error) {
+    ctx.showToast?.("Не вдалося обробити фото.", "danger");
+  } finally {
+    input.value = "";
+  }
+}
+
 function userInitials(name) {
   const initials = cleanSettingValue(name)
     .split(/\s+/)
@@ -699,7 +748,7 @@ function renderPermissionSummary(user, icon) {
 function renderUserAvatar(user) {
   const photo = cleanAttribute(user?.photo || "");
   const name = cleanSettingValue(user?.name || "");
-  if (/^(https?:\/\/|\/|assets\/)/i.test(photo)) {
+  if (/^(https?:\/\/|\/|assets\/|data:image\/)/i.test(photo)) {
     return `<div class="avatar settings-user-avatar has-photo"><img src="${photo}" alt="${name || "Користувач"}" /></div>`;
   }
   return `<div class="avatar settings-user-avatar">${photo || userInitials(name)}</div>`;
@@ -1685,7 +1734,14 @@ function ensureInviteDialog(ctx) {
       <div class="settings-user-form-grid">
         <label class="crm-modal-field required">Ім'я та прізвище<input name="name" required placeholder="Наприклад, Шевченко Марія Ігорівна"></label>
         <label class="crm-modal-field required">Email<input name="email" type="email" required placeholder="user@example.com"></label>
-        <label class="crm-modal-field">Аватар / фото<input name="photo" placeholder="Ініціали або URL фото"></label>
+        <label class="crm-modal-field">Аватар / фото
+          <div class="settings-password-input-row">
+            <input name="photo" placeholder="Ініціали, URL або завантажте фото">
+            <label class="settings-password-generate settings-photo-upload" aria-label="Завантажити фото з комп'ютера" title="Завантажити фото з комп'ютера">${icon("upload")}
+              <input type="file" accept="image/png,image/jpeg,image/webp" data-user-photo-upload hidden>
+            </label>
+          </div>
+        </label>
         <div class="crm-modal-field settings-password-field">
           <span class="settings-password-field-label">Пароль</span>
           <div class="settings-password-input-row">
@@ -1828,6 +1884,10 @@ function ensureInviteDialog(ctx) {
     closeSettingsCustomSelects(form);
   });
   form?.addEventListener("change", (event) => {
+    if (event.target?.matches?.("[data-user-photo-upload]")) {
+      applyAvatarUpload(event.target, form, ctx);
+      return;
+    }
     if (event.target?.name === "permissionKeys") {
       form.elements.access.value = "Індивідуальний доступ";
       syncSettingsCustomSelects(form);

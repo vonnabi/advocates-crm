@@ -3115,6 +3115,14 @@ h3 {
   height: 15px;
 }
 
+/* Upload-from-computer button in the user card avatar field (reuses the round icon button). */
+.settings-photo-upload {
+  position: relative;
+}
+.settings-photo-upload input[type="file"] {
+  display: none;
+}
+
 .settings-custom-select-field {
   position: relative;
   overflow: visible;
