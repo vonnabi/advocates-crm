@@ -635,10 +635,26 @@ async function openLogoutOverlay(ctx) {
   overlay.querySelector("input[name='email']")?.focus();
 }
 
+function syncDemoModeBadge() {
+  const badge = document.querySelector("[data-demo-mode-badge]");
+  if (!badge) return;
+  let inDemo = false;
+  try { inDemo = localStorage.getItem("crmApiMode") === "static"; } catch (_e) { /* ignore */ }
+  badge.hidden = !inDemo;
+  if (inDemo && !badge.dataset.wired) {
+    badge.dataset.wired = "1";
+    badge.querySelector("[data-demo-mode-exit]")?.addEventListener("click", () => {
+      try { localStorage.removeItem("crmApiMode"); } catch (_e) { /* ignore */ }
+      window.location.reload();
+    });
+  }
+}
+
 export function setupTopbarControls({ $, state, switchView, saveNavigationState, showToast, onSessionChange }) {
   syncTopbarUser($, state);
   syncTopbarNotifications($, state);
   syncDemoDataToggle(state);
+  syncDemoModeBadge();
   syncTopbarClock();
   if (!topbarClockTimer) {
     topbarClockTimer = window.setInterval(syncTopbarClock, 30000);

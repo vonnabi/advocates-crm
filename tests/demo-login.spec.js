@@ -37,6 +37,8 @@ test("демо/демо flips to static demo mode, logout returns to API mode", 
   await bootReady(page);
   expect(await page.evaluate(() => localStorage.getItem("crmApiMode"))).toBe("static");
   expect(await apiBase(page, "after-demo")).toBe("");
+  // The demo-mode badge is visible so the read-only demo is unmistakable.
+  await expect(page.locator("[data-demo-mode-badge]")).toBeVisible();
 
   // Logout of the demo → flag cleared, back to API mode.
   await page.click("#admin-profile-toggle");
@@ -44,4 +46,5 @@ test("демо/демо flips to static demo mode, logout returns to API mode", 
   await page.waitForFunction(() => localStorage.getItem("crmApiMode") === null);
   await bootReady(page);
   expect(await apiBase(page, "after-exit")).toBe("http://127.0.0.1:8001");
+  await expect(page.locator("[data-demo-mode-badge]")).toBeHidden();
 });
