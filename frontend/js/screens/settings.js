@@ -417,13 +417,25 @@ function bureauFaviconHref(settings = {}) {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
-function syncBureauBrand(settings = {}) {
+export function syncBureauBrand(settings = {}) {
   const brandLogo = document.querySelector("[data-brand-logo]");
   const brandName = document.querySelector("[data-brand-name]");
   const favicon = document.querySelector("[data-brand-favicon]") || document.querySelector('link[rel="icon"]');
+  const displayName = cleanSettingValue(settings.name || "") || "Юридичне бюро";
   if (brandLogo) brandLogo.innerHTML = renderBureauLogo(settings);
-  if (brandName) brandName.textContent = cleanSettingValue(settings.name || "") || "Юридичне бюро";
+  if (brandName) brandName.textContent = displayName;
   if (favicon) favicon.href = bureauFaviconHref(settings);
+  // Cache the brand so the inline hydration script in index.html can show it instantly
+  // on the next load, instead of flashing the placeholder while the API data loads.
+  try {
+    const logoVal = bureauLogoValue(settings);
+    const isImg = isBureauLogoImage(logoVal);
+    localStorage.setItem("crmBrandCache", JSON.stringify({
+      name: displayName,
+      logoImg: isImg ? logoVal : "",
+      logoText: isImg ? "" : cleanSettingValue(logoVal || userInitials(settings.name || "") || "CRM").slice(0, 4)
+    }));
+  } catch (_e) { /* ignore */ }
 }
 
 function brandIcon(name) {

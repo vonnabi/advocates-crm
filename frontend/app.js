@@ -48,7 +48,7 @@ import {
 import { renderFinanceScreen } from "./js/screens/finance.js?v=finance-kpi-trend-1";
 import { renderOSINTScreen } from "./js/screens/osint.js?v=dead-code-cleanup-1";
 import { renderPlannerScreen } from "./js/screens/planner.js";
-import { renderSettingsScreen } from "./js/screens/settings.js?v=readiness-toggle-1";
+import { renderSettingsScreen, syncBureauBrand } from "./js/screens/settings.js?v=readiness-toggle-1";
 import {
   allCaseTasks as allCaseTasksScreen,
   renderTasksScreen
@@ -85,6 +85,7 @@ import {
 
 const state = await createInitialState();
 document.documentElement.dataset.dataSource = state.dataSource || "json";
+syncBureauBrand(state.bureauSettings);
 
 const titles = {
   dashboard: "Дашборд",
