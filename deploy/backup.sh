@@ -22,7 +22,7 @@ log "=== backup start ($TS) ==="
 # 1) PostgreSQL — custom-format dump (restore with pg_restore). Credentials come from
 #    the db container's own environment, so nothing secret lives in this script.
 db_file="$BACKUP_DIR/db-$TS.dump"
-if docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$db_file"; then
+if docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' < /dev/null > "$db_file"; then
   if [ "$(stat -c%s "$db_file")" -lt 1000 ]; then
     log "ERROR: db dump is suspiciously small ($(stat -c%s "$db_file") bytes) — aborting"
     rm -f "$db_file"
@@ -39,7 +39,7 @@ fi
 #    postgres:16-alpine image so we don't depend on the web container being up.
 media_file="$BACKUP_DIR/media-$TS.tar.gz"
 if docker run --rm -v "${MEDIA_VOLUME}:/media:ro" postgres:16-alpine \
-     tar czf - -C /media . > "$media_file" 2>/dev/null; then
+     tar czf - -C /media . < /dev/null > "$media_file" 2>/dev/null; then
   log "media archive -> $(basename "$media_file") ($(du -h "$media_file" | cut -f1))"
 else
   log "WARN: media archive failed (continuing — db dump is the critical copy)"
