@@ -827,11 +827,11 @@ export function openDocumentSendDialog(ctx, key) {
   if (!dialog || !form) return;
   const { caseId, encoded } = payloadFromKey(key);
   const payload = getDocumentPayload(caseId, encoded);
-  const item = caseById(caseId);
+  const item = caseById(caseId); // null for standalone (Документообіг) documents
   const doc = payload.file || payload.doc;
-  if (!doc || !item) return;
+  if (!doc) return;
   const clients = state.clients || [];
-  const client = clientById(item.clientId);
+  const client = item ? clientById(item.clientId) : null;
   const authorities = documentSendAuthorities(state);
   form.reset();
   form.elements.documentKey.value = key;
@@ -862,7 +862,9 @@ export function openDocumentSendDialog(ctx, key) {
         return `<option value="${index}">${escapeHtml(authority.name)}${meta ? ` — ${escapeHtml(meta)}` : ""}</option>`;
       }).join("")
       : `<option value="">Органів ще немає</option>`;
-    const currentIndex = authorities.findIndex((authority) => authority.caseId === item.id || authority.name === item.court);
+    const currentIndex = item
+      ? authorities.findIndex((authority) => authority.caseId === item.id || authority.name === item.court)
+      : -1;
     authoritySelect.value = String(Math.max(currentIndex, 0));
   }
   const sync = () => {

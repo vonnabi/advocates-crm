@@ -1448,6 +1448,8 @@ export function createDialogOpeners({
   function openDocumentDialog(caseId, editContext = null, returnView = null) {
     const form = $("#document-form");
     form.reset();
+    form.dataset.storageFolderId = "";
+    form.dataset.storageIndex = "";
     state.documentDialogReturnView = returnView || ($("#documents")?.classList.contains("active") ? "documents" : "cases");
     const requestedCaseId = caseId || state.selectedCaseId || state.cases[0]?.id || "";
     let item = caseById(requestedCaseId) || state.cases[0] || null;
@@ -1724,7 +1726,31 @@ export function createDialogOpeners({
       };
     }
 
-    if (editContext) {
+    if (editContext && editContext.source === "storage") {
+      // Standalone (Документообіг) document — edit in archive mode, with no case context.
+      const data = editContext.doc || editContext.file || {};
+      if (form.elements.documentTargetMode) form.elements.documentTargetMode.value = "archive";
+      form.elements.editSource.value = "storage";
+      form.dataset.storageFolderId = editContext.storageFolderId || "";
+      form.dataset.storageIndex = String(editContext.storageIndex ?? "");
+      const archiveSelect = form.elements.archiveFolderId;
+      if (archiveSelect && editContext.storageFolderId) archiveSelect.value = editContext.storageFolderId;
+      form.elements.name.value = data.name || "";
+      form.elements.url.value = data.url || "";
+      setDocumentTypeValue(data.type || "Інше");
+      form.elements.submitted.value = parseDisplayDate(data.submitted);
+      form.elements.responseDue.value = parseDisplayDate(data.responseDue);
+      form.elements.status.value = data.status || "Чернетка";
+      form.elements.comment.value = data.comment || "";
+      form.elements.content.value = data.content || "";
+      if (form.elements.documentSourceMode) {
+        form.elements.documentSourceMode.value = data.url ? "google" : (data.fileName || data.fileUrl) ? "upload" : "onlyoffice";
+      }
+      $("#document-dialog-title").textContent = "Редагувати документ";
+      $("#document-submit-button").textContent = "Зберегти документ";
+    } else if (editContext) {
+      form.dataset.storageFolderId = "";
+      form.dataset.storageIndex = "";
       const data = editContext.file || editContext.doc;
       const linked = editContext.linked || (editContext.doc ? findFolderFileByDocument(item, editContext.doc) : null);
       form.elements.originalCaseId.value = item?.id || "";

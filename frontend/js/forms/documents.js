@@ -490,7 +490,7 @@ export function setupDocumentForm({
     const targetMode = form.get("documentTargetMode") || "case";
     const editSource = form.get("editSource");
     const item = caseById(form.get("caseId"));
-    if (!item && (targetMode !== "archive" || editSource)) {
+    if (!item && (targetMode !== "archive" || (editSource && editSource !== "storage"))) {
       showToast("Оберіть справу, до якої потрібно додати документ.", "warning");
       return;
     }
@@ -599,6 +599,71 @@ export function setupDocumentForm({
         return;
       }
       showToast("Документ додано в архів.");
+      return;
+    }
+
+    if (editSource === "storage") {
+      // Standalone (Документообіг) document edit — update the archive copy and its API row, no case.
+      const formEl = event.currentTarget;
+      const storageFolderId = formEl.dataset.storageFolderId || "";
+      const storageIndex = formEl.dataset.storageIndex === "" ? -1 : Number(formEl.dataset.storageIndex);
+      const archiveFolder = findArchiveFolderById(ensureArchiveFolders(), storageFolderId) || resolveArchiveFolder(form, today);
+      const archiveDoc = (archiveFolder?.documents || [])[storageIndex]
+        || (archiveFolder?.documents || []).find((entry) => entry.name === name)
+        || null;
+      const existingDocumentId = archiveDoc?.documentId || archiveDoc?.id || "";
+      const documentCopyPayload = { item: null, name, type: form.get("type"), folder: archiveFolder?.name, status: form.get("status"), submitted, responseDue, comment: form.get("comment"), content };
+      const uploadFile = fileName ? file : (documentSourceMode === "onlyoffice" && !archiveDoc?.fileName && !archiveDoc?.fileUrl ? makeDocumentFile(documentCopyPayload, onlyOfficeCreateFormat) : null);
+      let savedDocument = null;
+      if (shouldUseApi(state)) {
+        try {
+          savedDocument = normalizeDocument(await saveDocumentToApi({
+            id: numericId(existingDocumentId),
+            documentId: existingDocumentId,
+            caseId: "",
+            name,
+            type: form.get("type"),
+            folder: archiveFolder?.name || "",
+            status: form.get("status"),
+            submitted,
+            responseDue,
+            comment: form.get("comment"),
+            content,
+            url,
+            history: [{ date: today, text: `Оновлено документ: ${name}.` }]
+          }));
+          savedDocument = await uploadSavedFileIfNeeded(savedDocument, uploadFile);
+        } catch (_error) {
+          showToast("Не вдалося зберегти документ у базі.", "danger");
+          return;
+        }
+      }
+      if (archiveDoc) {
+        Object.assign(archiveDoc, {
+          documentId: savedDocument?.documentId || savedDocument?.id || existingDocumentId,
+          name: savedDocument?.name || name,
+          type: savedDocument?.type || form.get("type"),
+          status: savedDocument?.status || form.get("status"),
+          submitted: savedDocument?.submitted || submitted,
+          responseDue: savedDocument?.responseDue || responseDue,
+          comment: savedDocument?.comment || form.get("comment"),
+          content: savedDocument?.content ?? content,
+          url: savedDocument?.url || url,
+          fileName: savedDocument?.fileName || uploadFile?.name || archiveDoc.fileName || "",
+          fileUrl: savedDocument?.fileUrl || archiveDoc.fileUrl || "",
+          folderName: archiveFolder?.name || archiveDoc.folderName || "",
+          updated: today
+        });
+      }
+      persistArchiveFolders();
+      formEl.dataset.storageFolderId = "";
+      formEl.dataset.storageIndex = "";
+      state.documentArchiveScope = "storage";
+      if (archiveFolder?.id) state.documentStorageArchiveFolderId = archiveFolder.id;
+      $("#document-dialog").close();
+      renderAll();
+      switchView(state.documentDialogReturnView || "documents");
+      showToast("Документ оновлено.");
       return;
     }
 
