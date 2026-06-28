@@ -1621,12 +1621,18 @@ export function createDialogOpeners({
       const targetMode = form.elements.documentTargetMode?.value || "case";
       if (targetModeCard) targetModeCard.hidden = !editContext && state.documentDialogReturnView !== "documents";
       if (destinationCard) destinationCard.hidden = !shouldShowDestination || targetMode !== "case";
-      form.querySelectorAll("[data-document-case-destination]").forEach((field) => {
-        field.hidden = targetMode === "archive";
-      });
-      form.querySelectorAll("[data-document-archive-destination]").forEach((field) => {
-        field.hidden = targetMode !== "archive";
-      });
+      // Disable (not just hide) the inactive mode's controls so a hidden required field —
+      // e.g. "new folder name" when a case has no folders — can't block form validation.
+      const toggleFields = (selector, hidden) => {
+        form.querySelectorAll(selector).forEach((field) => {
+          field.hidden = hidden;
+          field.querySelectorAll("input, select, textarea").forEach((control) => {
+            control.disabled = hidden;
+          });
+        });
+      };
+      toggleFields("[data-document-case-destination]", targetMode === "archive");
+      toggleFields("[data-document-archive-destination]", targetMode !== "archive");
     };
     form.querySelectorAll('input[name="documentTargetMode"]').forEach((input) => {
       input.onchange = syncDocumentTargetMode;
