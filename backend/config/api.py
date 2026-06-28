@@ -721,9 +721,7 @@ def upsert_task(data, task=None):
 def upsert_document(data, document=None):
     document = document or CaseDocument()
     case = Case.objects.filter(number=data.get("caseId") or (document.case.number if document.case_id else "")).first()
-    if not case:
-        raise Http404("Case not found")
-
+    # case may be None — a standalone Документообіг document that can be linked to a case later.
     document.case = case
     document.title = data.get("name", document.title or "")
     document.document_type = data.get("type", document.document_type or "Інше")
@@ -732,12 +730,13 @@ def upsert_document(data, document=None):
     document.external_url = data.get("url", document.external_url or "")
     document.submitted_at = parse_date(data.get("submitted")) or document.submitted_at
     document.response_due_at = parse_date(data.get("responseDue")) or document.response_due_at
-    document.responsible_name = data.get("responsible", document.responsible_name or user_name(case.responsible))
+    document.responsible_name = data.get("responsible", document.responsible_name or (user_name(case.responsible) if case else ""))
     document.comment = data.get("comment", document.comment or "")
     document.content = data.get("content", document.content or "")
     document.history = data.get("history", document.history or [])
     document.save()
-    ensure_case_member(case, user_for_name(document.responsible_name))
+    if case:
+        ensure_case_member(case, user_for_name(document.responsible_name))
     return document
 
 
@@ -2531,7 +2530,10 @@ def accessible_document_queryset(request):
     user = current_demo_user(request)
     if user_can_see_all_cases(user):
         return CaseDocument.objects.all()
-    return CaseDocument.objects.filter(case__in=accessible_case_queryset(request)).distinct()
+    return CaseDocument.objects.filter(
+        Q(case__in=accessible_case_queryset(request))
+        | Q(case__isnull=True, responsible_name=user_name(user))
+    ).distinct()
 
 
 def accessible_event_queryset(request):
@@ -2549,6 +2551,17 @@ def require_case_access(request, case):
     if accessible_case_queryset(request).filter(pk=case.pk).exists():
         return None
     return json_response({"error": "Forbidden", "message": "Немає доступу до цієї справи."}, status=403)
+
+
+def require_document_access(request, document):
+    """Access to a document: case docs go by case access; standalone (no-case) docs are
+    visible to the admin and to the user named as responsible."""
+    if document.case_id:
+        return require_case_access(request, document.case)
+    user = current_demo_user(request)
+    if user_can_see_all_cases(user) or (document.responsible_name and document.responsible_name == user_name(user)):
+        return None
+    return json_response({"error": "Forbidden", "message": "Немає доступу до цього документа."}, status=403)
 
 
 def case_from_payload(data, fallback=None):
@@ -3015,9 +3028,11 @@ def documents_api(request):
         if forbidden:
             return forbidden
         data = parse_body(request)
-        forbidden = require_case_access(request, case_from_payload(data))
-        if forbidden:
-            return forbidden
+        case = case_from_payload(data)
+        if case:
+            forbidden = require_case_access(request, case)
+            if forbidden:
+                return forbidden
         item = upsert_document(data)
         log_crm_action(request, AuditLog.Action.CREATE, "document", item.id, item.title, f"Створено документ {item.title}.")
         return json_response(serialize_document(item, request))
@@ -3033,7 +3048,7 @@ def document_detail_api(request, document_id):
         item = CaseDocument.objects.select_related("case").get(pk=document_id)
     except CaseDocument.DoesNotExist as exc:
         raise Http404("Document not found") from exc
-    forbidden = require_case_access(request, item.case)
+    forbidden = require_document_access(request, item)
     if forbidden:
         return forbidden
     if request.method == "GET":
@@ -3053,9 +3068,11 @@ def document_detail_api(request, document_id):
     if forbidden:
         return forbidden
     data = parse_body(request)
-    forbidden = require_case_access(request, case_from_payload(data, fallback=item.case))
-    if forbidden:
-        return forbidden
+    target_case = case_from_payload(data, fallback=item.case)
+    if target_case:
+        forbidden = require_case_access(request, target_case)
+        if forbidden:
+            return forbidden
     updated = upsert_document(data, item)
     log_crm_action(request, AuditLog.Action.UPDATE, "document", updated.id, updated.title, f"Оновлено документ {updated.title}.")
     return json_response(serialize_document(updated, request))
@@ -3071,7 +3088,7 @@ def document_file_api(request, document_id):
         raise Http404("Document not found") from exc
     if request.method == "GET":
         if not has_valid_document_file_token(request, item):
-            forbidden = require_case_access(request, item.case)
+            forbidden = require_document_access(request, item)
             if forbidden:
                 return forbidden
         if not item.file:
@@ -3080,7 +3097,7 @@ def document_file_api(request, document_id):
     forbidden = require_permission(request, "manage_documents", "Документами можуть керувати адміністратор, адвокат або помічник.")
     if forbidden:
         return forbidden
-    forbidden = require_case_access(request, item.case)
+    forbidden = require_document_access(request, item)
     if forbidden:
         return forbidden
     uploaded = request.FILES.get("file")
@@ -3105,7 +3122,7 @@ def document_onlyoffice_config_api(request, document_id):
         item = CaseDocument.objects.select_related("case").get(pk=document_id)
     except CaseDocument.DoesNotExist as exc:
         raise Http404("Document not found") from exc
-    forbidden = require_case_access(request, item.case)
+    forbidden = require_document_access(request, item)
     if forbidden:
         return forbidden
     if not item.file:

@@ -1174,7 +1174,7 @@ export function renderDocumentsScreen(ctx) {
         <div class="documents-toolbar-actions">
           <button class="secondary" type="button" data-documents-ai ${selected ? "" : "disabled"}>${icon("search")} AI аналіз</button>
           <button class="secondary" type="button" data-documents-add-folder ${selectedCase ? "" : "disabled"}>${icon("file")} Створити папку</button>
-          <button class="primary" type="button" data-documents-add ${hasCases ? "" : "disabled"}>${icon("file")} Додати документ</button>
+          <button class="primary" type="button" data-documents-add>${icon("file")} Додати документ</button>
         </div>
       </div>
 

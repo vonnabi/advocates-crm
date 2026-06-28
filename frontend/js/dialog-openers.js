@@ -1440,7 +1440,8 @@ export function createDialogOpeners({
     form.elements.caseId.value = item?.id || "";
     form.elements.originalCaseId.value = item?.id || "";
     if (form.elements.documentTargetMode) {
-      form.elements.documentTargetMode.value = "case";
+      // With no cases yet, default to the standalone Документообіг folder ("archive") mode.
+      form.elements.documentTargetMode.value = state.cases.length ? "case" : "archive";
     }
     const targetModeCard = form.querySelector("[data-document-target-mode]");
     const destinationCard = form.querySelector("[data-document-destination]");

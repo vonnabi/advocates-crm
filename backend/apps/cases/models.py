@@ -69,7 +69,8 @@ class CaseMember(models.Model):
 
 
 class CaseDocument(models.Model):
-    case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name="documents")
+    # Optional: documents can live in Документообіг folders without a case and be linked later.
+    case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name="documents", null=True, blank=True)
     title = models.CharField(max_length=255)
     document_type = models.CharField(max_length=128, blank=True)
     status = models.CharField(max_length=128, blank=True)

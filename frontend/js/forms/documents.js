@@ -544,10 +544,10 @@ export function setupDocumentForm({
       };
       const uploadFile = fileName ? file : documentSourceMode === "onlyoffice" ? makeDocumentFile(documentCopyPayload, onlyOfficeCreateFormat) : null;
       let savedDocument = null;
-      if (documentSourceMode === "onlyoffice" && shouldUseApi(state) && item) {
+      if (shouldUseApi(state)) {
         try {
           savedDocument = normalizeDocument(await saveDocumentToApi({
-            caseId: item.id,
+            caseId: item?.id || "",
             documentId: localDocumentId,
             name,
             type: form.get("type"),
@@ -558,15 +558,15 @@ export function setupDocumentForm({
             comment: form.get("comment"),
             content,
             url,
-            responsible: item.responsible,
-            history: [{ date: today, text: `Створено архівний документ: ${name}.` }]
+            responsible: item?.responsible || "",
+            history: [{ date: today, text: `Створено документ: ${name}.` }]
           }));
           savedDocument = await uploadSavedFileIfNeeded(savedDocument, uploadFile);
         } catch (_error) {
-          showToast("Не вдалося створити файл для ONLYOFFICE у базі.", "danger");
+          showToast("Не вдалося зберегти документ у базі.", "danger");
           return;
         }
-        item.documents.unshift(savedDocument);
+        if (item) item.documents.unshift(savedDocument);
       }
       const createdDocument = {
         ...savedDocument,
