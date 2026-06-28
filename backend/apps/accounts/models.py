@@ -12,6 +12,7 @@ class UserProfile(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="crm_profile")
     role = models.CharField(max_length=32, choices=Role.choices, default=Role.ASSISTANT)
     access_scope = models.CharField(max_length=255, blank=True)
+    phone = models.CharField(max_length=64, blank=True)
     module_permissions = models.JSONField(default=list, blank=True)
     # Holds initials, a photo URL, or an uploaded (resized) data: URL — hence TextField.
     photo_label = models.TextField(blank=True)

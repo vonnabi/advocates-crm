@@ -494,6 +494,7 @@ def serialize_system_user(user):
         "permissionKeys": permission_keys,
         "permissions": permission_flags(permission_keys),
         "photo": profile.photo_label or initials_from_name(name),
+        "phone": profile.phone,
         "active": user.is_active and profile.is_active_member,
         "accessStatus": access_status_for_profile(profile),
         "passwordTemporary": profile.password_temporary,
@@ -2733,6 +2734,41 @@ def change_password_api(request):
         user_name(request.user),
         f"{user_name(request.user)} змінив пароль доступу.",
         actor=request.user,
+    )
+    return json_response(session_payload(request))
+
+
+@require_http_methods(["PUT", "PATCH", "OPTIONS"])
+def profile_api(request):
+    """Self-service: any logged-in user updates their OWN name, email, phone and photo.
+
+    Deliberately does NOT touch role/access/permissions — those stay admin-only.
+    """
+    if request.method == "OPTIONS":
+        return empty_response()
+    user = current_demo_user(request)
+    if user is None:
+        return json_response({"error": "Unauthorized", "message": "Потрібно увійти в систему."}, status=401)
+    data = parse_body(request)
+    profile = profile_for_user(user)
+    name = str(data.get("name") or user_name(user) or "").strip()
+    email = str(data.get("email") or user.email or "").strip().lower()
+    user.first_name = name
+    user.email = email
+    user.save(update_fields=["first_name", "email"])
+    if "photo" in data:
+        profile.photo_label = str(data.get("photo") or "").strip() or initials_from_name(name)
+    if "phone" in data:
+        profile.phone = str(data.get("phone") or "").strip()
+    profile.save()
+    log_crm_action(
+        request,
+        AuditLog.Action.UPDATE,
+        "user",
+        user.id,
+        user_name(user),
+        f"{user_name(user)} оновив свій профіль.",
+        actor=user,
     )
     return json_response(session_payload(request))
 

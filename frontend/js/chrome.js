@@ -1,4 +1,6 @@
-import { changePasswordInApi, clearDemoDataInApi, getDemoDataStatusFromApi, importCrmSnapshotToApi, loginToApi, logoutFromApi, restoreDemoDataInApi, shouldUseApi } from "./api.js?v=demo-empty-state-1";
+import { changePasswordInApi, clearDemoDataInApi, getDemoDataStatusFromApi, importCrmSnapshotToApi, loginToApi, logoutFromApi, restoreDemoDataInApi, shouldUseApi, updateProfileInApi } from "./api.js?v=demo-empty-state-1";
+import { icon } from "./ui.js?v=document-archive-books-1";
+import { readAvatarThumbnail } from "./screens/settings.js?v=readiness-toggle-1";
 
 const SNAPSHOT_STORAGE_KEY = "advocates-crm-snapshot";
 let topbarClockTimer = null;
@@ -537,6 +539,141 @@ function openPasswordChangeOverlay(ctx) {
   overlay.querySelector("input[name='password']")?.focus();
 }
 
+function renderMyProfilePreview(node, photo, name) {
+  if (!node) return;
+  node.textContent = "";
+  const value = String(photo || "");
+  if (/^(https?:\/\/|\/|assets\/|data:image\/)/i.test(value)) {
+    const img = document.createElement("img");
+    img.src = value;
+    img.alt = name || "";
+    node.appendChild(img);
+  } else {
+    const span = document.createElement("span");
+    const initials = value || (name || "").trim().split(/\s+/).map((part) => part[0] || "").join("").slice(0, 2).toUpperCase() || "CRM";
+    span.textContent = initials.slice(0, 4);
+    node.appendChild(span);
+  }
+}
+
+// "Мій профіль": every logged-in user edits their OWN photo/name/email/phone (+ password).
+// Laid out like the bureau profile card — avatar with upload on the left, fields on the right.
+function openMyProfileDialog(ctx) {
+  const { $, state, showToast, saveNavigationState, onSessionChange } = ctx;
+  if (!shouldUseApi(state)) {
+    showToast?.("Профіль доступний, коли CRM відкрита через сервер.", "warning");
+    return;
+  }
+  const user = state.currentUser || state.settingsUsers?.[0] || {};
+  document.querySelector("#my-profile-dialog")?.remove();
+  const dialog = document.createElement("dialog");
+  dialog.id = "my-profile-dialog";
+  dialog.className = "settings-invite-dialog my-profile-dialog";
+  dialog.innerHTML = `
+    <form method="dialog" class="modal-form crm-modal-form settings-user-form" id="my-profile-form">
+      <div class="modal-head crm-modal-head">
+        <div class="crm-modal-title">
+          <span class="crm-modal-title-icon">${icon("userPlus")}</span>
+          <div>
+            <h2>Мій профіль</h2>
+            <p class="muted">Змініть своє фото, ім'я та контактні дані.</p>
+          </div>
+        </div>
+        <button class="crm-modal-close" type="button" data-my-profile-close aria-label="Закрити" title="Закрити">${icon("x")}</button>
+      </div>
+      <div class="settings-profile-layout">
+        <div class="settings-bureau-logo-card">
+          <div class="settings-bureau-logo-preview" data-my-profile-preview></div>
+          <div class="settings-logo-source">
+            <input type="hidden" name="photo" />
+            <div class="settings-logo-actions">
+              <label class="secondary settings-logo-upload" aria-label="Завантажити фото" title="Завантажити фото з комп'ютера">${icon("upload")}
+                <input type="file" accept="image/png,image/jpeg,image/webp" data-my-profile-upload hidden />
+              </label>
+              <input data-my-profile-manual placeholder="URL або ініціали" />
+            </div>
+          </div>
+        </div>
+        <div class="settings-profile-fields">
+          <div class="settings-form-grid settings-bureau-main-grid">
+            <label>Ім'я та прізвище<input name="name" placeholder="Прізвище Ім'я По батькові" /></label>
+            <label>Email<input name="email" type="email" placeholder="user@example.com" /></label>
+            <label>Телефон<input name="phone" placeholder="+380..." /></label>
+            <label>Новий пароль<input name="newPassword" type="password" autocomplete="new-password" placeholder="Залиште порожнім, щоб не міняти" /></label>
+          </div>
+        </div>
+      </div>
+      <div class="crm-modal-actions my-profile-actions">
+        <button type="button" class="secondary" data-my-profile-close>Скасувати</button>
+        <button type="submit" class="primary">${icon("check")} Зберегти профіль</button>
+      </div>
+    </form>
+  `;
+  document.body.append(dialog);
+  const form = dialog.querySelector("#my-profile-form");
+  const preview = dialog.querySelector("[data-my-profile-preview]");
+  const manual = dialog.querySelector("[data-my-profile-manual]");
+  const photo = String(user.photo || "");
+  const photoIsImage = /^(https?:\/\/|\/|assets\/|data:image\/)/i.test(photo);
+  form.elements.name.value = user.name || "";
+  form.elements.email.value = user.email || "";
+  form.elements.phone.value = user.phone || "";
+  form.elements.photo.value = photo;
+  manual.value = photoIsImage ? "" : photo;
+  renderMyProfilePreview(preview, photo, user.name);
+
+  dialog.querySelector("[data-my-profile-upload]")?.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { showToast?.("Оберіть файл зображення.", "danger"); event.target.value = ""; return; }
+    if (file.size > 8 * 1024 * 1024) { showToast?.("Фото завелике. Оберіть файл до 8 MB.", "danger"); event.target.value = ""; return; }
+    try {
+      const dataUrl = await readAvatarThumbnail(file);
+      form.elements.photo.value = dataUrl;
+      manual.value = "";
+      renderMyProfilePreview(preview, dataUrl, form.elements.name.value);
+    } catch (_error) {
+      showToast?.("Не вдалося обробити фото.", "danger");
+    } finally {
+      event.target.value = "";
+    }
+  });
+  manual.addEventListener("input", (event) => {
+    const value = event.target.value.trim();
+    form.elements.photo.value = value;
+    renderMyProfilePreview(preview, value, form.elements.name.value);
+  });
+  dialog.querySelectorAll("[data-my-profile-close]").forEach((button) => button.addEventListener("click", () => dialog.close()));
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const newPassword = (form.elements.newPassword.value || "").trim();
+    if (newPassword && newPassword.length < 8) {
+      showToast?.("Пароль має містити щонайменше 8 символів.", "danger");
+      return;
+    }
+    try {
+      let session = await updateProfileInApi({
+        name: form.elements.name.value.trim(),
+        email: form.elements.email.value.trim(),
+        phone: form.elements.phone.value.trim(),
+        photo: form.elements.photo.value.trim()
+      });
+      if (newPassword) session = await changePasswordInApi(newPassword);
+      applySessionState(state, session);
+      const idx = state.settingsUsers?.findIndex((item) => item.id === session.user?.id);
+      if (idx >= 0) state.settingsUsers[idx] = session.user;
+      syncTopbarUser($, state);
+      saveNavigationState?.();
+      onSessionChange?.();
+      dialog.close();
+      showToast?.("Профіль оновлено.");
+    } catch (_error) {
+      showToast?.("Не вдалося зберегти профіль. Спробуйте ще раз.", "danger");
+    }
+  });
+  dialog.showModal();
+}
+
 function ensureLogoutOverlay(ctx) {
   let overlay = document.querySelector("#logout-overlay");
   if (overlay) return overlay;
@@ -688,8 +825,7 @@ export function setupTopbarControls({ $, state, switchView, saveNavigationState,
       const action = button.dataset.profileAction;
       closeTopbarPanels($);
       if (action === "settings") {
-        switchView("settings");
-        focusSettingsSection("profile");
+        openMyProfileDialog({ $, state, showToast, saveNavigationState, onSessionChange });
         return;
       }
       if (action === "team") {

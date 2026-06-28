@@ -42658,3 +42658,31 @@ body #cases .case-list-table .case-finance-stack span {
   object-fit: cover;
   border-radius: 50%;
 }
+
+/* "Мій профіль" dialog — bureau-profile-style card (avatar + upload on the left, fields right). */
+#my-profile-dialog {
+  width: min(720px, calc(100vw - 32px));
+}
+#my-profile-dialog .crm-modal-form {
+  width: 100%;
+  margin: 0;
+  padding: 18px 22px 22px;
+}
+#my-profile-dialog .settings-profile-layout {
+  margin-top: 14px;
+}
+#my-profile-dialog .settings-bureau-main-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+#my-profile-dialog .settings-bureau-logo-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 10px;
+}
+.my-profile-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}

@@ -469,7 +469,7 @@ function readImageAsDataUrl(file) {
 
 // Read an uploaded avatar and shrink it to a small square thumbnail (~200px JPEG) so the
 // stored data: URL stays a few KB instead of bloating the database and the bootstrap API.
-async function readAvatarThumbnail(file, maxSize = 200) {
+export async function readAvatarThumbnail(file, maxSize = 200) {
   const dataUrl = await readImageAsDataUrl(file);
   return new Promise((resolve, reject) => {
     const img = new Image();

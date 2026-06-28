@@ -120,6 +120,13 @@ export function changePasswordInApi(password) {
   });
 }
 
+export function updateProfileInApi(profile) {
+  return apiRequest("/api/profile/", {
+    method: "PUT",
+    body: profile
+  });
+}
+
 export function getSessionFromApi() {
   return apiRequest("/api/session/");
 }
