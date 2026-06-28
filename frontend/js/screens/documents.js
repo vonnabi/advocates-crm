@@ -325,6 +325,8 @@ function openCaseFromDocuments(ctx, caseId) {
 }
 
 function payloadFromKey(key) {
+  // Standalone documents use a "storage:folderId:index" key and have no case.
+  if (typeof key === "string" && key.startsWith("storage:")) return { caseId: "", encoded: key };
   const [caseId, encoded] = key.split("|");
   return { caseId, encoded };
 }
@@ -2178,6 +2180,10 @@ export function renderDocumentsScreen(ctx) {
         folderIndex: payload.folderIndex,
         folderPath: payload.folderPath,
         fileIndex: payload.fileIndex,
+        doc: payload.doc,
+        file: payload.file,
+        storageFolderId: payload.storageFolderId,
+        storageIndex: payload.storageIndex,
         documentId: payload.file?.documentId || payload.file?.id || payload.doc?.documentId || payload.doc?.id || "",
         documentName: payload.file?.name || payload.doc?.name || "",
         type: "folderFile",

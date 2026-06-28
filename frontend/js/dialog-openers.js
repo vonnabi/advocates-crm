@@ -500,7 +500,21 @@ export function createDialogOpeners({
 
   function getDocumentPayload(caseId, encoded) {
     const item = caseById(caseId);
-    const [source, first, second] = encoded.split(":");
+    const [source, first, second] = (encoded || "").split(":");
+    if (source === "storage") {
+      // Standalone document living in a Документообіг archive folder (no case).
+      const findFolder = (folders, id) => {
+        for (const folder of folders || []) {
+          if (folder.id === id) return folder;
+          const child = findFolder(folder.children, id);
+          if (child) return child;
+        }
+        return null;
+      };
+      const folder = findFolder(state.documentArchiveFolders, first);
+      const doc = folder?.documents?.[Number(second)] || null;
+      return { item: null, source: "storage", storageFolderId: first, storageIndex: Number(second), folder, doc, file: doc };
+    }
     if (source === "procedural") {
       const docIndex = Number(first);
       return { item, source, docIndex, doc: item.documents[docIndex], linked: findFolderFileByDocument(item, item.documents[docIndex]) };
@@ -2179,10 +2193,12 @@ export function createDialogOpeners({
       $("#delete-document-dialog").showModal();
       return;
     }
-    const folder = payload.folderPath?.length ? folderByPath(caseFolders(item), payload.folderPath) : caseFolders(item)[payload.folderIndex];
-    const file = payload.type === "procedural"
-      ? item.documents[payload.docIndex]
-      : folder?.files[payload.fileIndex] || payload.file || payload.doc;
+    const folder = item
+      ? (payload.folderPath?.length ? folderByPath(caseFolders(item), payload.folderPath) : caseFolders(item)[payload.folderIndex])
+      : null;
+    const file = (payload.type === "procedural" ? item?.documents?.[payload.docIndex] : folder?.files?.[payload.fileIndex])
+      || payload.file || payload.doc
+      || (payload.documentId ? { documentId: payload.documentId, name: payload.documentName } : null);
     if (!file) return;
     payload.documentId = payload.documentId || file.documentId || file.id || "";
     payload.documentName = payload.documentName || file.name || file.title || "";

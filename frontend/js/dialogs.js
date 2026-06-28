@@ -1,4 +1,4 @@
-import { deleteCaseFromApi, deleteClientFromApi, deleteDocumentFromApi, deleteEventFromApi, deleteTaskFromApi, saveCaseToApi, shouldUseApi } from "./api.js";
+import { deleteCaseFromApi, deleteClientFromApi, deleteDocumentFromApi, deleteEventFromApi, deleteTaskFromApi, saveArchiveFoldersToApi, saveCaseToApi, shouldUseApi } from "./api.js";
 import { normalizeCase } from "./state.js";
 
 const SNAPSHOT_STORAGE_KEY = "advocates-crm-snapshot";
@@ -24,6 +24,15 @@ const DIALOG_CLOSE_BUTTONS = [
 function closeDeleteDocumentConfirm({ state, $ }) {
   state.pendingDocumentDelete = null;
   $("#delete-document-dialog").close();
+}
+
+function findArchiveFolderById(folders = [], id) {
+  for (const folder of folders || []) {
+    if (folder.id === id) return folder;
+    const nested = findArchiveFolderById(folder.children || [], id);
+    if (nested) return nested;
+  }
+  return null;
 }
 
 function folderByPath(folders = [], path = []) {
@@ -120,6 +129,57 @@ async function confirmDelete(ctx) {
   const pending = state.pendingDocumentDelete;
   if (!pending) {
     showToast("Немає вибраного елемента для видалення.", "danger");
+    return;
+  }
+  // Standalone (Документообіг) document stored in the archive tree, with no case context.
+  if (pending.storageFolderId !== undefined && pending.storageFolderId !== null && pending.storageFolderId !== "") {
+    const apiIdOf = (doc) => {
+      const number = Number(doc?.id || doc?.documentId);
+      return Number.isInteger(number) && number > 0 ? number : "";
+    };
+    const apiId = apiIdOf(pending.doc) || apiIdOf(pending.file) || apiIdOf({ documentId: pending.documentId });
+    if (shouldUseApi(state) && apiId) {
+      try {
+        await deleteDocumentFromApi(apiId);
+      } catch (_error) {
+        console.warn("Standalone document API delete failed, removing local copy too.", _error);
+      }
+    }
+    const folder = findArchiveFolderById(state.documentArchiveFolders || [], pending.storageFolderId);
+    let removed;
+    if (folder && Array.isArray(folder.documents)) {
+      const target = pending.doc || pending.file;
+      let removeIndex = Number.isInteger(pending.storageIndex) ? pending.storageIndex : -1;
+      if (target) {
+        const byRef = folder.documents.indexOf(target);
+        if (byRef >= 0) {
+          removeIndex = byRef;
+        } else {
+          const tid = String(apiId || target.documentId || target.id || "");
+          const tname = String(target.name || target.title || "").trim().toLowerCase();
+          const byMatch = folder.documents.findIndex((doc) =>
+            (tid && String(doc.id || doc.documentId || "") === tid)
+            || (tname && String(doc.name || doc.title || "").trim().toLowerCase() === tname));
+          if (byMatch >= 0) removeIndex = byMatch;
+        }
+      }
+      if (removeIndex >= 0 && removeIndex < folder.documents.length) {
+        removed = folder.documents.splice(removeIndex, 1)[0];
+      }
+    }
+    if (shouldUseApi(state)) {
+      try {
+        await saveArchiveFoldersToApi(state.documentArchiveFolders || []);
+      } catch (_error) {
+        console.warn("Archive folders sync after delete failed.", _error);
+      }
+    }
+    persistSnapshotState(state);
+    state.pendingDocumentDelete = null;
+    $("#delete-document-dialog").close();
+    renderAll();
+    switchView(pending.returnView || "documents");
+    showToast(removed ? "Документ видалено." : "Документ видалено з бази.", "success");
     return;
   }
   const needsCaseContext = !["client", "clients", "calendarEvent"].includes(pending.type);
