@@ -373,12 +373,19 @@ function restrictedViewMessage(view) {
 }
 
 function syncRoleNavigation() {
+  const hiddenViews = [];
   Object.entries(viewPermissionMap).forEach(([view, permission]) => {
     const visible = can(permission);
     document.querySelectorAll(`[data-view="${view}"], [data-view-link="${view}"]`).forEach((node) => {
       node.hidden = !visible;
     });
+    if (!visible) hiddenViews.push(view);
   });
+  // Cache the role's hidden menu items so the inline script in index.html can hide them
+  // instantly on reload, instead of flashing the full menu until permissions load.
+  try {
+    localStorage.setItem("crmHiddenViews", JSON.stringify(hiddenViews));
+  } catch (_error) { /* ignore */ }
 }
 
 function applyPermissionControls(root = document) {

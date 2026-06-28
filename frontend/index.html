@@ -61,6 +61,21 @@
         <button class="nav-item" data-view="osint"><span class="nav-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path><path d="M11 8v6M8 11h6"></path></svg></span>OSINT</button>
         <button class="nav-item" data-view="settings"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"></path><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 0 1 4.2 17l.1-.1A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.6-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.3 7A2 2 0 0 1 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 0 1 19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1a2 2 0 0 1 0 4H21a1.7 1.7 0 0 0-1.6 1Z"></path></svg></span>Налаштування</button>
       </nav>
+      <script>
+        // Hide the menu items this role cannot access right away (from the last-known
+        // permissions), so reloading does not flash the full menu before JS filters it.
+        (function () {
+          try {
+            var hidden = JSON.parse(localStorage.getItem("crmHiddenViews") || "[]");
+            if (!Array.isArray(hidden)) return;
+            hidden.forEach(function (view) {
+              document.querySelectorAll('[data-view="' + view + '"], [data-view-link="' + view + '"]').forEach(function (node) {
+                node.hidden = true;
+              });
+            });
+          } catch (e) {}
+        })();
+      </script>
 
       <div class="collapse-menu">← Згорнути меню</div>
     </aside>
