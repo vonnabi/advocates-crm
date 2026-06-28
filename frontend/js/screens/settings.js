@@ -41,8 +41,8 @@ const integrationConfigFields = {
     ["apiKey", "API key", "sms-api-key", true]
   ],
   Email: [
-    ["senderEmail", "Email відправника", "admin@advocates.ua", true],
-    ["senderName", "Ім'я відправника", "Advocates Bureau", false],
+    ["senderEmail", "Email відправника", "noreply@example.com", true],
+    ["senderName", "Ім'я відправника", "Назва бюро", false],
     ["smtpHost", "SMTP host", "smtp.example.com", true],
     ["smtpPort", "SMTP port", "587", true]
   ],
@@ -678,7 +678,7 @@ function buildAccessMessage(user, password, channel = "email") {
   return [
     greeting,
     "",
-    "Для вас створено доступ до Advocates Bureau CRM.",
+    "Для вас створено доступ до CRM.",
     `Посилання: ${crmAccessUrl()}`,
     `Логін: ${user.email || "email не вказано"}`,
     `Тимчасовий пароль: ${password}`,

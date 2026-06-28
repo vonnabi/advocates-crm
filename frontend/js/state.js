@@ -383,6 +383,13 @@ async function loadDemoData() {
   const snapshot = readSnapshotOverride(mailing, settings);
   if (snapshot) return snapshot;
   const expectedApi = Boolean(apiBaseUrl());
+  if (expectedApi) {
+    // The bundled settings.json is only a static-dev fallback. In API mode it must never
+    // leak its demo bureau ("Advocates Bureau") or demo integrations into the live app
+    // while the real bootstrap is loading, or if it is unavailable — start empty instead.
+    settings.bureau = {};
+    settings.integrations = {};
+  }
   let bootstrapFailed = false;
   try {
     const apiData = normalizeBackendPayload(await readApiBootstrap());
