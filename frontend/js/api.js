@@ -290,6 +290,11 @@ export function setAiAssistantActiveInApi(caseNumber, active) {
   });
 }
 
+// AI помічники — token usage / estimated spend & remaining budget.
+export function getAiUsageFromApi() {
+  return apiRequest("/api/ai/usage/");
+}
+
 // AI помічники — файли-знання (Этап 2): upload/list/delete knowledge documents per area.
 export function getAiKnowledgeFromApi(areaKey) {
   return apiRequest(`/api/ai/knowledge/?area=${encodeURIComponent(areaKey)}`);

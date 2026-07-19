@@ -60,7 +60,8 @@ const integrationConfigFields = {
   ],
   AI: [
     ["apiKey", "API-ключ Anthropic", "sk-ant-... (порожньо — використати ключ сервера)", false],
-    ["model", "Модель", "claude-opus-4-8", false]
+    ["model", "Модель", "claude-opus-4-8", false],
+    ["budgetUsd", "Бюджет кредитів, $ (для оцінки залишку)", "5", false]
   ]
 };
 

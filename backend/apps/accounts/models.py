@@ -86,6 +86,7 @@ class CRMSettings(models.Model):
         "AI": {
             "apiKey": "",
             "model": "claude-opus-4-8",
+            "budgetUsd": "",
         },
     }
 
@@ -126,6 +127,24 @@ class AiSkill(models.Model):
 
     def __str__(self):
         return f"AiSkill<{self.area_key}>"
+
+
+class AiUsage(models.Model):
+    """Cumulative Anthropic token usage — lets the UI show spend and estimate the
+    remaining budget/requests. Anthropic does not expose the live account balance
+    via the API, so this is our own running total from each response's usage.
+    """
+
+    key = models.CharField(max_length=32, unique=True, default="global")
+    request_count = models.PositiveIntegerField(default=0)
+    input_tokens = models.PositiveBigIntegerField(default=0)
+    output_tokens = models.PositiveBigIntegerField(default=0)
+    cache_read_tokens = models.PositiveBigIntegerField(default=0)
+    cache_write_tokens = models.PositiveBigIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"AiUsage<{self.request_count} requests>"
 
 
 class AiCaseAssistant(models.Model):

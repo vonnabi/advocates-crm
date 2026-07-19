@@ -9,6 +9,7 @@ import {
   getAiAssistantsFromApi,
   getAiKnowledgeFromApi,
   getAiSkillsFromApi,
+  getAiUsageFromApi,
   saveAiQuestionsToApi,
   saveAiSkillToApi,
   setAiAssistantActiveInApi,
@@ -198,6 +199,31 @@ function escapeHtml(value = "") {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function formatTokens(value) {
+  const n = Number(value || 0);
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)} млн`;
+  if (n >= 1000) return `${Math.round(n / 1000)} тис.`;
+  return String(n);
+}
+
+function usagePanelHtml(usage) {
+  if (!usage) return "";
+  const cost = Number(usage.estimatedCostUsd || 0).toFixed(2);
+  const budgetLine = usage.budgetUsd != null
+    ? `залишок ≈ <strong>$${Number(usage.remainingUsd || 0).toFixed(2)}</strong> з $${Number(usage.budgetUsd).toFixed(2)}`
+    : `бюджет не задано <span class="ai-usage-hint">(вкажіть у Налаштування → AI)</span>`;
+  const requestsLeft = usage.estimatedRequestsLeft != null ? ` · ще ≈ <strong>${usage.estimatedRequestsLeft}</strong> запитів` : "";
+  return `
+    <section class="panel ai-usage-panel">
+      <div class="ai-usage-line">
+        <span class="ai-usage-badge">${escapeHtml("💳")}</span>
+        <span>Витрачено ≈ <strong>$${cost}</strong> · ${budgetLine}${requestsLeft}</span>
+      </div>
+      <div class="ai-usage-tokens muted">${usage.requestCount || 0} запитів · токени: ${formatTokens(usage.inputTokens)} вх / ${formatTokens(usage.outputTokens)} вих · орієнтовно, точний баланс — у console.anthropic.com</div>
+    </section>
+  `;
 }
 
 function lawForCase(caseItem = {}) {
@@ -879,10 +905,19 @@ export function renderAIScreen(ctx) {
   const areaRequests = (key) => Number(skillStats[key]?.requestCount || 0);
   const areaDocs = (key) => Number(skillStats[key]?.docCount || 0);
 
+  // Lazy-load token usage / spend estimate once (refetched after each reply).
+  if (shouldUseApi(state) && !state.aiUsageLoaded) {
+    state.aiUsageLoaded = true;
+    getAiUsageFromApi()
+      .then((data) => { state.aiUsage = data || null; renderAIScreen(ctx); })
+      .catch(() => {});
+  }
+
   $("#ai").innerHTML = `
     <div class="ai-screen ai-directory-screen">
       <div class="ai-layout">
         <div class="ai-main">
+          ${usagePanelHtml(state.aiUsage)}
           <section class="ai-section">
             <div class="section-head compact">
               <div>
@@ -1055,6 +1090,7 @@ export function renderAIScreen(ctx) {
     const pendingIndex = chat.messages.findIndex((message) => message.pending);
     if (pendingIndex >= 0) chat.messages[pendingIndex] = reply; else chat.messages.push(reply);
     state.aiSkillStatsLoaded = false;
+    state.aiUsageLoaded = false; // refresh the spend/tokens panel
     rerender();
   };
 

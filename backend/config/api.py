@@ -29,7 +29,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_http_methods
 
-from apps.accounts.models import AiCaseAssistant, AiKnowledgeDoc, AiSkill, CRMSettings, UserProfile
+from apps.accounts.models import AiCaseAssistant, AiKnowledgeDoc, AiSkill, AiUsage, CRMSettings, UserProfile
 from apps.audit.models import AuditLog
 from apps.calendar_app.models import CalendarEvent
 from apps.cases.demo_data import clear_demo_business_data, demo_data_counts
@@ -3094,6 +3094,58 @@ def ai_assistant_detail_api(request, case_number):
     return json_response({"disconnected": case_number})
 
 
+# Anthropic prices, USD per 1M tokens (input, output, cache-read, cache-write).
+AI_MODEL_PRICING = {
+    "claude-opus-4-8": (5.0, 25.0, 0.5, 6.25),
+    "claude-opus-4-7": (5.0, 25.0, 0.5, 6.25),
+    "claude-sonnet-5": (3.0, 15.0, 0.3, 3.75),
+    "claude-haiku-4-5": (1.0, 5.0, 0.1, 1.25),
+}
+
+
+@require_http_methods(["GET", "OPTIONS"])
+def ai_usage_api(request):
+    """Token usage + estimated spend/remaining for the AI помічники."""
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_ai", "Статистика AI доступна адміністратору та адвокату.")
+    if forbidden:
+        return forbidden
+    usage, _ = AiUsage.objects.get_or_create(key="global")
+    ai_config = (crm_settings_instance().integration_settings or {}).get("AI", {})
+    model = str(ai_config.get("model") or "claude-opus-4-8").strip()
+    price_in, price_out, price_cr, price_cw = AI_MODEL_PRICING.get(model, AI_MODEL_PRICING["claude-opus-4-8"])
+    cost = (
+        usage.input_tokens * price_in
+        + usage.output_tokens * price_out
+        + usage.cache_read_tokens * price_cr
+        + usage.cache_write_tokens * price_cw
+    ) / 1_000_000.0
+
+    try:
+        budget = float(str(ai_config.get("budgetUsd") or "").replace(",", ".") or 0)
+    except ValueError:
+        budget = 0.0
+    remaining = max(budget - cost, 0.0) if budget > 0 else None
+    # Average cost per request (fallback to a typical estimate before any requests).
+    avg_cost = (cost / usage.request_count) if usage.request_count else 0.06
+    requests_left = int(remaining / avg_cost) if (remaining is not None and avg_cost > 0) else None
+
+    return json_response({
+        "requestCount": usage.request_count,
+        "inputTokens": usage.input_tokens,
+        "outputTokens": usage.output_tokens,
+        "cacheReadTokens": usage.cache_read_tokens,
+        "cacheWriteTokens": usage.cache_write_tokens,
+        "model": model,
+        "estimatedCostUsd": round(cost, 4),
+        "budgetUsd": round(budget, 2) if budget > 0 else None,
+        "remainingUsd": round(remaining, 4) if remaining is not None else None,
+        "estimatedRequestsLeft": requests_left,
+        "avgCostUsd": round(avg_cost, 4),
+    })
+
+
 def build_ai_system_prompt(case, helper_label, skill_content=None, knowledge_docs=None):
     """Assemble the system prompt for the AI помічник from real case data.
 
@@ -3269,6 +3321,17 @@ def ai_chat_api(request):
         # Real per-area usage counter (replaces the old hardcoded demo numbers).
         skill_row, _ = AiSkill.objects.get_or_create(area_key=helper_key)
         AiSkill.objects.filter(pk=skill_row.pk).update(request_count=F("request_count") + 1)
+    # Accumulate real token usage for the spend/remaining estimate in the UI.
+    usage = getattr(response, "usage", None)
+    if usage is not None:
+        AiUsage.objects.get_or_create(key="global")
+        AiUsage.objects.filter(key="global").update(
+            request_count=F("request_count") + 1,
+            input_tokens=F("input_tokens") + (getattr(usage, "input_tokens", 0) or 0),
+            output_tokens=F("output_tokens") + (getattr(usage, "output_tokens", 0) or 0),
+            cache_read_tokens=F("cache_read_tokens") + (getattr(usage, "cache_read_input_tokens", 0) or 0),
+            cache_write_tokens=F("cache_write_tokens") + (getattr(usage, "cache_creation_input_tokens", 0) or 0),
+        )
     if case is not None:
         log_crm_action(request, AuditLog.Action.UPDATE, "case", case.number, case.title, f"AI-помічник відповів у справі №{case.number}.")
     return json_response({"reply": reply})
