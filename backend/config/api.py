@@ -3216,6 +3216,28 @@ def build_ai_system_prompt(case, helper_label, skill_content=None, knowledge_doc
     docs = list(case.documents.all()[:20])
     if docs:
         lines.append("Документи: " + "; ".join(f"{d.title} [{d.status}]" for d in docs))
+        # Full text of each document so the помічник reasons from actual content,
+        # not just titles. Capped to keep input cost/context under control.
+        doc_budget = 40000
+        used = 0
+        doc_chunks = []
+        for d in docs:
+            if used >= doc_budget:
+                doc_chunks.append("### …\n[Решту документів пропущено: перевищено ліміт обсягу.]")
+                break
+            text = case_document_text(d)
+            if not text:
+                continue
+            snippet = text[: doc_budget - used]
+            used += len(snippet)
+            cut = " …(текст обрізано)" if len(text) > len(snippet) else ""
+            doc_chunks.append(f"### {d.title} [{d.status}]\n{snippet}{cut}")
+        if doc_chunks:
+            lines.append(
+                "\n== Повний зміст документів справи ==\n"
+                "Аналізуй справу за фактичним змістом цих документів (а не лише за назвами):\n\n"
+                + "\n\n".join(doc_chunks)
+            )
     history = [h for h in (case.history or []) if isinstance(h, dict)][:12]
     if history:
         lines.append("Історія: " + "; ".join(
@@ -3407,14 +3429,13 @@ def ai_skills_api(request):
     return json_response({"results": items})
 
 
-def extract_text_from_upload(uploaded):
-    """Extract plain text from an uploaded knowledge file.
+def extract_text_from_bytes(name, raw):
+    """Extract plain text from raw file bytes, dispatched by extension.
 
     Supports .txt/.md (decoded), .docx (stdlib zip → document.xml), .pdf (pypdf).
     Returns (text, error_message). error_message is set on unsupported/failed types.
     """
-    name = (uploaded.name or "").lower()
-    raw = uploaded.read()
+    name = (name or "").lower()
     if name.endswith((".txt", ".md", ".markdown", ".text")):
         for encoding in ("utf-8", "cp1251", "latin-1"):
             try:
@@ -3442,6 +3463,41 @@ def extract_text_from_upload(uploaded):
         except Exception:
             return "", "Не вдалося обробити файл .pdf."
     return "", "Формат не підтримується. Дозволені: .txt, .md, .docx, .pdf."
+
+
+def extract_text_from_upload(uploaded):
+    """Extract plain text from an uploaded knowledge file (see extract_text_from_bytes)."""
+    return extract_text_from_bytes(uploaded.name, uploaded.read())
+
+
+def case_document_text(doc):
+    """Best-effort plain text of a case document, for the AI помічник context.
+
+    Prefers the stored `content` (in-app / ONLYOFFICE documents, HTML stripped);
+    otherwise extracts from the attached file (.txt/.md/.docx/.pdf). Returns ""
+    for external links or unreadable files — the caller still lists title/status.
+    """
+    content = (getattr(doc, "content", "") or "").strip()
+    if content:
+        if re.search(r"<[a-z/][^>]*>", content, re.I):  # looks like HTML → strip tags
+            content = re.sub(r"<[^>]+>", " ", content)
+            content = re.sub(r"[ \t]+", " ", content)
+        return content.strip()
+    file = getattr(doc, "file", None)
+    if file and getattr(file, "name", ""):
+        try:
+            file.open("rb")
+            raw = file.read()
+        except Exception:
+            return ""
+        finally:
+            try:
+                file.close()
+            except Exception:
+                pass
+        text, _error = extract_text_from_bytes(file.name, raw)
+        return (text or "").strip()
+    return ""
 
 
 def serialize_knowledge_doc(doc):
