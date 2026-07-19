@@ -237,6 +237,89 @@ export function deleteCaseFromApi(caseId) {
   return apiRequest(`/api/cases/${encodeURIComponent(caseId)}/`, { method: "DELETE" });
 }
 
+// AI помічник: send a question (+ case context and prior turns) to the real Claude
+// backend and get a reply. Returns { reply }.
+export function askAiInApi({ caseNumber, message, helper, helperKey, history }) {
+  return apiRequest("/api/ai/chat/", {
+    method: "POST",
+    body: { caseNumber, message, helper, helperKey, history }
+  });
+}
+
+// AI помічники — база знань (per-area editable "skills").
+export function getAiSkillsFromApi() {
+  return apiRequest("/api/ai/skills/");
+}
+
+export function saveAiSkillToApi(areaKey, payload) {
+  return apiRequest(`/api/ai/skills/${encodeURIComponent(areaKey)}/`, {
+    method: "PUT",
+    body: payload
+  });
+}
+
+export function deleteAiSkillFromApi(areaKey) {
+  return apiRequest(`/api/ai/skills/${encodeURIComponent(areaKey)}/`, { method: "DELETE" });
+}
+
+// AI помічники — editable per-area quick questions (chat composer chips).
+export function saveAiQuestionsToApi(areaKey, questions) {
+  return apiRequest(`/api/ai/skills/${encodeURIComponent(areaKey)}/questions/`, {
+    method: "PUT",
+    body: { questions }
+  });
+}
+
+// AI помічники — opt-in connected cases (which cases have an AI assistant).
+export function getAiAssistantsFromApi() {
+  return apiRequest("/api/ai/assistants/");
+}
+
+export function connectAiAssistantToApi(caseNumber) {
+  return apiRequest("/api/ai/assistants/", { method: "POST", body: { caseNumber } });
+}
+
+export function disconnectAiAssistantFromApi(caseNumber) {
+  return apiRequest(`/api/ai/assistants/${encodeURIComponent(caseNumber)}/`, { method: "DELETE" });
+}
+
+export function setAiAssistantActiveInApi(caseNumber, active) {
+  return apiRequest(`/api/ai/assistants/${encodeURIComponent(caseNumber)}/`, {
+    method: "PATCH",
+    body: { active }
+  });
+}
+
+// AI помічники — файли-знання (Этап 2): upload/list/delete knowledge documents per area.
+export function getAiKnowledgeFromApi(areaKey) {
+  return apiRequest(`/api/ai/knowledge/?area=${encodeURIComponent(areaKey)}`);
+}
+
+export function uploadAiKnowledgeToApi(areaKey, file) {
+  const formData = new FormData();
+  formData.append("area", areaKey);
+  formData.append("file", file);
+  return apiFormRequest("/api/ai/knowledge/", formData);
+}
+
+export function deleteAiKnowledgeFromApi(docId) {
+  return apiRequest(`/api/ai/knowledge/${docId}/`, { method: "DELETE" });
+}
+
+// Export an AI conversation (висновок) to .docx — returns a Blob for download.
+export async function exportAiConclusionDocx(payload) {
+  const baseUrl = apiBaseUrl();
+  if (!baseUrl) throw new Error("CRM API base URL is not configured");
+  const response = await fetch(`${baseUrl}/api/ai/export/docx/`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", "X-CSRFToken": readCookie("csrftoken") },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return response.blob();
+}
+
 export function saveTaskToApi(task) {
   const hasId = task.id !== undefined && task.id !== null && task.id !== "";
   return apiRequest(hasId ? `/api/tasks/${task.id}/` : "/api/tasks/", {

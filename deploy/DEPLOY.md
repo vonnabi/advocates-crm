@@ -72,6 +72,26 @@ docker compose exec -T db pg_dump -U advokat advokat_crm | gzip > /root/crm-db-$
 ```
 Uploaded files live in the `media` Docker volume. A daily cron + off-site copy is recommended.
 
+## AI помічники (real Claude integration)
+The AI помічники module calls Anthropic's Claude (model `claude-opus-4-8`) with the
+open case's real context, plus the bureau's editable skills and knowledge files.
+
+**Two ways to set the API key** (the app checks the DB first, then the env var):
+- **In the app (recommended for the client):** log in as admin → Налаштування →
+  integration **AI** (gear) → paste the key in **API-ключ Anthropic** → save. Stored
+  in the CRM database (per-install), shown masked afterwards.
+- **In `deploy/.env`:** `ANTHROPIC_API_KEY=sk-ant-...` (loaded into the `web`
+  container via `env_file: .env`). Handy to have the key working right after deploy
+  without opening the UI. Then `docker compose up -d --build`.
+
+Get a key at https://console.anthropic.com → API Keys. Without a key the module
+stays visible but returns a clear "not configured" message — no crash. Usage is
+**billed per request** by Anthropic.
+
+> Updating an existing server: `git pull` then `docker compose up -d --build` runs
+> the new migrations automatically. They are **additive only** (new tables/columns
+> for AI skills, knowledge files, connected assistants) — existing data is untouched.
+
 ## Notes
 - IONOS blocks outbound SMTP port 25. To send real email later, use an SMTP relay on port 587 (set via the CRM's Email integration settings) — not port 25.
 - ONLYOFFICE and the CRM share this server: the CRM is at `advokatcrm.com`, the editor at `office.advokatcrm.com`, both public, so document editing works end-to-end.

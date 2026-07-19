@@ -732,6 +732,7 @@ function ensureLogoutOverlay(ctx) {
       onSessionChange?.();
       overlay.hidden = true;
       document.body.classList.remove("session-ended");
+      armIdleTimer(); // перезапускаємо відлік бездіяльності для нової сесії
       showToast(`Вхід виконано: ${session.user?.name || "користувач"}.`);
       openPasswordChangeOverlay(ctx);
     } catch (_error) {
@@ -769,10 +770,93 @@ async function openLogoutOverlay(ctx) {
       showToast("Не вдалося завершити серверну сесію.", "warning");
     }
   }
+  stopIdleTimer();
   const overlay = ensureLogoutOverlay(ctx);
   document.body.classList.add("session-ended");
   overlay.hidden = false;
   overlay.querySelector("input[name='email']")?.focus();
+}
+
+// ── Автоматичний вихід через бездіяльність ────────────────────────────────
+// Захищає відкриту CRM, якщо співробітник відійшов від комп'ютера: після
+// IDLE_LIMIT_MS без жодних дій серверна сесія завершується і для продовження
+// роботи потрібно знову ввести пароль. Працює лише для реально автентифікованої
+// сесії (в демо-режимі немає пароля — захищати нічого).
+const IDLE_LIMIT_MS = 15 * 60 * 1000;   // 15 хвилин бездіяльності → вихід
+const IDLE_WARN_MS = 60 * 1000;         // попередити за 1 хв до виходу
+const IDLE_ACTIVITY_EVENTS = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "wheel"];
+
+let idleCtx = null;             // останній ctx — потрібен для logout при спливанні
+let idleDeadline = 0;           // момент автозавершення (epoch ms)
+let idleTicker = null;          // interval, що звіряє дедлайн
+let idleWarned = false;         // чи вже показали попередження про близький вихід
+let idleListenersBound = false; // слухачі активності чіпляємо один раз
+let idleLoggingOut = false;     // захист від повторного виклику logout
+
+// Дозволяємо тимчасово змінити ліміт для тесту через консоль:
+//   window.__CRM_IDLE_MINUTES__ = 1
+function idleLimitMs() {
+  const override = Number(window.__CRM_IDLE_MINUTES__);
+  if (Number.isFinite(override) && override > 0) return override * 60 * 1000;
+  return IDLE_LIMIT_MS;
+}
+
+function idleActive() {
+  return Boolean(idleCtx && shouldUseApi(idleCtx.state) && idleCtx.state.sessionAuthenticated);
+}
+
+function bumpIdleDeadline() {
+  if (!idleActive()) return;
+  idleDeadline = Date.now() + idleLimitMs();
+  idleWarned = false;
+}
+
+function stopIdleTimer() {
+  if (idleTicker) {
+    window.clearInterval(idleTicker);
+    idleTicker = null;
+  }
+}
+
+async function idleCheck() {
+  if (idleLoggingOut || !idleActive()) return;
+  const remaining = idleDeadline - Date.now();
+  if (remaining <= 0) {
+    idleLoggingOut = true;
+    stopIdleTimer();
+    idleCtx.showToast?.("Сеанс завершено через бездіяльність. Увійдіть знову, щоб продовжити роботу.", "warning");
+    try {
+      await openLogoutOverlay(idleCtx);
+    } finally {
+      idleLoggingOut = false;
+    }
+    return;
+  }
+  if (remaining <= IDLE_WARN_MS && !idleWarned) {
+    idleWarned = true;
+    idleCtx.showToast?.("Сеанс завершиться за хвилину через бездіяльність. Порухайте мишею, щоб залишитися в системі.", "info");
+  }
+}
+
+function armIdleTimer() {
+  stopIdleTimer();
+  if (!idleActive()) return;
+  bumpIdleDeadline();
+  idleTicker = window.setInterval(idleCheck, 5000); // звіряємо дедлайн кожні 5 с
+}
+
+function setupIdleLogout(ctx) {
+  idleCtx = ctx;
+  if (!idleListenersBound) {
+    idleListenersBound = true;
+    IDLE_ACTIVITY_EVENTS.forEach((evt) =>
+      document.addEventListener(evt, bumpIdleDeadline, { passive: true }));
+    // Повернення на вкладку теж звіряємо: сесія могла спливти, поки вкладка була у фоні.
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) idleCheck();
+    });
+  }
+  armIdleTimer();
 }
 
 export function setupTopbarControls({ $, state, switchView, saveNavigationState, showToast, onSessionChange }) {
@@ -856,4 +940,6 @@ export function setupTopbarControls({ $, state, switchView, saveNavigationState,
     overlay.querySelector("input[name='email']")?.focus();
   }
   window.setTimeout(() => openPasswordChangeOverlay({ $, state, saveNavigationState, showToast, onSessionChange }), 0);
+  // Авто-вихід через бездіяльність (запускається лише для автентифікованої сесії).
+  setupIdleLogout({ $, state, saveNavigationState, showToast, onSessionChange });
 }

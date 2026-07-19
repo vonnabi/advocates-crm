@@ -22,14 +22,14 @@ from django.core.exceptions import BadRequest
 from django.core.files.base import ContentFile
 from django.core.management import call_command
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import Count, F, Q, Sum
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_http_methods
 
-from apps.accounts.models import CRMSettings, UserProfile
+from apps.accounts.models import AiCaseAssistant, AiKnowledgeDoc, AiSkill, CRMSettings, UserProfile
 from apps.audit.models import AuditLog
 from apps.calendar_app.models import CalendarEvent
 from apps.cases.demo_data import clear_demo_business_data, demo_data_counts
@@ -628,10 +628,35 @@ def next_case_number():
     return f"{year}/{max(suffixes, default=1111) + 1}"
 
 
+class CaseNumberInUse(Exception):
+    """Raised when the requested case number already belongs to another case.
+
+    The case number is a free-form string (the customer types anything), but the
+    column is unique — so both creating and renaming must reject duplicates with a
+    clean 400 instead of letting the DB raise an IntegrityError (500).
+    """
+
+    def __init__(self, number):
+        self.number = number
+        super().__init__(number)
+
+
 def upsert_case(data, case=None):
     case = case or Case()
     if not case.pk:
-        case.number = data.get("id") or data.get("number") or next_case_number()
+        number = str(data.get("id") or data.get("number") or "").strip() or next_case_number()
+        if Case.objects.filter(number=number).exists():
+            raise CaseNumberInUse(number)
+        case.number = number
+    else:
+        # Renaming an existing case: the customer wants editable, free-form numbers.
+        # The URL already identifies the case, so only the explicit `number` field
+        # triggers a rename (never the redundant `id` echoed back in the body).
+        new_number = str(data.get("number") or "").strip()
+        if new_number and new_number != case.number:
+            if Case.objects.filter(number=new_number).exclude(pk=case.pk).exists():
+                raise CaseNumberInUse(new_number)
+            case.number = new_number
 
     client = Client.objects.filter(pk=data.get("clientId") or case.client_id).first()
     if not client:
@@ -1726,6 +1751,15 @@ def crm_settings_instance():
     return settings
 
 
+def mask_secret(value):
+    """Show a secret is set without exposing it: sk-ant-…1234 (masked)."""
+    value = str(value or "")
+    if not value:
+        return ""
+    tail = value[-4:] if len(value) >= 4 else ""
+    return f"sk-ant-••••••{tail}"
+
+
 def serialize_crm_settings(settings=None):
     settings = settings or crm_settings_instance()
     integration_settings = clean_nested_string_map(settings.integration_settings, CRMSettings.DEFAULT_INTEGRATION_SETTINGS)
@@ -1733,6 +1767,10 @@ def serialize_crm_settings(settings=None):
         **integration_settings.get("ONLYOFFICE", {}),
         **onlyoffice_settings(),
     }
+    # Never send the raw Anthropic key to the browser — mask it.
+    ai_settings = integration_settings.get("AI", {})
+    if ai_settings.get("apiKey"):
+        integration_settings["AI"] = {**ai_settings, "apiKey": mask_secret(ai_settings["apiKey"])}
     return {
         "bureau": clean_string_map(settings.bureau, CRMSettings.DEFAULT_BUREAU, {"logo": 200000}),
         "integrations": clean_bool_map(settings.integrations, CRMSettings.DEFAULT_INTEGRATIONS),
@@ -1753,7 +1791,14 @@ def mailing_provider_status_payload():
 def apply_crm_settings_payload(settings, payload):
     settings.bureau = clean_string_map(payload.get("bureau"), CRMSettings.DEFAULT_BUREAU, {"logo": 200000})
     settings.integrations = clean_bool_map(payload.get("integrations"), CRMSettings.DEFAULT_INTEGRATIONS)
-    settings.integration_settings = clean_nested_string_map(payload.get("integrationSettings"), CRMSettings.DEFAULT_INTEGRATION_SETTINGS)
+    cleaned = clean_nested_string_map(payload.get("integrationSettings"), CRMSettings.DEFAULT_INTEGRATION_SETTINGS)
+    # The AI key is masked in responses — if the admin didn't change it (value still
+    # contains the mask), keep the existing raw key instead of overwriting it.
+    incoming_key = str(cleaned.get("AI", {}).get("apiKey") or "")
+    if "•" in incoming_key:
+        existing_key = str((settings.integration_settings or {}).get("AI", {}).get("apiKey") or "")
+        cleaned.setdefault("AI", {})["apiKey"] = existing_key
+    settings.integration_settings = cleaned
     settings.notifications = clean_bool_map(payload.get("notifications"), CRMSettings.DEFAULT_NOTIFICATIONS)
     settings.save(update_fields=["bureau", "integrations", "integration_settings", "notifications", "updated_at"])
     return settings
@@ -2267,7 +2312,7 @@ def import_snapshot_payload(snapshot):
             case = Case.objects.filter(number=payload.get("id") or payload.get("number")).first()
             try:
                 case = upsert_case(payload, case)
-            except Http404 as exc:
+            except (Http404, CaseNumberInUse) as exc:
                 summary["skipped"].append({"section": "cases", "id": payload.get("id"), "reason": str(exc)})
                 continue
             mark_as_real(case)
@@ -2953,7 +2998,10 @@ def cases_api(request):
         current_user = current_demo_user(request)
         if not user_can_see_all_cases(current_user) and not data.get("responsible"):
             data["responsible"] = user_name(current_user)
-        item = upsert_case(data)
+        try:
+            item = upsert_case(data)
+        except CaseNumberInUse as exc:
+            return json_response({"error": "number_taken", "message": f"Справа з номером «{exc.number}» вже існує. Вкажіть інший номер."}, status=400)
         ensure_case_member(item, current_user)
         log_crm_action(request, AuditLog.Action.CREATE, "case", item.number, item.title, f"Створено справу №{item.number}: {item.title}.")
         return json_response(serialize_case(item, include_finance=include_finance))
@@ -2995,9 +3043,447 @@ def case_detail_api(request, case_number):
     if forbidden:
         return forbidden
     data = sanitize_case_payload_for_permissions(request, parse_body(request))
-    updated = upsert_case(data, item)
+    try:
+        updated = upsert_case(data, item)
+    except CaseNumberInUse as exc:
+        return json_response({"error": "number_taken", "message": f"Справа з номером «{exc.number}» вже існує. Вкажіть інший номер."}, status=400)
     log_crm_action(request, AuditLog.Action.UPDATE, "case", updated.number, updated.title, f"Оновлено справу №{updated.number}: {updated.title}.")
     return json_response(serialize_case(updated, include_finance=include_finance))
+
+
+@require_http_methods(["GET", "POST", "OPTIONS"])
+def ai_assistants_api(request):
+    """List (GET) connected case numbers, or connect a case (POST {caseNumber})."""
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_ai", "AI помічники доступні адміністратору та адвокату.")
+    if forbidden:
+        return forbidden
+    if request.method == "GET":
+        items = [
+            {"caseNumber": a.case_number, "active": a.active}
+            for a in AiCaseAssistant.objects.all()
+        ]
+        return json_response({"results": items})
+
+    data = parse_body(request)
+    case_number = str(data.get("caseNumber") or "").strip()[:64]
+    if not case_number:
+        return json_response({"error": "bad", "message": "Не вказано справу."}, status=400)
+    if not Case.objects.filter(number=case_number).exists():
+        return json_response({"error": "not_found", "message": "Справу не знайдено."}, status=404)
+    AiCaseAssistant.objects.get_or_create(case_number=case_number)
+    return json_response({"connected": case_number, "active": True})
+
+
+@require_http_methods(["PATCH", "DELETE", "OPTIONS"])
+def ai_assistant_detail_api(request, case_number):
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_ai", "AI помічники доступні адміністратору та адвокату.")
+    if forbidden:
+        return forbidden
+    case_number = str(case_number or "").strip()[:64]
+    if request.method == "PATCH":
+        data = parse_body(request)
+        assistant, _ = AiCaseAssistant.objects.get_or_create(case_number=case_number)
+        assistant.active = bool(data.get("active"))
+        assistant.save(update_fields=["active"])
+        return json_response({"caseNumber": case_number, "active": assistant.active})
+    AiCaseAssistant.objects.filter(case_number=case_number).delete()
+    return json_response({"disconnected": case_number})
+
+
+def build_ai_system_prompt(case, helper_label, skill_content=None, knowledge_docs=None):
+    """Assemble the system prompt for the AI помічник from real case data.
+
+    The model must reason only from the material we pass here — no invented facts.
+    `skill_content` is the bureau's editable per-area expertise (see AiSkill).
+    """
+    lines = [
+        "Ти — AI-помічник української адвокатської CRM. Відповідай українською мовою, "
+        "стисло і по суті, з практичними висновками для адвоката.",
+        "Ти допомагаєш аналізувати справу, перевіряти строки та ризики, готувати план дій "
+        "і чернетки процесуальних документів на основі наданих матеріалів.",
+        "Не вигадуй фактів, дат чи норм, яких немає в матеріалах справи. Якщо даних бракує — "
+        "прямо скажи, чого саме не вистачає, і що потрібно уточнити.",
+        "Це демонстраційний інструмент: нагадуй, що остаточне рішення приймає адвокат, "
+        "лише коли це доречно (не в кожній відповіді).",
+    ]
+    if helper_label:
+        lines.append(f"Профіль помічника: {helper_label}.")
+    if skill_content and skill_content.strip():
+        lines.append(
+            "\n== Спеціалізація та настанови бюро (дотримуйся їх) ==\n"
+            + skill_content.strip()
+        )
+    if knowledge_docs:
+        budget = 30000  # cap injected knowledge (~8k tokens) to control cost/context
+        chunks = []
+        for doc in knowledge_docs:
+            text = (doc.content or "").strip()
+            if not text:
+                continue
+            remaining = budget - sum(len(c) for c in chunks)
+            if remaining <= 0:
+                break
+            snippet = text[:remaining]
+            chunks.append(f"### Файл: {doc.filename}\n{snippet}")
+        if chunks:
+            lines.append(
+                "\n== База знань бюро (шаблони, методички, матеріали) ==\n"
+                "Використовуй ці матеріали як зразки та джерело позиції бюро:\n\n"
+                + "\n\n".join(chunks)
+            )
+    if case is None:
+        lines.append("\nЗагальна консультація без прив'язки до конкретної справи.")
+        return "\n".join(lines)
+
+    lines.append("\n== Матеріали справи ==")
+    lines.append(f"Номер: {case.number}")
+    lines.append(f"Назва: {case.title}")
+    lines.append(f"Тип: {case.practice_area or '—'}")
+    lines.append(f"Статус: {case.status or '—'}")
+    if case.stage:
+        lines.append(f"Етап: {case.stage}")
+    if case.client_id:
+        lines.append(f"Клієнт: {case.client.full_name}")
+    if case.description:
+        lines.append(f"Опис: {case.description}")
+    parties = [p for p in (case.parties or []) if isinstance(p, dict)]
+    if parties:
+        lines.append("Сторони: " + "; ".join(
+            f"{p.get('name', '').strip()} ({p.get('status', '').strip()})".strip()
+            for p in parties if p.get("name")
+        ))
+    actions = [a for a in (case.procedural_actions or []) if isinstance(a, dict)]
+    if actions:
+        lines.append("Процесуальні дії: " + "; ".join(
+            str(a.get("name") or a.get("title") or "").strip() for a in actions if (a.get("name") or a.get("title"))
+        )[:1500])
+    docs = list(case.documents.all()[:20])
+    if docs:
+        lines.append("Документи: " + "; ".join(f"{d.title} [{d.status}]" for d in docs))
+    history = [h for h in (case.history or []) if isinstance(h, dict)][:12]
+    if history:
+        lines.append("Історія: " + "; ".join(
+            f"{h.get('date', '')} {h.get('text', '')}".strip() for h in history if h.get("text")
+        )[:1500])
+    return "\n".join(lines)
+
+
+@require_http_methods(["POST", "OPTIONS"])
+def ai_chat_api(request):
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_ai", "AI-помічник доступний адміністратору та адвокату.")
+    if forbidden:
+        return forbidden
+    data = parse_body(request)
+    message = str(data.get("message") or "").strip()
+    if not message:
+        return json_response({"error": "empty", "message": "Порожній запит."}, status=400)
+
+    try:
+        import anthropic
+    except ImportError:
+        return json_response(
+            {"error": "no_sdk", "message": "AI-бібліотека не встановлена на сервері (pip install anthropic)."},
+            status=503,
+        )
+
+    # Prefer the key configured in CRM settings (Налаштування → AI); fall back to env.
+    ai_config = (crm_settings_instance().integration_settings or {}).get("AI", {})
+    api_key = str(ai_config.get("apiKey") or "").strip() or getattr(settings, "ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+    ai_model = str(ai_config.get("model") or "").strip() or getattr(settings, "ANTHROPIC_MODEL", "claude-opus-4-8")
+    if not api_key:
+        return json_response(
+            {"error": "no_key", "message": "AI не налаштований: додайте ключ Anthropic у Налаштування → AI (або ANTHROPIC_API_KEY на сервері)."},
+            status=503,
+        )
+
+    case = None
+    case_number = str(data.get("caseNumber") or "").strip()
+    if case_number:
+        case = Case.objects.filter(number=case_number).select_related("client").prefetch_related("documents").first()
+        if case:
+            forbidden = require_case_access(request, case)
+            if forbidden:
+                return forbidden
+
+    # Build the alternating message history (drop the seeded demo greeting client-side).
+    messages = []
+    for turn in (data.get("history") or [])[-20:]:
+        if not isinstance(turn, dict):
+            continue
+        role = turn.get("role")
+        text = str(turn.get("text") or "").strip()
+        if role in ("user", "assistant") and text:
+            messages.append({"role": role, "content": text})
+    messages.append({"role": "user", "content": message})
+    # The API requires the first message to be from the user.
+    while messages and messages[0]["role"] != "user":
+        messages.pop(0)
+
+    skill_content = ""
+    knowledge_docs = []
+    helper_key = str(data.get("helperKey") or "").strip()
+    if helper_key:
+        skill = AiSkill.objects.filter(area_key=helper_key).first()
+        if skill:
+            skill_content = skill.content
+        knowledge_docs = list(AiKnowledgeDoc.objects.filter(area_key=helper_key))
+    system_prompt = build_ai_system_prompt(case, data.get("helper"), skill_content, knowledge_docs)
+    client = anthropic.Anthropic(api_key=api_key)
+    try:
+        response = client.messages.create(
+            model=ai_model,
+            max_tokens=6000,
+            system=system_prompt,
+            thinking={"type": "adaptive"},
+            output_config={"effort": "medium"},
+            messages=messages,
+        )
+    except anthropic.AuthenticationError:
+        return json_response(
+            {"error": "auth", "message": "AI-ключ Anthropic недійсний. Перевірте ANTHROPIC_API_KEY."},
+            status=503,
+        )
+    except anthropic.APIStatusError as exc:
+        return json_response(
+            {"error": "api", "message": f"AI-сервіс повернув помилку ({exc.status_code}). Спробуйте пізніше."},
+            status=502,
+        )
+    except Exception:
+        return json_response(
+            {"error": "api", "message": "Не вдалося звернутися до AI-сервісу. Спробуйте пізніше."},
+            status=502,
+        )
+
+    reply = "".join(
+        getattr(block, "text", "") for block in response.content if getattr(block, "type", "") == "text"
+    ).strip()
+    if not reply:
+        reply = "AI не повернув відповіді. Спробуйте переформулювати запит."
+    if helper_key:
+        # Real per-area usage counter (replaces the old hardcoded demo numbers).
+        skill_row, _ = AiSkill.objects.get_or_create(area_key=helper_key)
+        AiSkill.objects.filter(pk=skill_row.pk).update(request_count=F("request_count") + 1)
+    if case is not None:
+        log_crm_action(request, AuditLog.Action.UPDATE, "case", case.number, case.title, f"AI-помічник відповів у справі №{case.number}.")
+    return json_response({"reply": reply})
+
+
+def serialize_ai_skill(skill):
+    return {
+        "areaKey": skill.area_key,
+        "title": skill.title,
+        "content": skill.content,
+        "questions": skill.questions if isinstance(skill.questions, list) else [],
+        "requestCount": skill.request_count,
+        "updatedAt": skill.updated_at.isoformat() if skill.updated_at else "",
+    }
+
+
+@require_http_methods(["PUT", "OPTIONS"])
+def ai_skill_questions_api(request, area_key):
+    """Set the editable quick-question list for one area (chat composer chips)."""
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_ai", "Швидкі питання доступні адміністратору та адвокату.")
+    if forbidden:
+        return forbidden
+    area_key = str(area_key or "").strip()[:64]
+    if not area_key:
+        return json_response({"error": "bad_key", "message": "Не вказано галузь."}, status=400)
+    data = parse_body(request)
+    raw = data.get("questions") if isinstance(data.get("questions"), list) else []
+    questions = []
+    for item in raw[:20]:
+        text = str(item or "").strip()[:300]
+        if text:
+            questions.append(text)
+    skill, _ = AiSkill.objects.get_or_create(area_key=area_key)
+    skill.questions = questions
+    skill.save(update_fields=["questions", "updated_at"])
+    return json_response({"areaKey": area_key, "questions": questions})
+
+
+@require_http_methods(["GET", "OPTIONS"])
+def ai_skills_api(request):
+    """List all bureau skills + real per-area stats (request counts, doc counts).
+
+    This feeds the AI screen's cards with genuine numbers — no more hardcoded demo.
+    """
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_ai", "База знань доступна адміністратору та адвокату.")
+    if forbidden:
+        return forbidden
+    items = {skill.area_key: serialize_ai_skill(skill) for skill in AiSkill.objects.all()}
+    doc_counts = {
+        row["area_key"]: row["n"]
+        for row in AiKnowledgeDoc.objects.values("area_key").annotate(n=Count("id"))
+    }
+    for area_key, count in doc_counts.items():
+        items.setdefault(area_key, {"areaKey": area_key, "title": "", "content": "", "requestCount": 0, "updatedAt": ""})
+        items[area_key]["docCount"] = count
+    for payload in items.values():
+        payload.setdefault("docCount", 0)
+    return json_response({"results": items})
+
+
+def extract_text_from_upload(uploaded):
+    """Extract plain text from an uploaded knowledge file.
+
+    Supports .txt/.md (decoded), .docx (stdlib zip → document.xml), .pdf (pypdf).
+    Returns (text, error_message). error_message is set on unsupported/failed types.
+    """
+    name = (uploaded.name or "").lower()
+    raw = uploaded.read()
+    if name.endswith((".txt", ".md", ".markdown", ".text")):
+        for encoding in ("utf-8", "cp1251", "latin-1"):
+            try:
+                return raw.decode(encoding), None
+            except UnicodeDecodeError:
+                continue
+        return "", "Не вдалося прочитати текстовий файл."
+    if name.endswith(".docx"):
+        try:
+            with ZipFile(BytesIO(raw)) as archive:
+                xml = archive.read("word/document.xml").decode("utf-8", errors="ignore")
+            # Paragraph breaks → newlines, then strip all remaining tags.
+            xml = re.sub(r"</w:p>", "\n", xml)
+            text = re.sub(r"<[^>]+>", "", xml)
+            text = re.sub(r"[ \t]+", " ", text)
+            return text.strip(), None
+        except Exception:
+            return "", "Не вдалося обробити файл .docx."
+    if name.endswith(".pdf"):
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(BytesIO(raw))
+            text = "\n".join((page.extract_text() or "") for page in reader.pages)
+            return text.strip(), None
+        except Exception:
+            return "", "Не вдалося обробити файл .pdf."
+    return "", "Формат не підтримується. Дозволені: .txt, .md, .docx, .pdf."
+
+
+def serialize_knowledge_doc(doc):
+    return {
+        "id": doc.id,
+        "areaKey": doc.area_key,
+        "filename": doc.filename,
+        "sizeChars": doc.size_chars,
+        "uploadedAt": doc.uploaded_at.isoformat() if doc.uploaded_at else "",
+    }
+
+
+@require_http_methods(["GET", "POST", "OPTIONS"])
+def ai_knowledge_api(request):
+    """List (GET ?area=) or upload (POST multipart: area + file) knowledge docs."""
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_ai", "База знань доступна адміністратору та адвокату.")
+    if forbidden:
+        return forbidden
+    if request.method == "GET":
+        area_key = str(request.GET.get("area") or "").strip()[:64]
+        docs = AiKnowledgeDoc.objects.filter(area_key=area_key) if area_key else AiKnowledgeDoc.objects.all()
+        return json_response({"results": [serialize_knowledge_doc(doc) for doc in docs]})
+
+    area_key = str(request.POST.get("area") or "").strip()[:64]
+    if not area_key:
+        return json_response({"error": "bad_area", "message": "Не вказано галузь."}, status=400)
+    uploaded = request.FILES.get("file")
+    if not uploaded:
+        return json_response({"error": "no_file", "message": "Файл не завантажено."}, status=400)
+    if uploaded.size > 10 * 1024 * 1024:
+        return json_response({"error": "too_big", "message": "Файл завеликий (макс. 10 МБ)."}, status=400)
+    text, error = extract_text_from_upload(uploaded)
+    if error:
+        return json_response({"error": "extract", "message": error}, status=400)
+    if not text.strip():
+        return json_response({"error": "empty", "message": "У файлі не знайдено тексту."}, status=400)
+    doc = AiKnowledgeDoc.objects.create(
+        area_key=area_key,
+        filename=str(uploaded.name or "файл")[:255],
+        content=text,
+        size_chars=len(text),
+    )
+    log_crm_action(request, AuditLog.Action.CREATE, "settings", area_key, doc.filename, f"Додано файл-знання «{doc.filename}» ({area_key}).")
+    return json_response(serialize_knowledge_doc(doc))
+
+
+@require_http_methods(["DELETE", "OPTIONS"])
+def ai_knowledge_detail_api(request, doc_id):
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_ai", "База знань доступна адміністратору та адвокату.")
+    if forbidden:
+        return forbidden
+    AiKnowledgeDoc.objects.filter(pk=doc_id).delete()
+    return json_response({"deleted": doc_id})
+
+
+@require_http_methods(["POST", "OPTIONS"])
+def ai_export_docx_api(request):
+    """Build a .docx from an AI conversation (висновок) and return it for download.
+
+    .txt/.md are generated client-side; only .docx needs the server's docx helpers.
+    """
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_ai", "Експорт доступний адміністратору та адвокату.")
+    if forbidden:
+        return forbidden
+    data = parse_body(request)
+    title = str(data.get("title") or "Висновок AI-помічника")[:255]
+    subtitle = str(data.get("subtitle") or "")[:500]
+    elements = [docx_paragraph(title, bold=True, size=32, spacing_after=160)]
+    if subtitle:
+        elements.append(docx_paragraph(subtitle, size=20, spacing_after=240))
+    for turn in (data.get("messages") or []):
+        if not isinstance(turn, dict):
+            continue
+        text = str(turn.get("text") or "").strip()
+        if not text:
+            continue
+        who = "Клієнт" if turn.get("role") == "user" else "AI-помічник"
+        elements.append(docx_paragraph(who, bold=True, size=24, spacing_after=40))
+        elements.append(docx_paragraphs(text, size=22, spacing_after=200))
+    response = HttpResponse(
+        docx_bytes(elements),
+        content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+    response["Content-Disposition"] = 'attachment; filename="ai-vysnovok.docx"'
+    return response
+
+
+@require_http_methods(["PUT", "DELETE", "OPTIONS"])
+def ai_skill_detail_api(request, area_key):
+    """Edit/append (PUT) or clear (DELETE) one area's skill."""
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_ai", "База знань доступна адміністратору та адвокату.")
+    if forbidden:
+        return forbidden
+    area_key = str(area_key or "").strip()[:64]
+    if not area_key:
+        return json_response({"error": "bad_key", "message": "Не вказано галузь."}, status=400)
+
+    if request.method == "DELETE":
+        AiSkill.objects.filter(area_key=area_key).delete()
+        return json_response({"deleted": area_key})
+
+    data = parse_body(request)
+    skill, _ = AiSkill.objects.get_or_create(area_key=area_key)
+    skill.title = str(data.get("title") or skill.title or "")[:128]
+    skill.content = str(data.get("content") or "")
+    skill.save()
+    log_crm_action(request, AuditLog.Action.UPDATE, "settings", area_key, skill.title, f"Оновлено навички AI-помічника: {skill.title or area_key}.")
+    return json_response(serialize_ai_skill(skill))
 
 
 @require_http_methods(["GET", "POST", "OPTIONS"])

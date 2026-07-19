@@ -59,8 +59,8 @@ const integrationConfigFields = {
     ["jwtSecret", "JWT secret", "Секрет для підпису запитів", false]
   ],
   AI: [
-    ["model", "Модель", "demo", false],
-    ["workspace", "Контекст", "cases", false]
+    ["apiKey", "API-ключ Anthropic", "sk-ant-... (порожньо — використати ключ сервера)", false],
+    ["model", "Модель", "claude-opus-4-8", false]
   ]
 };
 

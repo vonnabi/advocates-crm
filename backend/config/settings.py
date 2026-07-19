@@ -56,6 +56,12 @@ CRM_ALLOWED_ORIGINS = env_list("CRM_ALLOWED_ORIGINS")
 if render_hostname and f"https://{render_hostname}" not in CRM_ALLOWED_ORIGINS:
     CRM_ALLOWED_ORIGINS.append(f"https://{render_hostname}")
 
+# AI помічники — real Claude integration. Set ANTHROPIC_API_KEY in the environment
+# (locally or in deploy/.env on the VPS) to enable it. Empty → the AI endpoint
+# returns a clear "not configured" message instead of calling the model.
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-opus-4-8")
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
