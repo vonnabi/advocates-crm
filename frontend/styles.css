@@ -9185,6 +9185,24 @@ button {
   font-size: 12px;
 }
 
+.ai-usage-note.warning {
+  color: #b42318;
+  font-weight: 700;
+}
+
+.ai-usage-tile i.red { background: #fdecec; color: #d63a3a; }
+
+.ai-usage-tile.danger {
+  border-color: #f3b6b6;
+  background: #fdf3f3;
+}
+
+.ai-chat .bubble.error {
+  background: #fdf1f0;
+  border: 1px solid #f3c9c4;
+  color: #a12318;
+}
+
 @media (max-width: 720px) {
   .ai-usage-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

@@ -17,7 +17,7 @@ import {
   restoreNavigationState as restoreNavigationStateFromStorage,
   saveNavigationState as saveNavigationStateToStorage
 } from "./js/navigation.js";
-import { renderAIScreen } from "./js/screens/ai.js?v=ai-usage-tiles-1";
+import { renderAIScreen } from "./js/screens/ai.js?v=ai-credit-errors-1";
 import { renderAnalyticsScreen } from "./js/screens/analytics.js?v=dead-code-cleanup-1";
 import {
   caseFinance,

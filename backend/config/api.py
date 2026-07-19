@@ -3298,10 +3298,21 @@ def ai_chat_api(request):
         )
     except anthropic.AuthenticationError:
         return json_response(
-            {"error": "auth", "message": "AI-ключ Anthropic недійсний. Перевірте ANTHROPIC_API_KEY."},
+            {"error": "auth", "message": "AI-ключ Anthropic недійсний. Перевірте ключ у Налаштування → AI."},
             status=503,
         )
+    except anthropic.RateLimitError:
+        return json_response(
+            {"error": "rate_limit", "message": "Забагато запитів до AI за короткий час. Зачекайте кілька секунд і повторіть."},
+            status=429,
+        )
     except anthropic.APIStatusError as exc:
+        text = str(getattr(exc, "message", "") or exc).lower()
+        if "credit balance" in text or "billing" in text or "quota" in text or "insufficient" in text:
+            return json_response(
+                {"error": "no_credits", "message": "Закінчилися кредити Anthropic. Поповніть рахунок на console.anthropic.com — і помічник одразу знову працюватиме."},
+                status=402,
+            )
         return json_response(
             {"error": "api", "message": f"AI-сервіс повернув помилку ({exc.status_code}). Спробуйте пізніше."},
             status=502,

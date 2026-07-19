@@ -212,18 +212,24 @@ function usagePanelHtml(usage, icon) {
   if (!usage) return "";
   const cost = Number(usage.estimatedCostUsd || 0).toFixed(2);
   const hasBudget = usage.budgetUsd != null;
-  const remaining = hasBudget ? `$${Number(usage.remainingUsd || 0).toFixed(2)}` : "—";
+  const remainingVal = Number(usage.remainingUsd || 0);
+  const remaining = hasBudget ? `$${remainingVal.toFixed(2)}` : "—";
   const remainLabel = hasBudget ? `Залишок з $${Number(usage.budgetUsd).toFixed(2)}` : "Бюджет не задано";
   const requestsLeft = usage.estimatedRequestsLeft != null ? `≈ ${usage.estimatedRequestsLeft}` : "—";
+  // Warn when the estimated remaining budget is nearly used up.
+  const low = hasBudget && Number(usage.budgetUsd) > 0 && remainingVal <= Number(usage.budgetUsd) * 0.1;
+  const note = low
+    ? `<p class="ai-usage-note warning">⚠️ Кредити майже вичерпані (залишок ≈ ${remaining}). Поповніть рахунок на console.anthropic.com і оновіть бюджет у Налаштування → AI.</p>`
+    : `<p class="ai-usage-note muted">${usage.requestCount || 0} запитів усього · орієнтовна оцінка — точний баланс кредитів у console.anthropic.com</p>`;
   return `
-    <section class="ai-usage-strip" aria-label="Використання AI">
+    <section class="ai-usage-strip ${low ? "low" : ""}" aria-label="Використання AI">
       <div class="ai-usage-tile">
         <i class="blue">${icon("wallet")}</i>
         <strong>$${cost}</strong>
         <span>Витрачено</span>
       </div>
-      <div class="ai-usage-tile">
-        <i class="green">${icon("dollar")}</i>
+      <div class="ai-usage-tile ${low ? "danger" : ""}">
+        <i class="${low ? "red" : "green"}">${icon("dollar")}</i>
         <strong>${remaining}</strong>
         <span>${remainLabel}</span>
       </div>
@@ -238,7 +244,7 @@ function usagePanelHtml(usage, icon) {
         <span>Токени вх / вих</span>
       </div>
     </section>
-    <p class="ai-usage-note muted">${usage.requestCount || 0} запитів усього · орієнтовна оцінка — точний баланс кредитів у console.anthropic.com</p>
+    ${note}
   `;
 }
 
@@ -333,7 +339,8 @@ function filterRows(state, rows) {
 }
 
 function renderMessage(message) {
-  return `<div class="bubble ${message.role === "user" ? "user" : ""}">${escapeHtml(message.text)}</div>`;
+  const tone = message.error ? "error" : (message.role === "user" ? "user" : "");
+  return `<div class="bubble ${tone}">${escapeHtml(message.text)}</div>`;
 }
 
 function inlineChatPanel(row, caseItem, helper, messages, icon, draft = "", questions = []) {
@@ -1099,7 +1106,7 @@ export function renderAIScreen(ctx) {
       const data = await askAiInApi({ caseNumber: caseId, message: prompt, helper: helper.label, helperKey: helper.key, history });
       reply = { role: "assistant", text: data?.reply || "AI не повернув відповіді." };
     } catch (error) {
-      reply = { role: "assistant", text: aiErrorMessage(error, "AI-сервіс недоступний. Перевірте ключ Anthropic у налаштуваннях сервера.") };
+      reply = { role: "assistant", error: true, text: aiErrorMessage(error, "AI-сервіс недоступний. Перевірте ключ Anthropic у Налаштування → AI.") };
     } finally {
       chat.pending = false;
     }
