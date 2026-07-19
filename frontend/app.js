@@ -40,7 +40,7 @@ import {
   renderClientsScreen
 } from "./js/screens/clients.js?v=clients-filter-1";
 import { renderDashboardScreen } from "./js/screens/dashboard.js?v=perm-panels-1";
-import { renderDocumentsScreen } from "./js/screens/documents.js?v=docflow-declutter-1";
+import { renderDocumentsScreen } from "./js/screens/documents.js?v=doc-ai-review-1";
 import {
   renderMailingsScreen,
   setMailingTab as setMailingTabScreen

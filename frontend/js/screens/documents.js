@@ -1,4 +1,4 @@
-import { deleteDocumentFromApi, saveArchiveFoldersToApi, saveDocumentToApi, saveMailingCampaignToApi, sendMailingCampaignInApi, shouldUseApi } from "../api.js";
+import { deleteDocumentFromApi, exportAiConclusionDocx, reviewDocumentWithAi, saveArchiveFoldersToApi, saveDocumentToApi, saveMailingCampaignToApi, sendMailingCampaignInApi, shouldUseApi } from "../api.js";
 import { normalizeDocument } from "../state.js";
 import { inferCaseDocumentFolder } from "../case-documents.js";
 
@@ -1008,6 +1008,192 @@ function flattenStorageArchiveRows(folders = [], rows = []) {
   return walk(folders);
 }
 
+function reviewSeverityMeta(severity) {
+  if (severity === "high") return { cls: "r", label: "Виправити" };
+  if (severity === "low") return { cls: "a", label: "Дрібне" };
+  return { cls: "a", label: "Уточнити" };
+}
+
+function reviewErrorMessage(error) {
+  try {
+    const parsed = JSON.parse(error?.message || "");
+    if (parsed && parsed.message) return parsed.message;
+  } catch (_ignored) { /* not JSON */ }
+  return "Не вдалося виконати AI-перевірку. Спробуйте пізніше.";
+}
+
+function reviewToPlainText(doc, result) {
+  const title = doc.name || doc.title || "Документ";
+  const lines = [`AI-аналіз документа: ${title}`, ""];
+  if (result.about) lines.push(result.about, "");
+  const findings = result.findings || [];
+  if (findings.length) {
+    lines.push("Знайдені зауваження:");
+    findings.forEach((f, index) => {
+      lines.push(`${index + 1}. [${reviewSeverityMeta(f.severity).label}] ${f.title}`);
+      if (f.detail) lines.push(`   ${f.detail}`);
+      if (f.fix) lines.push(`   → ${f.fix}`);
+    });
+    lines.push("");
+  } else {
+    lines.push("Суттєвих зауважень не знайдено.", "");
+  }
+  if (result.conclusion) lines.push(`Висновок: ${result.conclusion}`);
+  return lines.join("\n");
+}
+
+function renderReviewResult(bodyEl, doc, result, { showToast, switchView, dialog }) {
+  const findings = result.findings || [];
+  const findingsHtml = findings.length
+    ? findings.map((f) => {
+        const meta = reviewSeverityMeta(f.severity);
+        return `
+          <div class="review-finding">
+            <span class="review-dot ${meta.cls}"></span>
+            <div class="review-ftxt">
+              <b>${escapeHtml(f.title)}</b><span class="review-sev ${meta.cls}">${meta.label}</span>
+              ${f.detail ? `<div class="review-detail">${escapeHtml(f.detail)}</div>` : ""}
+              ${f.fix ? `<span class="review-fix">→ ${escapeHtml(f.fix)}</span>` : ""}
+            </div>
+          </div>`;
+      }).join("")
+    : `<div class="review-clean">Суттєвих зауважень не знайдено — документ виглядає коректно.</div>`;
+
+  bodyEl.innerHTML = `
+    ${result.about ? `<div class="review-sec"><div class="review-sec-h">Про документ</div><div class="review-about">${escapeHtml(result.about)}</div></div>` : ""}
+    <div class="review-sec">
+      <div class="review-sec-h">Знайдені зауваження · ${findings.length}</div>
+      ${findingsHtml}
+    </div>
+    ${result.conclusion ? `<div class="review-sec"><div class="review-sec-h">Висновок</div><div class="review-about">${escapeHtml(result.conclusion)}</div></div>` : ""}
+    <div class="review-actions">
+      <button type="button" class="primary" data-review-copy>Скопіювати</button>
+      <button type="button" class="secondary" data-review-export>Експорт у Word</button>
+      <button type="button" class="secondary" data-review-chat>Обговорити в чаті</button>
+    </div>
+    <p class="review-foot">Помічник читає, пояснює і підказує правки — вносите зміни ви. Остаточне рішення за адвокатом.</p>`;
+
+  const plain = reviewToPlainText(doc, result);
+  bodyEl.querySelector("[data-review-copy]").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(plain);
+      showToast?.("Аналіз скопійовано.");
+    } catch (_error) {
+      showToast?.("Не вдалося скопіювати.", "warning");
+    }
+  });
+  bodyEl.querySelector("[data-review-export]").addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      const blob = await exportAiConclusionDocx({
+        title: `AI-аналіз документа: ${doc.name || doc.title || ""}`,
+        subtitle: "Згенеровано AI-помічником CRM",
+        messages: [{ role: "assistant", text: plain }]
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "ai-analiz-dokumenta.docx";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (_error) {
+      showToast?.("Не вдалося експортувати у Word.", "warning");
+    } finally {
+      button.disabled = false;
+    }
+  });
+  bodyEl.querySelector("[data-review-chat]").addEventListener("click", () => {
+    dialog.close();
+    switchView?.("ai");
+    showToast?.("Відкрито AI-помічники — підключіть цю справу, щоб продовжити розмову в чаті.", "info");
+  });
+}
+
+// Self-contained styles for the review modal (the .ai-skills-dialog base lives
+// in ai.js's injected styles, which may not be present on the documents screen).
+function ensureReviewStyles() {
+  if (document.querySelector("#documents-ai-review-styles")) return;
+  const style = document.createElement("style");
+  style.id = "documents-ai-review-styles";
+  style.textContent = `
+    .ai-skills-dialog { width: min(880px, 94vw); max-width: 94vw; border: none; border-radius: 16px; padding: 0; background: #fff; color: #1a2233; box-shadow: 0 24px 70px rgba(15,23,42,.28); }
+    .ai-skills-dialog::backdrop { background: rgba(15,23,42,.45); }
+    .ai-skills-head { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; padding: 22px 24px 12px; border-bottom: 1px solid #eef1f6; }
+    .ai-skills-head h2 { margin: 0 0 6px; font-size: 19px; color: #1f3a5f; }
+    .ai-skills-head .muted { margin: 0; font-size: 13px; color: #6b7482; max-width: 640px; }
+    .ai-skills-x { border: none; background: #f1f3f7; width: 34px; height: 34px; border-radius: 9px; cursor: pointer; font-size: 15px; color: #475066; flex: none; }
+    .ai-skills-x:hover { background: #e6e9f0; }
+    .documents-ai-review-dialog { width: min(680px, 94vw); }
+    .review-body { padding: 18px 24px 22px; max-height: 72vh; overflow-y: auto; }
+    .review-loading { display: flex; align-items: center; gap: 12px; color: #56606d; font-size: 13.5px; padding: 26px 4px; }
+    .review-spinner { width: 20px; height: 20px; border: 2.5px solid #dfe4ea; border-top-color: #1f4f9e; border-radius: 50%; animation: reviewSpin .8s linear infinite; flex: none; }
+    @keyframes reviewSpin { to { transform: rotate(360deg); } }
+    .review-sec { margin-bottom: 16px; }
+    .review-sec-h { font-size: 11px; letter-spacing: .5px; text-transform: uppercase; color: #8a95a1; font-weight: 700; margin-bottom: 8px; }
+    .review-about { background: #f7f9fb; border: 1px solid #eef1f4; border-radius: 10px; padding: 11px 13px; font-size: 13px; line-height: 1.55; color: #39424e; }
+    .review-finding { display: flex; gap: 10px; padding: 11px 0; border-bottom: 1px solid #eef1f4; }
+    .review-finding:last-child { border-bottom: none; }
+    .review-dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 5px; flex: none; }
+    .review-dot.r { background: #d9534f; } .review-dot.a { background: #cf8a1c; } .review-dot.g { background: #2e8b63; }
+    .review-ftxt { font-size: 13px; line-height: 1.5; }
+    .review-ftxt b { color: #1f3a5f; }
+    .review-detail { margin-top: 2px; color: #39424e; }
+    .review-fix { display: block; color: #2b7a56; margin-top: 3px; }
+    .review-sev { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 9px; margin-left: 7px; vertical-align: middle; }
+    .review-sev.r { background: #fbe6e5; color: #b23c38; } .review-sev.a { background: #fbf0d9; color: #b57d16; }
+    .review-clean { background: #e4f1ea; color: #2b7a56; border-radius: 10px; padding: 12px 13px; font-size: 13px; }
+    .review-actions { display: flex; gap: 9px; margin-top: 18px; flex-wrap: wrap; }
+    .review-actions button { padding: 9px 15px; border-radius: 9px; cursor: pointer; font-size: 13px; font-weight: 600; border: 1px solid #dfe4ea; background: #f7f9fb; color: #39424e; }
+    .review-actions button:hover { background: #eef1f6; }
+    .review-actions button.primary { background: #1f4f9e; color: #fff; border-color: #1f4f9e; }
+    .review-actions button.primary:hover { background: #1a4489; }
+    .review-actions button:disabled { opacity: .55; cursor: default; }
+    .review-foot { color: #9aa4b0; font-size: 11px; margin: 14px 0 0; }
+    .review-error { background: #fdf1f0; color: #b23c38; border: 1px solid #f2c9c4; border-radius: 10px; padding: 14px 15px; font-size: 13px; line-height: 1.5; }
+  `;
+  document.head.append(style);
+}
+
+// AI-перевірка документа: модалка, що читає повний текст документа реальним
+// Claude і показує структуровані зауваження (див. ai_document_review_api).
+function openAiReviewModal({ doc, docId, showToast, switchView }) {
+  ensureReviewStyles();
+  document.querySelector("#documents-ai-review-dialog")?.remove();
+  const dialog = document.createElement("dialog");
+  dialog.id = "documents-ai-review-dialog";
+  dialog.className = "ai-skills-dialog documents-ai-review-dialog";
+  const title = doc.name || doc.title || "Документ";
+  dialog.innerHTML = `
+    <div class="ai-skills-head">
+      <div>
+        <h2>AI-аналіз документа</h2>
+        <p class="muted">${escapeHtml(title)}</p>
+      </div>
+      <button type="button" class="ai-skills-x" data-review-close aria-label="Закрити">✕</button>
+    </div>
+    <div class="review-body" data-review-body>
+      <div class="review-loading">
+        <span class="review-spinner"></span>
+        <span>Помічник читає документ і аналізує… зазвичай 5–15 секунд.</span>
+      </div>
+    </div>`;
+  document.body.append(dialog);
+  dialog.querySelector("[data-review-close]").addEventListener("click", () => dialog.close());
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
+
+  const bodyEl = dialog.querySelector("[data-review-body]");
+  reviewDocumentWithAi(docId)
+    .then((payload) => {
+      const result = payload?.result || { about: "", findings: [], conclusion: "" };
+      renderReviewResult(bodyEl, doc, result, { showToast, switchView, dialog });
+    })
+    .catch((error) => {
+      bodyEl.innerHTML = `<div class="review-error">${escapeHtml(reviewErrorMessage(error))}</div>`;
+    });
+}
+
 export function renderDocumentsScreen(ctx) {
   const {
     state,
@@ -1666,7 +1852,17 @@ export function renderDocumentsScreen(ctx) {
   });
   documentsNode.querySelectorAll("[data-documents-ai]").forEach((button) => {
     button.addEventListener("click", () => {
-      showToast?.("AI перевірка документа буде підключена після API для документів.", "info");
+      if (!shouldUseApi(state)) {
+        showToast?.("AI-перевірка доступна через сервер (Django), а не статичні файли.", "warning");
+        return;
+      }
+      const target = selected;
+      const docId = documentApiId(target);
+      if (!target || !docId) {
+        showToast?.("Спочатку збережіть документ у базу, щоб AI зміг його прочитати.", "warning");
+        return;
+      }
+      openAiReviewModal({ doc: target, docId, showToast, switchView: ctx.switchView });
     });
   });
   const documentApiId = (document) => {

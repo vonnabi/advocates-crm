@@ -3370,6 +3370,159 @@ def ai_chat_api(request):
     return json_response({"reply": reply})
 
 
+def _parse_ai_review_json(raw):
+    """Parse the model's JSON document review; tolerate code fences / stray text.
+
+    Falls back to a single 'about' block with the raw text if JSON can't be
+    recovered, so the UI always has something to show.
+    """
+    text = (raw or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
+        text = re.sub(r"\n?```$", "", text).strip()
+    data = None
+    try:
+        data = json.loads(text)
+    except Exception:
+        match = re.search(r"\{.*\}", text, re.S)
+        if match:
+            try:
+                data = json.loads(match.group(0))
+            except Exception:
+                data = None
+    if not isinstance(data, dict):
+        return {"about": text[:1500] or "AI не повернув структуровану відповідь.", "findings": [], "conclusion": ""}
+    findings = []
+    for item in (data.get("findings") or []):
+        if not isinstance(item, dict):
+            continue
+        severity = str(item.get("severity") or "medium").lower()
+        if severity not in ("high", "medium", "low"):
+            severity = "medium"
+        findings.append({
+            "severity": severity,
+            "title": str(item.get("title") or "").strip()[:200],
+            "detail": str(item.get("detail") or "").strip()[:1200],
+            "fix": str(item.get("fix") or "").strip()[:1200],
+        })
+    return {
+        "about": str(data.get("about") or "").strip()[:1500],
+        "findings": findings,
+        "conclusion": str(data.get("conclusion") or "").strip()[:1200],
+    }
+
+
+@require_http_methods(["POST", "OPTIONS"])
+def ai_document_review_api(request, document_id):
+    """AI-перевірка одного документа: читає його повний текст і повертає
+    структуровані зауваження (about / findings[severity,title,detail,fix] / conclusion)."""
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_ai", "AI-перевірка доступна адміністратору та адвокату.")
+    if forbidden:
+        return forbidden
+    item = CaseDocument.objects.filter(pk=document_id).select_related("case", "case__client").first()
+    if not item:
+        return json_response({"error": "not_found", "message": "Документ не знайдено."}, status=404)
+    forbidden = require_document_access(request, item)
+    if forbidden:
+        return forbidden
+
+    doc_text = case_document_text(item)
+    if len((doc_text or "").strip()) < 30:
+        return json_response(
+            {"error": "no_text", "message": "У документі немає тексту для аналізу (можливо, це зовнішнє посилання або скан без текстового шару)."},
+            status=400,
+        )
+
+    try:
+        import anthropic
+    except ImportError:
+        return json_response({"error": "no_sdk", "message": "AI-бібліотека не встановлена на сервері."}, status=503)
+
+    ai_config = (crm_settings_instance().integration_settings or {}).get("AI", {})
+    api_key = str(ai_config.get("apiKey") or "").strip() or getattr(settings, "ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+    ai_model = str(ai_config.get("model") or "").strip() or getattr(settings, "ANTHROPIC_MODEL", "claude-opus-4-8")
+    if not api_key:
+        return json_response(
+            {"error": "no_key", "message": "AI не налаштований: додайте ключ Anthropic у Налаштування → AI."},
+            status=503,
+        )
+
+    case = item.case
+    ctx_lines = []
+    if case:
+        ctx_lines.append(f"Справа №{case.number}: {case.title}")
+        if case.practice_area:
+            ctx_lines.append(f"Галузь права: {case.practice_area}")
+        parties = [p for p in (case.parties or []) if isinstance(p, dict) and p.get("name")]
+        if parties:
+            ctx_lines.append("Сторони: " + "; ".join(
+                f"{p.get('name', '').strip()} ({p.get('status', '').strip()})".strip() for p in parties))
+    context_line = "\n".join(ctx_lines) if ctx_lines else "Окремий документ поза справою."
+
+    system_prompt = (
+        "Ти — досвідчений український юрист-редактор, що вичитує процесуальні та адвокатські документи. "
+        "Проаналізуй наданий документ: юридична коректність, реквізити, строки, посилання на норми права, "
+        "повнота, внутрішні суперечності, ризики. "
+        "Відповідай СУВОРО у форматі JSON без markdown і без будь-якого тексту поза JSON, за схемою: "
+        '{"about":"1-2 речення, про що документ","findings":[{"severity":"high|medium|low",'
+        '"title":"стисла назва зауваження","detail":"у чому проблема","fix":"конкретно що і як виправити"}],'
+        '"conclusion":"загальний висновок, 1-2 речення"}. '
+        "severity: high — помилка, що впливає на дійсність, строки чи права; medium — важливе уточнення; "
+        "low — дрібне (стиль, друкарські помилки, оформлення). "
+        "Не вигадуй фактів чи норм, яких немає в документі. Якщо документ коректний — залиш findings порожнім. "
+        "Пиши українською мовою."
+    )
+    user_msg = (
+        f"Контекст:\n{context_line}\n\n"
+        f"Документ «{item.title}» (тип: {item.document_type or '—'}, статус: {item.status or '—'}).\n\n"
+        f"Текст документа:\n{doc_text[:40000]}"
+    )
+    client = anthropic.Anthropic(api_key=api_key)
+    try:
+        response = client.messages.create(
+            model=ai_model,
+            max_tokens=4000,
+            system=system_prompt,
+            thinking={"type": "adaptive"},
+            messages=[{"role": "user", "content": user_msg}],
+        )
+    except anthropic.AuthenticationError:
+        return json_response({"error": "auth", "message": "AI-ключ Anthropic недійсний. Перевірте ключ у Налаштування → AI."}, status=503)
+    except anthropic.RateLimitError:
+        return json_response({"error": "rate_limit", "message": "Забагато запитів до AI за короткий час. Зачекайте кілька секунд і повторіть."}, status=429)
+    except anthropic.APIStatusError as exc:
+        text = str(getattr(exc, "message", "") or exc).lower()
+        if any(word in text for word in ("credit balance", "billing", "quota", "insufficient")):
+            return json_response({"error": "no_credits", "message": "Закінчилися кредити Anthropic. Поповніть рахунок на console.anthropic.com — і перевірка знову працюватиме."}, status=402)
+        return json_response({"error": "api", "message": f"AI-сервіс повернув помилку ({exc.status_code}). Спробуйте пізніше."}, status=502)
+    except Exception:
+        return json_response({"error": "api", "message": "Не вдалося звернутися до AI-сервісу. Спробуйте пізніше."}, status=502)
+
+    raw = "".join(
+        getattr(block, "text", "") for block in response.content if getattr(block, "type", "") == "text"
+    ).strip()
+    result = _parse_ai_review_json(raw)
+
+    usage = getattr(response, "usage", None)
+    if usage is not None:
+        AiUsage.objects.get_or_create(key="global")
+        AiUsage.objects.filter(key="global").update(
+            request_count=F("request_count") + 1,
+            input_tokens=F("input_tokens") + (getattr(usage, "input_tokens", 0) or 0),
+            output_tokens=F("output_tokens") + (getattr(usage, "output_tokens", 0) or 0),
+            cache_read_tokens=F("cache_read_tokens") + (getattr(usage, "cache_read_input_tokens", 0) or 0),
+            cache_write_tokens=F("cache_write_tokens") + (getattr(usage, "cache_creation_input_tokens", 0) or 0),
+        )
+    if case is not None:
+        log_crm_action(request, AuditLog.Action.UPDATE, "case", case.number, case.title, f"AI-перевірка документа «{item.title}».")
+    return json_response({
+        "result": result,
+        "document": {"id": item.id, "title": item.title, "chars": len(doc_text)},
+    })
+
+
 def serialize_ai_skill(skill):
     return {
         "areaKey": skill.area_key,

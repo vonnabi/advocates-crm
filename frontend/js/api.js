@@ -246,6 +246,15 @@ export function askAiInApi({ caseNumber, message, helper, helperKey, history }) 
   });
 }
 
+// AI-перевірка одного документа: читає повний текст і повертає структуровані
+// зауваження (about / findings[severity,title,detail,fix] / conclusion).
+export function reviewDocumentWithAi(documentId) {
+  return apiRequest(`/api/documents/${encodeURIComponent(documentId)}/ai-review/`, {
+    method: "POST",
+    body: {}
+  });
+}
+
 // AI помічники — база знань (per-area editable "skills").
 export function getAiSkillsFromApi() {
   return apiRequest("/api/ai/skills/");
