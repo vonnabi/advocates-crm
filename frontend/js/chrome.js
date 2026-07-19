@@ -732,9 +732,11 @@ function ensureLogoutOverlay(ctx) {
       onSessionChange?.();
       overlay.hidden = true;
       document.body.classList.remove("session-ended");
-      armIdleTimer(); // перезапускаємо відлік бездіяльності для нової сесії
       showToast(`Вхід виконано: ${session.user?.name || "користувач"}.`);
-      openPasswordChangeOverlay(ctx);
+      // Повне перезавантаження під новою сесією: інакше в пам'яті лишаються справи,
+      // клієнти й задачі попереднього користувача (бачив би чужі дані до reload).
+      // Boot заново завантажить scoped-bootstrap і, за потреби, форму зміни пароля.
+      window.setTimeout(() => window.location.reload(), 350);
     } catch (_error) {
       if (error) {
         error.textContent = "Невірний email або пароль.";

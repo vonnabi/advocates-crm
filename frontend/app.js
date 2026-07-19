@@ -4,7 +4,7 @@ import {
   isTopbarPanelOpen,
   setupTopbarControls,
   syncTopbarNotifications
-} from "./js/chrome.js?v=idle-logout-1";
+} from "./js/chrome.js?v=login-reload-1";
 import { createDialogOpeners } from "./js/dialog-openers.js?v=onlyoffice-registry-open-1";
 import { setupDialogControls, persistSnapshotState } from "./js/dialogs.js?v=document-delete-path-3";
 import { setupCaseDetailForms } from "./js/forms/case-details.js?v=finance-operation-menu-1";
@@ -17,7 +17,7 @@ import {
   restoreNavigationState as restoreNavigationStateFromStorage,
   saveNavigationState as saveNavigationStateToStorage
 } from "./js/navigation.js";
-import { renderAIScreen } from "./js/screens/ai.js?v=ai-credit-errors-1";
+import { renderAIScreen } from "./js/screens/ai.js?v=ai-perm-gate-1";
 import { renderAnalyticsScreen } from "./js/screens/analytics.js?v=dead-code-cleanup-1";
 import {
   caseFinance,
@@ -39,7 +39,7 @@ import {
   renderClientRows as renderClientRowsScreen,
   renderClientsScreen
 } from "./js/screens/clients.js?v=clients-filter-1";
-import { renderDashboardScreen } from "./js/screens/dashboard.js?v=hero-dismiss-1";
+import { renderDashboardScreen } from "./js/screens/dashboard.js?v=perm-panels-1";
 import { renderDocumentsScreen } from "./js/screens/documents.js?v=docflow-declutter-1";
 import {
   renderMailingsScreen,
@@ -48,7 +48,7 @@ import {
 import { renderFinanceScreen } from "./js/screens/finance.js?v=finance-kpi-trend-1";
 import { renderOSINTScreen } from "./js/screens/osint.js?v=dead-code-cleanup-1";
 import { renderPlannerScreen } from "./js/screens/planner.js";
-import { renderSettingsScreen, syncBureauBrand } from "./js/screens/settings.js?v=ai-usage-1";
+import { renderSettingsScreen, syncBureauBrand } from "./js/screens/settings.js?v=provider-loop-fix-1";
 import {
   allCaseTasks as allCaseTasksScreen,
   renderTasksScreen
