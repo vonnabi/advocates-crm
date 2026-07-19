@@ -1519,6 +1519,7 @@ export function renderDocumentsScreen(ctx) {
                       ${actionMenu([
                         { label: "Відкрити", icon: "eye", attrs: { "data-view-global-document": doc.key, "aria-label": "Відкрити документ" } },
                         { label: "Редагувати", icon: "edit", attrs: { "data-edit-global-document": doc.key, "aria-label": "Редагувати документ" } },
+                        { label: "AI перевірка", icon: "search", attrs: { "data-ai-global-document": doc.key, "aria-label": "AI-перевірка документа" } },
                         { label: "Копіювати документ", icon: "file", attrs: { "data-copy-global-document": doc.key, "aria-label": "Копіювати документ" } },
                         { label: "Відправити", icon: "telegram", attrs: { "data-send-global-document": doc.key, "aria-label": "Відправити документ" } },
                         { label: "ONLYOFFICE", icon: "file", attrs: { "data-office-global-document": doc.key, "aria-label": "Відкрити в ONLYOFFICE" } },
@@ -2363,6 +2364,23 @@ export function renderDocumentsScreen(ctx) {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
       openDocumentSendDialog(ctx, button.dataset.sendGlobalDocument);
+    });
+  });
+  documentsNode.querySelectorAll("[data-ai-global-document]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (!shouldUseApi(state)) {
+        showToast?.("AI-перевірка доступна через сервер (Django), а не статичні файли.", "warning");
+        return;
+      }
+      const docKey = button.dataset.aiGlobalDocument;
+      const target = rows.find((row) => row.key === docKey);
+      const docId = documentApiId(target);
+      if (!target || !docId) {
+        showToast?.("Спочатку збережіть документ у базу, щоб AI зміг його прочитати.", "warning");
+        return;
+      }
+      openAiReviewModal({ doc: target, docId, showToast, switchView: ctx.switchView });
     });
   });
   documentsNode.querySelectorAll("[data-delete-global-document]").forEach((button) => {
