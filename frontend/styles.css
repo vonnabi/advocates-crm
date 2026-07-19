@@ -11838,10 +11838,15 @@ button.ai-status-pill:hover {
 .settings-client-dialog-list {
   max-height: min(460px, 48vh);
   overflow-y: auto;
-  display: grid;
-  grid-template-columns: 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
   padding-right: 2px;
+}
+
+/* Details grow to fit their open case list (flex items keep natural height). */
+.settings-client-dialog-choice {
+  flex: 0 0 auto;
 }
 
 .settings-client-dialog-choice {
