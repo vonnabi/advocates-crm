@@ -568,6 +568,8 @@ async function persistCrmSettings(ctx) {
 async function refreshMailingProviderStatus(ctx) {
   const { state } = ctx;
   if (!shouldUseApi(state)) return null;
+  // Endpoint потребує manage_users (адмін). Для інших ролей не смикаємо — інакше 403 у консолі.
+  if (state.sessionPermissions && state.sessionPermissions.canManageUsers === false) return null;
   const payload = await getMailingProviderStatusFromApi();
   state.mailingProviderStatus = payload.providerStatus || state.mailingProviderStatus;
   return state.mailingProviderStatus;
@@ -2014,13 +2016,18 @@ export function renderSettingsScreen(ctx) {
     { key: "ONLYOFFICE", iconName: "file", description: "Повноцінний Word-редактор у CRM для DOCX, коментарів і версій", modules: "Документи, шаблони" },
     { key: "AI", iconName: "search", description: "AI помічники, аналіз справ і чернетки документів", modules: "AI, OSINT, документи" }
   ];
-  if (shouldUseApi(state) && !state.mailingProviderStatus && !state.loadingMailingProviderStatus) {
+  // renderAll() рендерить цей екран для всіх (у прихований контейнер), тож блок
+  // мусить: (1) не смикати endpoint для ролей без manage_users — інакше 403;
+  // (2) перерендерювати ЛИШЕ після успіху — інакше будь-яка помилка fetch дає
+  // нескінченний цикл render→refresh→render, що вішає вкладку.
+  const canCheckProviders = !(state.sessionPermissions && state.sessionPermissions.canManageUsers === false);
+  if (shouldUseApi(state) && canCheckProviders && !state.mailingProviderStatus && !state.loadingMailingProviderStatus) {
     state.loadingMailingProviderStatus = true;
     refreshMailingProviderStatus(ctx)
+      .then((status) => { if (status) renderSettingsScreen(ctx); })
       .catch(() => {})
       .finally(() => {
         state.loadingMailingProviderStatus = false;
-        renderSettingsScreen(ctx);
       });
   }
   const activeIntegrations = integrations.filter((item) => state.settingsIntegrations[item.key]).length;

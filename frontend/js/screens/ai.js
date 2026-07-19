@@ -894,8 +894,10 @@ export function renderAIScreen(ctx) {
   state.aiSelectedLaw ||= "all";
   state.aiChats ||= {};        // per-case chat state: { messages, draft, pending }
   state.aiOpenChatIds ||= [];  // rows whose chat is expanded (several can be open at once)
+  // renderAll() рендерить цей екран для всіх; ролі без canUseAi не смикають AI-endpoint-и (403).
+  const canUseAi = !(state.sessionPermissions && state.sessionPermissions.canUseAi === false);
   // Lazy-load the opt-in connected-cases list once, then rerender with real data.
-  if (shouldUseApi(state) && !state.aiConnectedLoaded) {
+  if (shouldUseApi(state) && canUseAi && !state.aiConnectedLoaded) {
     state.aiConnectedLoaded = true;
     getAiAssistantsFromApi()
       .then((data) => { state.aiConnected = data?.results || []; renderAIScreen(ctx); })
@@ -918,7 +920,7 @@ export function renderAIScreen(ctx) {
 
   // Lazy-load real per-area stats (request counts, doc counts) from the backend
   // once. Replaces the old hardcoded demo numbers. Refetched after AI replies.
-  if (shouldUseApi(state) && !state.aiSkillStatsLoaded) {
+  if (shouldUseApi(state) && canUseAi && !state.aiSkillStatsLoaded) {
     state.aiSkillStatsLoaded = true;
     getAiSkillsFromApi()
       .then((data) => { state.aiSkillStats = data?.results || {}; renderAIScreen(ctx); })
@@ -929,7 +931,7 @@ export function renderAIScreen(ctx) {
   const areaDocs = (key) => Number(skillStats[key]?.docCount || 0);
 
   // Lazy-load token usage / spend estimate once (refetched after each reply).
-  if (shouldUseApi(state) && !state.aiUsageLoaded) {
+  if (shouldUseApi(state) && canUseAi && !state.aiUsageLoaded) {
     state.aiUsageLoaded = true;
     getAiUsageFromApi()
       .then((data) => { state.aiUsage = data || null; renderAIScreen(ctx); })
