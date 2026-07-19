@@ -150,7 +150,7 @@ function caseRows(state, cases, currency, icon) {
         <i>№${item.id}</i>
         <span>
           <strong>${escapeHtml(item.title)}</strong>
-          <small>${escapeHtml(clientName(state, item))} · ${escapeHtml(item.responsible)} · дедлайн ${formatDisplayDate(item.deadline)}</small>
+          <small>${escapeHtml(clientName(state, item))} · ${escapeHtml(item.responsible)} · дедлайн ${escapeHtml(item.deadline || "Без строку")}</small>
         </span>
         <b>${finance.debt ? currency(finance.debt) : "Без боргу"}</b>
         ${dashboardStatusIcon(item.priority, icon, "", "Пріоритет")}
@@ -253,6 +253,10 @@ export function renderDashboardScreen(ctx) {
   const finance = financeTotalsFromData(financeRows, financeOperations);
   const osint = osintSummaryFromData(state);
   const telegram = state.clients.filter((client) => client.telegram).length;
+  // Ховаємо панелі, на які роль не має прав (сервер усе одно віддає 403).
+  const perms = state.sessionPermissions || {};
+  const canSeeFinance = perms.canSeeFinance !== false;
+  const canUseOsint = perms.canUseOsint !== false;
   let heroDismissed = false;
   try { heroDismissed = localStorage.getItem("crmDashboardHeroDismissed") === "1"; } catch (_e) { heroDismissed = false; }
 
@@ -348,7 +352,7 @@ export function renderDashboardScreen(ctx) {
         </div>
 
         <aside class="dashboard-side">
-          <article class="panel dashboard-card dashboard-finance-card">
+          ${canSeeFinance ? `<article class="panel dashboard-card dashboard-finance-card">
             <div class="dashboard-card-head">
               <div>
                 <h2>Фінансовий зріз</h2>
@@ -363,9 +367,9 @@ export function renderDashboardScreen(ctx) {
             </div>
             ${progress(finance.income ? Math.round((finance.profit / finance.income) * 100) : 0)}
             <button class="primary full" type="button" data-view-link="finance">Перейти до фінансів</button>
-          </article>
+          </article>` : ""}
 
-          <article class="panel dashboard-card">
+          ${canUseOsint ? `<article class="panel dashboard-card">
             <div class="dashboard-card-head">
               <div>
                 <h2>OSINT моніторинг</h2>
@@ -387,7 +391,7 @@ export function renderDashboardScreen(ctx) {
               </div>
             </div>
             <button class="secondary full" type="button" data-view-link="osint">Відкрити OSINT</button>
-          </article>
+          </article>` : ""}
 
           <article class="panel dashboard-card">
             <div class="dashboard-card-head">

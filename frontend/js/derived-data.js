@@ -17,11 +17,15 @@ export function dateFromAny(value) {
   if (!value) return null;
   const clean = String(value).split(" ")[0];
   if (clean === "-") return null;
+  let year, month, day;
   if (clean.includes("-")) {
-    const [year, month, day] = clean.split("-").map(Number);
-    return new Date(year, month - 1, day);
+    [year, month, day] = clean.split("-").map(Number);
+  } else {
+    [day, month, year] = clean.split(".").map(Number);
   }
-  const [day, month, year] = clean.split(".").map(Number);
+  // Guard against non-date strings ("Без строку", "Не вказано"): без цього
+  // new Date(NaN, …) давав Invalid Date і рендерився як "NaN.NaN.NaN".
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
   return new Date(year, month - 1, day);
 }
 
