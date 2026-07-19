@@ -11845,8 +11845,7 @@ button.ai-status-pill:hover {
 }
 
 .settings-client-dialog-choice {
-  display: grid;
-  gap: 0;
+  display: block;
   border: 1px solid #e0e8f2;
   border-radius: 8px;
   background: #ffffff;
