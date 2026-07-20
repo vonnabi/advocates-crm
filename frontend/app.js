@@ -48,7 +48,7 @@ import {
 import { renderFinanceScreen } from "./js/screens/finance.js?v=finance-kpi-trend-1";
 import { renderOSINTScreen } from "./js/screens/osint.js?v=dead-code-cleanup-1";
 import { renderPlannerScreen } from "./js/screens/planner.js";
-import { renderSettingsScreen, syncBureauBrand } from "./js/screens/settings.js?v=provider-loop-fix-1";
+import { renderSettingsScreen, syncBureauBrand } from "./js/screens/settings.js?v=remaining-work-refresh-1";
 import {
   allCaseTasks as allCaseTasksScreen,
   renderTasksScreen
