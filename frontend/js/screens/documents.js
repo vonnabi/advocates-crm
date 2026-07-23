@@ -1,4 +1,4 @@
-import { deleteDocumentFromApi, exportAiConclusionDocx, reviewDocumentWithAi, saveArchiveFoldersToApi, saveDocumentToApi, saveMailingCampaignToApi, sendMailingCampaignInApi, shouldUseApi } from "../api.js";
+import { assembleDocumentFromTemplateInApi, deleteDocumentFromApi, deleteDocumentTemplateFromApi, exportAiConclusionDocx, listDocumentTemplatesFromApi, makeTemplateFromDocumentWithAi, reviewDocumentWithAi, saveArchiveFoldersToApi, saveDocumentToApi, saveMailingCampaignToApi, sendMailingCampaignInApi, shouldUseApi, uploadDocumentTemplateToApi } from "../api.js";
 import { normalizeDocument } from "../state.js";
 import { inferCaseDocumentFolder } from "../case-documents.js";
 
@@ -1194,6 +1194,323 @@ function openAiReviewModal({ doc, docId, showToast, switchView }) {
     });
 }
 
+function ensureAssembleStyles() {
+  if (document.querySelector("#documents-assemble-styles")) return;
+  const style = document.createElement("style");
+  style.id = "documents-assemble-styles";
+  // Self-contained, brand-matched styling (navy --semantic-blue accent, CRM tokens),
+  // so the modal looks native even when the AI-review stylesheet isn't loaded.
+  style.textContent = `
+    .documents-assemble-dialog { width: min(660px, 94vw); max-width: 94vw; border: none; border-radius: 16px;
+      padding: 0; background: var(--panel, #fff); color: var(--text, #152033); box-shadow: 0 24px 70px rgba(15,23,42,.28); overflow: hidden; }
+    .documents-assemble-dialog::backdrop { background: rgba(15,23,42,.45); }
+    .documents-assemble-dialog .ai-skills-head { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between;
+      padding: 20px 24px 16px; border-bottom: 1px solid var(--line, #e7ebf1); background: linear-gradient(180deg, rgba(31,78,121,.04), transparent); }
+    .documents-assemble-dialog .ai-skills-head h2 { margin: 0 0 4px; font-size: 18px; font-weight: 700; color: var(--semantic-blue, #1f4e79); }
+    .documents-assemble-dialog .ai-skills-head .muted { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--muted, #68758a); max-width: 480px; }
+    .documents-assemble-dialog .ai-skills-x { border: none; background: #f1f3f7; width: 32px; height: 32px; border-radius: 9px;
+      cursor: pointer; font-size: 15px; color: #475066; flex: none; line-height: 1; }
+    .documents-assemble-dialog .ai-skills-x:hover { background: #e6e9f0; }
+    .assemble-body { display: grid; gap: 16px; padding: 20px 24px 22px; max-height: 74vh; overflow-y: auto; }
+    .assemble-field { display: grid; gap: 7px; }
+    .assemble-field > span { font-weight: 600; font-size: 11px; letter-spacing: .4px; text-transform: uppercase; color: var(--muted, #68758a); }
+    .assemble-body select, .assemble-body textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--line, #e7ebf1);
+      border-radius: 9px; padding: 9px 11px; font: inherit; font-size: 13px; color: var(--text, #152033); background: #fff; transition: border-color .15s, box-shadow .15s; }
+    .assemble-body select:focus, .assemble-body textarea:focus { outline: none; border-color: var(--semantic-blue, #1f4e79);
+      box-shadow: 0 0 0 3px var(--semantic-blue-soft, rgba(31,78,121,.1)); }
+    .assemble-body textarea { resize: vertical; min-height: 46px; }
+    .assemble-templates { display: grid; gap: 9px; max-height: 250px; overflow-y: auto; padding: 2px; }
+    .assemble-template { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; align-items: center;
+      border: 1px solid var(--line, #e7ebf1); border-radius: 11px; padding: 12px 13px; cursor: pointer; background: #fff; transition: border-color .15s, box-shadow .15s, background .15s; }
+    .assemble-template:hover { border-color: var(--semantic-blue-border, rgba(31,78,121,.24)); }
+    .assemble-template.active { border-color: var(--semantic-blue, #1f4e79); background: var(--semantic-blue-soft, rgba(31,78,121,.06));
+      box-shadow: 0 0 0 1px var(--semantic-blue, #1f4e79) inset; }
+    .assemble-template strong { font-size: 13.5px; font-weight: 600; color: var(--text, #152033); }
+    .assemble-template .assemble-card-actions { display: flex; gap: 4px; align-items: center; }
+    .assemble-template .assemble-icon-btn { background: none; border: 1px solid transparent; width: 26px; height: 26px; border-radius: 7px;
+      color: var(--muted, #68758a); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+    .assemble-template .assemble-icon-btn svg { width: 15px; height: 15px; }
+    .assemble-template .assemble-icon-btn:hover { background: #f1f3f7; color: var(--semantic-blue, #1f4e79); border-color: var(--line, #e7ebf1); }
+    .assemble-template .assemble-icon-btn.assemble-del:hover { color: var(--semantic-red, #dc2626); background: var(--semantic-red-soft, #feecec); }
+    .assemble-template .assemble-fields { grid-column: 1 / -1; font-size: 12px; line-height: 1.4; color: var(--muted, #68758a); }
+    .assemble-empty { color: var(--muted, #68758a); font-size: 12.5px; line-height: 1.5; padding: 14px; text-align: center;
+      border: 1px dashed var(--line, #e7ebf1); border-radius: 11px; background: var(--bg, #f6f8fb); }
+    .assemble-empty code, .assemble-hint code { background: var(--semantic-blue-soft, rgba(31,78,121,.1)); color: var(--semantic-blue, #1f4e79);
+      padding: 1px 5px; border-radius: 5px; font-size: 11.5px; }
+    .assemble-hint { font-size: 12px; line-height: 1.5; color: var(--muted, #68758a); margin: 0; }
+    .assemble-actions { display: flex; gap: 10px; justify-content: space-between; align-items: center; flex-wrap: wrap;
+      padding-top: 4px; border-top: 1px solid var(--line, #e7ebf1); margin-top: 2px; padding-top: 16px; }
+    .assemble-upload-btn { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; margin: 0; font-size: 12.5px; font-weight: 600;
+      color: var(--semantic-blue, #1f4e79); border: 1px solid var(--semantic-blue-border, rgba(31,78,121,.24)); background: #fff; padding: 8px 14px; border-radius: 9px; transition: background .15s; }
+    .assemble-upload-btn:hover { background: var(--semantic-blue-soft, rgba(31,78,121,.08)); }
+    .assemble-upload-btn svg { width: 15px; height: 15px; }
+    .assemble-upload-group { display: flex; gap: 8px; flex-wrap: wrap; }
+    .assemble-ai-btn { border-style: dashed; }
+    .assemble-ai-btn:hover { border-style: solid; }
+    .assemble-run { border: none; cursor: pointer; font-size: 13px; font-weight: 600; color: #fff; background: var(--semantic-blue, #1f4e79);
+      padding: 9px 18px; border-radius: 9px; transition: background .15s, opacity .15s; }
+    .assemble-run:hover:not(:disabled) { background: var(--action-hover, rgba(31,78,121,.86)); }
+    .assemble-run:disabled { opacity: .5; cursor: default; }
+    .assemble-loading { display: flex; align-items: center; gap: 10px; color: var(--muted, #68758a); font-size: 13px; padding: 6px 2px; }
+    .documents-assemble-dialog .review-spinner { width: 16px; height: 16px; border: 2px solid var(--line, #e7ebf1);
+      border-top-color: var(--semantic-blue, #1f4e79); border-radius: 50%; display: inline-block; animation: assemble-spin .8s linear infinite; }
+    @keyframes assemble-spin { to { transform: rotate(360deg); } }
+  `;
+  document.head.append(style);
+}
+
+// AI складання документа зі зразка: обрати справу + .docx-шаблон → Claude заповнює
+// плейсхолдери даними справи → готовий документ зберігається у справу й відкривається в ONLYOFFICE.
+function openAssembleModal(ctx, { caseId = "" } = {}) {
+  const { state, showToast } = ctx;
+  ensureAssembleStyles();
+  document.querySelector("#documents-assemble-dialog")?.remove();
+  const dialog = document.createElement("dialog");
+  dialog.id = "documents-assemble-dialog";
+  dialog.className = "ai-skills-dialog documents-assemble-dialog";
+  const caseOptions = (state.cases || [])
+    .slice()
+    .sort((a, b) => String(a.id).localeCompare(String(b.id), "uk"))
+    .map((item) => `<option value="${escapeHtml(item.id)}" ${String(item.id) === String(caseId) ? "selected" : ""}>№${escapeHtml(item.id)} · ${escapeHtml(item.title || "")}</option>`)
+    .join("");
+  dialog.innerHTML = `
+    <div class="ai-skills-head">
+      <div>
+        <h2>Скласти документ (AI)</h2>
+        <p class="muted">Помічник збере документ зі зразка й заповнить його даними справи. Далі — редагування в ONLYOFFICE.</p>
+      </div>
+      <button type="button" class="ai-skills-x" data-assemble-close aria-label="Закрити">✕</button>
+    </div>
+    <div class="assemble-body">
+      <label class="assemble-field">
+        <span>Справа</span>
+        <select data-assemble-case ${caseOptions ? "" : "disabled"}>
+          ${caseOptions || '<option value="">Немає справ</option>'}
+        </select>
+      </label>
+      <div class="assemble-field">
+        <span>Зразок документа</span>
+        <div class="assemble-templates" data-assemble-templates>
+          <div class="assemble-loading"><span class="review-spinner"></span> Завантажуємо зразки…</div>
+        </div>
+        <p class="assemble-hint">Зразки — це .docx з полями у подвійних дужках, напр. <code>{{позивач}}</code>, <code>{{суд}}</code>. Немає готового зразка з полями? Кнопка <strong>«🧩 AI-зразок із документа»</strong> — завантажте звичайний документ, і помічник сам розставить поля.</p>
+      </div>
+      <label class="assemble-field">
+        <span>Додаткові вказівки (необовʼязково)</span>
+        <textarea data-assemble-instructions rows="2" placeholder="Напр.: сума позову 50 000 грн; наголосити на пропуску строку відповіді"></textarea>
+      </label>
+      <div class="assemble-actions">
+        <div class="assemble-upload-group">
+          <label class="assemble-upload-btn">
+            ${ctx.icon ? ctx.icon("fileUp") : ""} Завантажити зразок
+            <input type="file" accept=".docx" data-assemble-upload hidden>
+          </label>
+          <label class="assemble-upload-btn assemble-ai-btn" title="Завантажте звичайний документ — помічник сам зробить із нього шаблон із полями {{...}}">
+            🧩 AI-зразок із документа
+            <input type="file" accept=".docx,.pdf,.txt,.md,.png,.jpg,.jpeg,.webp" data-assemble-ai-upload hidden>
+          </label>
+        </div>
+        <button class="assemble-run" type="button" data-assemble-run disabled>Скласти документ</button>
+      </div>
+    </div>`;
+  document.body.append(dialog);
+  const templatesNode = dialog.querySelector("[data-assemble-templates]");
+  const runButton = dialog.querySelector("[data-assemble-run]");
+  const caseSelect = dialog.querySelector("[data-assemble-case]");
+  let templates = [];
+  let selectedTemplateId = "";
+
+  const close = () => dialog.close();
+  dialog.querySelector("[data-assemble-close]").addEventListener("click", close);
+  dialog.addEventListener("close", () => dialog.remove());
+
+  const syncRun = () => {
+    runButton.disabled = !(selectedTemplateId && caseSelect.value);
+  };
+
+  const renderTemplates = () => {
+    if (!templates.length) {
+      templatesNode.innerHTML = `<div class="assemble-empty">Ще немає зразків. Завантажте .docx з полями <code>{{...}}</code> кнопкою «Завантажити зразок».</div>`;
+      return;
+    }
+    templatesNode.innerHTML = templates.map((tpl) => {
+      const active = String(tpl.id) === String(selectedTemplateId);
+      const fields = (tpl.placeholders || []);
+      const fieldsLabel = fields.length
+        ? `${fields.length} ${fields.length === 1 ? "поле" : fields.length < 5 ? "поля" : "полів"}: ${fields.slice(0, 6).map(escapeHtml).join(", ")}${fields.length > 6 ? "…" : ""}`
+        : "без полів для заповнення (буде вставлено як є)";
+      const pencil = ctx.icon ? ctx.icon("edit") : "✎";
+      return `
+        <div class="assemble-template ${active ? "active" : ""}" data-template-id="${escapeHtml(tpl.id)}">
+          <strong>${escapeHtml(tpl.title || tpl.fileName || "Зразок")}</strong>
+          <div class="assemble-card-actions">
+            <button type="button" class="assemble-icon-btn" data-template-edit="${escapeHtml(tpl.id)}" title="Редагувати зразок в ONLYOFFICE">${pencil}</button>
+            <button type="button" class="assemble-icon-btn assemble-del" data-template-del="${escapeHtml(tpl.id)}" title="Видалити зразок">✕</button>
+          </div>
+          <span class="assemble-fields">${fieldsLabel}</span>
+        </div>`;
+    }).join("");
+    templatesNode.querySelectorAll(".assemble-template").forEach((node) => {
+      node.addEventListener("click", (event) => {
+        if (event.target.closest("[data-template-del]") || event.target.closest("[data-template-edit]")) return;
+        selectedTemplateId = node.dataset.templateId;
+        renderTemplates();
+        syncRun();
+      });
+    });
+    templatesNode.querySelectorAll("[data-template-edit]").forEach((btn) => {
+      btn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const tpl = templates.find((t) => String(t.id) === String(btn.dataset.templateEdit));
+        if (!tpl) return;
+        if (typeof ctx.openOfficeEditor !== "function") {
+          showToast?.("Редактор недоступний.", "warning");
+          return;
+        }
+        // Open the template .docx itself in ONLYOFFICE. On close, refresh the list so
+        // changed placeholders are re-read (the callback saves the edit server-side).
+        const officeDialog = document.querySelector("#office-editor-dialog");
+        if (officeDialog) {
+          officeDialog.addEventListener("close", () => { loadTemplates(); }, { once: true });
+        }
+        ctx.openOfficeEditor(tpl, { returnView: "documents" });
+        showToast?.("Відкрито зразок для редагування. Зміни збережуться автоматично.", "info");
+      });
+    });
+    templatesNode.querySelectorAll("[data-template-del]").forEach((btn) => {
+      btn.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        const id = btn.dataset.templateDel;
+        if (!window.confirm("Видалити цей зразок?")) return;
+        try {
+          await deleteDocumentTemplateFromApi(id);
+          templates = templates.filter((tpl) => String(tpl.id) !== String(id));
+          if (String(selectedTemplateId) === String(id)) selectedTemplateId = "";
+          renderTemplates();
+          syncRun();
+        } catch (_error) {
+          showToast?.("Не вдалося видалити зразок.", "danger");
+        }
+      });
+    });
+  };
+
+  const loadTemplates = async () => {
+    try {
+      const payload = await listDocumentTemplatesFromApi();
+      templates = payload?.results || [];
+      renderTemplates();
+    } catch (_error) {
+      templatesNode.innerHTML = `<div class="assemble-empty">Не вдалося завантажити зразки.</div>`;
+    }
+  };
+
+  caseSelect.addEventListener("change", syncRun);
+
+  dialog.querySelector("[data-assemble-upload]").addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".docx")) {
+      showToast?.("Зразок має бути у форматі .docx.", "warning");
+      return;
+    }
+    templatesNode.insertAdjacentHTML("afterbegin", `<div class="assemble-loading" data-upload-progress><span class="review-spinner"></span> Завантажуємо «${escapeHtml(file.name)}»…</div>`);
+    try {
+      const created = await uploadDocumentTemplateToApi(file);
+      templates = [created, ...templates.filter((tpl) => String(tpl.id) !== String(created.id))];
+      selectedTemplateId = created.id;
+      renderTemplates();
+      syncRun();
+      if (!(created.placeholders || []).length) {
+        showToast?.("Зразок додано, але у ньому немає полів {{...}}. Помічник вставить його як є.", "info");
+      } else {
+        showToast?.(`Зразок додано: знайдено ${created.placeholders.length} полів.`);
+      }
+    } catch (_error) {
+      dialog.querySelector("[data-upload-progress]")?.remove();
+      showToast?.("Не вдалося завантажити зразок.", "danger");
+    }
+  });
+
+  // AI turns an ordinary document into a template with {{placeholders}} — so nobody types the brackets.
+  dialog.querySelector("[data-assemble-ai-upload]").addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!/\.(docx|pdf|txt|md|png|jpe?g|webp)$/i.test(file.name)) {
+      showToast?.("Дозволені: .docx, .pdf, .txt, зображення.", "warning");
+      return;
+    }
+    templatesNode.insertAdjacentHTML("afterbegin", `<div class="assemble-loading" data-upload-progress><span class="review-spinner"></span> Помічник робить шаблон із «${escapeHtml(file.name)}»… (10–20 c)</div>`);
+    try {
+      const created = await makeTemplateFromDocumentWithAi(file);
+      dialog.querySelector("[data-upload-progress]")?.remove();
+      templates = [created, ...templates.filter((tpl) => String(tpl.id) !== String(created.id))];
+      selectedTemplateId = created.id;
+      renderTemplates();
+      syncRun();
+      const fields = (created.placeholders || []).length;
+      showToast?.(fields
+        ? `Помічник зробив шаблон: ${fields} полів {{…}}. Перевірте й складайте документ.`
+        : "Шаблон створено, але помічник не додав полів. Перевірте документ.", fields ? "success" : "info");
+    } catch (error) {
+      dialog.querySelector("[data-upload-progress]")?.remove();
+      const message = String(error?.message || error || "");
+      let human = "Не вдалося зробити шаблон із документа.";
+      if (/no_key|auth/.test(message)) human = "AI не налаштований (Налаштування → AI).";
+      else if (/no_credits|402/.test(message)) human = "Закінчилися кредити Anthropic.";
+      showToast?.(human, "danger");
+    }
+  });
+
+  runButton.addEventListener("click", async () => {
+    const targetCase = caseSelect.value;
+    if (!selectedTemplateId || !targetCase) return;
+    const instructions = dialog.querySelector("[data-assemble-instructions]").value.trim();
+    runButton.disabled = true;
+    const originalLabel = runButton.textContent;
+    runButton.textContent = "Помічник складає документ…";
+    try {
+      const payload = await assembleDocumentFromTemplateInApi({ templateId: selectedTemplateId, caseId: targetCase, instructions });
+      const created = normalizeDocument(payload);
+      const caseItem = ctx.caseById?.(targetCase);
+      if (caseItem) {
+        caseItem.documents = caseItem.documents || [];
+        caseItem.documents.unshift(created);
+      }
+      const assembly = payload.assembly || {};
+      close();
+      ctx.renderAll?.();
+      ctx.switchView?.("documents");
+      const missing = (assembly.missing || []).length;
+      const total = (assembly.placeholders || []).length;
+      if (total) {
+        showToast?.(missing
+          ? `Документ складено: заповнено ${assembly.filledCount}/${total} полів. Незаповнені (${missing}) позначені як {{…}} — дозаповніть у ONLYOFFICE.`
+          : `Документ складено: заповнено всі ${total} полів. Відкриваємо для редагування.`);
+      } else {
+        showToast?.("Документ складено зі зразка. Відкриваємо для редагування.");
+      }
+      if (typeof ctx.openOfficeEditor === "function") {
+        ctx.openOfficeEditor(created, { caseId: targetCase, returnView: "documents" });
+      }
+    } catch (error) {
+      runButton.disabled = false;
+      runButton.textContent = originalLabel;
+      const message = String(error?.message || error || "");
+      let human = "Не вдалося скласти документ.";
+      if (/no_key|auth/.test(message)) human = "AI не налаштований або ключ недійсний (Налаштування → AI).";
+      else if (/no_credits|402/.test(message)) human = "Закінчилися кредити Anthropic — поповніть рахунок.";
+      else if (/rate_limit|429/.test(message)) human = "Забагато запитів до AI. Зачекайте кілька секунд і повторіть.";
+      showToast?.(human, "danger");
+    }
+  });
+
+  dialog.showModal();
+  loadTemplates();
+}
+
 export function renderDocumentsScreen(ctx) {
   const {
     state,
@@ -1363,6 +1680,7 @@ export function renderDocumentsScreen(ctx) {
         </div>
         <div class="documents-toolbar-actions">
           <button class="secondary" type="button" data-documents-ai ${selected ? "" : "disabled"}>${icon("search")} AI аналіз</button>
+          <button class="secondary" type="button" data-documents-assemble ${hasCases ? "" : "disabled"}>${icon("file")} Скласти документ (AI)</button>
           <button class="secondary" type="button" data-documents-add-folder ${selectedCase ? "" : "disabled"}>${icon("file")} Створити папку</button>
           <button class="primary" type="button" data-documents-add>${icon("file")} Додати документ</button>
         </div>
@@ -1865,6 +2183,18 @@ export function renderDocumentsScreen(ctx) {
       }
       openAiReviewModal({ doc: target, docId, showToast, switchView: ctx.switchView });
     });
+  });
+  documentsNode.querySelector("[data-documents-assemble]")?.addEventListener("click", () => {
+    if (!shouldUseApi(state)) {
+      showToast?.("Складання документів AI доступне через сервер (Django), а не статичні файли.", "warning");
+      return;
+    }
+    if (!state.cases?.length) {
+      showToast?.("Спершу створіть справу, у яку помічник збере документ.", "warning");
+      return;
+    }
+    const targetCase = selectedCase || selected?.caseId || state.selectedCaseId || state.cases[0]?.id || "";
+    openAssembleModal(ctx, { caseId: targetCase });
   });
   const documentApiId = (document) => {
     const id = document?.id || document?.documentId;

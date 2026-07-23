@@ -239,11 +239,64 @@ export function deleteCaseFromApi(caseId) {
 
 // AI помічник: send a question (+ case context and prior turns) to the real Claude
 // backend and get a reply. Returns { reply }.
-export function askAiInApi({ caseNumber, message, helper, helperKey, history }) {
+export function askAiInApi({ caseNumber, message, helper, helperKey, history, attachmentDocumentId = "" }) {
   return apiRequest("/api/ai/chat/", {
     method: "POST",
-    body: { caseNumber, message, helper, helperKey, history }
+    body: { caseNumber, message, helper, helperKey, history, attachmentDocumentId }
   });
+}
+
+// AI помічник зі стрімінгом: віддає відповідь по частинах через onChunk(accumulatedText).
+// Повертає підсумковий текст. Кидає помилку — викликач відкочується на askAiInApi.
+export async function streamAiChat({ caseNumber, message, helper, helperKey, history, file, attachmentDocumentId, onChunk }) {
+  const baseUrl = apiBaseUrl();
+  if (!baseUrl) throw new Error("CRM API base URL is not configured");
+  let body;
+  const headers = { "X-CSRFToken": readCookie("csrftoken") };
+  if (file) {
+    body = new FormData();
+    body.append("caseNumber", caseNumber || "");
+    body.append("message", message || "");
+    body.append("helper", helper || "");
+    body.append("helperKey", helperKey || "");
+    body.append("history", JSON.stringify(history || []));
+    body.append("attachment", file);
+  } else {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify({ caseNumber, message, helper, helperKey, history, attachmentDocumentId: attachmentDocumentId || "" });
+  }
+  const response = await fetch(`${baseUrl}/api/ai/chat/stream/`, { method: "POST", credentials: "include", headers, body });
+  if (!response.ok) {
+    let msg;
+    try { msg = (await response.json())?.message; } catch { msg = `HTTP ${response.status}`; }
+    throw new Error(msg || `HTTP ${response.status}`);
+  }
+  if (!response.body || !response.body.getReader) throw new Error("stream_unsupported");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let acc = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    acc += decoder.decode(value, { stream: true });
+    const errIdx = acc.indexOf("[[AI_ERROR]]");
+    if (errIdx >= 0) throw new Error(acc.slice(errIdx + "[[AI_ERROR]]".length).trim() || "AI error");
+    onChunk?.(acc);
+  }
+  return acc.trim();
+}
+
+// AI помічник із вкладенням: надсилає питання + файл (зображення/скан/pdf/docx) як
+// multipart, щоб обійти ліміт JSON-тіла. Модель «бачить» скани/фото напряму (vision).
+export function askAiWithAttachmentInApi({ caseNumber, message, helper, helperKey, history, file }) {
+  const formData = new FormData();
+  formData.append("caseNumber", caseNumber || "");
+  formData.append("message", message || "");
+  formData.append("helper", helper || "");
+  formData.append("helperKey", helperKey || "");
+  formData.append("history", JSON.stringify(history || []));
+  formData.append("attachment", file);
+  return apiFormRequest("/api/ai/chat/", formData);
 }
 
 // AI-перевірка одного документа: читає повний текст і повертає структуровані
@@ -253,6 +306,79 @@ export function reviewDocumentWithAi(documentId) {
     method: "POST",
     body: {}
   });
+}
+
+// AI складання документів зі зразка — .docx-шаблони з полями {{плейсхолдер}}.
+export function listDocumentTemplatesFromApi() {
+  return apiRequest("/api/documents/templates/");
+}
+
+export function uploadDocumentTemplateToApi(file, title = "") {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (title) formData.append("title", title);
+  return apiFormRequest("/api/documents/templates/", formData);
+}
+
+// AI перетворює звичайний .docx/скан/pdf на шаблон із полями {{...}} (щоб не вставляти дужки вручну).
+export function makeTemplateFromDocumentWithAi(file, title = "") {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (title) formData.append("title", title);
+  return apiFormRequest("/api/documents/templates/from-document/", formData);
+}
+
+export function deleteDocumentTemplateFromApi(templateId) {
+  return apiRequest(`/api/documents/templates/${encodeURIComponent(templateId)}/`, { method: "DELETE" });
+}
+
+// AI бере .docx-зразок і збирає готовий документ у справу (далі — редагування в ONLYOFFICE).
+export function assembleDocumentFromTemplateInApi({ templateId, caseId, instructions = "" }) {
+  return apiRequest("/api/documents/assemble/", {
+    method: "POST",
+    body: { templateId, caseId, instructions }
+  });
+}
+
+// Індекс усього доступного документообігу (для вибору документа у чат AI-помічника).
+export function getAiDocumentIndexFromApi() {
+  return apiRequest("/api/ai/documents/index/");
+}
+
+// Зберегти чернетку з чату AI-помічника як .docx: у справу (asTemplate=false) або як
+// багаторазовий шаблон у «Шаблони документів» (asTemplate=true).
+export function saveAiDraftToApi({ caseNumber, text, title = "", asTemplate = false, folder = "" }) {
+  return apiRequest("/api/ai/documents/draft/", {
+    method: "POST",
+    body: { caseNumber, text, title, asTemplate, folder }
+  });
+}
+
+// Текст документа (для оновлення прев'ю після редагування в ONLYOFFICE).
+export function getDocumentTextFromApi(documentId) {
+  return apiRequest(`/api/ai/documents/${encodeURIComponent(documentId)}/text/`);
+}
+
+// AI робить шаблон із готового тексту (кнопка «Зробити шаблон» у прев'ю).
+export function makeTemplateFromTextWithAi({ text, title = "" }) {
+  return apiRequest("/api/documents/templates/from-document/", {
+    method: "POST",
+    body: { text, title }
+  });
+}
+
+// Скачати .docx із тексту (кнопка «Скачати на комп'ютер») — повертає Blob.
+export async function downloadDocxFromTextApi({ text, title = "" }) {
+  const baseUrl = apiBaseUrl();
+  if (!baseUrl) throw new Error("CRM API base URL is not configured");
+  const response = await fetch(`${baseUrl}/api/ai/documents/docx/`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", "X-CSRFToken": readCookie("csrftoken") },
+    body: JSON.stringify({ text, title })
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return response.blob();
 }
 
 // AI помічники — база знань (per-area editable "skills").

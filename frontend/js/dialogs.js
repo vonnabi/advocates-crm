@@ -425,6 +425,11 @@ export function setupDialogControls(ctx) {
   officeDialog?.addEventListener("close", () => {
     officeDialog.classList.remove("is-fullscreen");
     syncOfficeFullscreen();
+    // Destroy the ONLYOFFICE editor on close so the editing session ends — that is what makes
+    // the Document Server post its save-callback and write the edited file back to the CRM.
+    // (Previously it was destroyed only on the NEXT open, so edits weren't persisted on close.)
+    try { window.__crmOnlyOfficeEditor?.destroyEditor?.(); } catch (_error) { /* already gone */ }
+    window.__crmOnlyOfficeEditor = null;
   });
   $("#delete-document-close")?.addEventListener("click", () => closeDeleteDocumentConfirm(ctx));
   $("#delete-document-cancel")?.addEventListener("click", () => closeDeleteDocumentConfirm(ctx));

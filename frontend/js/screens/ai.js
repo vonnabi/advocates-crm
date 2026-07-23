@@ -1,21 +1,29 @@
 import { setupScreenCustomSelects } from "../custom-selects.js";
 import {
   askAiInApi,
+  askAiWithAttachmentInApi,
   connectAiAssistantToApi,
   deleteAiKnowledgeFromApi,
   deleteAiSkillFromApi,
   disconnectAiAssistantFromApi,
+  downloadDocxFromTextApi,
   exportAiConclusionDocx,
   getAiAssistantsFromApi,
+  getAiDocumentIndexFromApi,
+  getDocumentTextFromApi,
+  makeTemplateFromTextWithAi,
   getAiKnowledgeFromApi,
   getAiSkillsFromApi,
   getAiUsageFromApi,
+  saveAiDraftToApi,
   saveAiQuestionsToApi,
   saveAiSkillToApi,
   setAiAssistantActiveInApi,
   shouldUseApi,
+  streamAiChat,
   uploadAiKnowledgeToApi
 } from "../api.js";
+import { normalizeDocument } from "../state.js";
 
 // The API throws an Error whose message is the raw response body (JSON). Pull out
 // the backend's human-readable `message` (e.g. "AI не налаштований"), else fall back.
@@ -338,12 +346,530 @@ function filterRows(state, rows) {
   });
 }
 
-function renderMessage(message) {
+function renderMessage(message, caseId = "", index = -1) {
+  // "Thinking" state: animated typing dots so it's clear the помічник is working, not frozen.
+  if (message.pending) {
+    return `<div class="bubble ai-typing" role="status" aria-label="Помічник аналізує">
+      <span class="ai-typing-dots"><span></span><span></span><span></span></span>
+      <span class="ai-typing-label">Помічник аналізує…</span>
+    </div>`;
+  }
   const tone = message.error ? "error" : (message.role === "user" ? "user" : "");
-  return `<div class="bubble ${tone}">${escapeHtml(message.text)}</div>`;
+  const attach = message.attachmentName
+    ? `<div class="bubble-attach">📎 ${escapeHtml(message.attachmentName)}</div>`
+    : "";
+  // Assistant replies: render light-markdown (headings/lists/bold) so they're readable, not a
+  // wall of text. User/error messages: escaped text with preserved line breaks.
+  const isAssistant = message.role === "assistant" && !message.error;
+  let body;
+  if (message.text) {
+    body = isAssistant ? `<div class="bubble-md">${draftToHtml(message.text)}</div>` : `<span class="bubble-plain">${escapeHtml(message.text)}</span>`;
+  } else {
+    body = message.attachmentName ? "<em class=\"muted\">Проаналізуй прикріплений файл</em>" : "";
+  }
+  const bubble = `<div class="bubble ${tone}">${attach}${body}</div>`;
+  // On a real assistant reply, offer to preview or save it as an editable .docx (ONLYOFFICE).
+  const canDraft = message.role === "assistant" && !message.seeded && !message.error && (message.text || "").trim().length > 40;
+  if (!canDraft || !caseId || index < 0) return bubble;
+  const actions = `<div class="ai-msg-actions">
+    <button type="button" class="ai-msg-copy-btn" data-ai-copy-case="${escapeHtml(caseId)}" data-ai-copy-index="${index}" title="Скопіювати текст відповіді">📋 Копіювати</button>
+    <button type="button" class="ai-msg-view-btn" data-ai-preview-case="${escapeHtml(caseId)}" data-ai-preview-index="${index}" title="Відкрити документ: редагувати в ONLYOFFICE, зберегти, зробити шаблон">👁 Переглянути</button>
+  </div>`;
+  return `<div class="ai-msg">${bubble}${actions}</div>`;
 }
 
-function inlineChatPanel(row, caseItem, helper, messages, icon, draft = "", questions = []) {
+// Render an AI draft (plain / light-markdown) as document-like HTML for the preview.
+function draftToHtml(text) {
+  const inline = (s) => escapeHtml(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  let html = "";
+  let inList = false;
+  const closeList = () => { if (inList) { html += "</ul>"; inList = false; } };
+  for (const raw of String(text || "").split("\n")) {
+    const line = raw.trim().replace(/^>\s?/, ""); // drop markdown blockquote marker
+    if (!line) { closeList(); continue; }
+    const heading = line.match(/^(#{1,4})\s+(.*)$/);
+    if (heading) { closeList(); const lvl = Math.min(heading[1].length + 1, 4); html += `<h${lvl}>${inline(heading[2])}</h${lvl}>`; continue; }
+    const li = line.match(/^[-*•]\s+(.*)$/);
+    if (li) { if (!inList) { html += "<ul>"; inList = true; } html += `<li>${inline(li[1])}</li>`; continue; }
+    closeList();
+    html += `<p>${inline(line)}</p>`;
+  }
+  closeList();
+  return html || "<p class=\"muted\">Порожній чернетка.</p>";
+}
+
+// Live-update the pending assistant bubble in a specific chat while a reply streams in.
+function updateStreamingBubble(caseId, text) {
+  const chatEl = document.querySelector(`.ai-chat[data-ai-chat-case="${CSS.escape(caseId)}"]`);
+  if (!chatEl) return;
+  let bubble = chatEl.querySelector(".bubble.streaming");
+  if (!bubble) {
+    // First chunk: replace the "typing" indicator with a live bubble.
+    const typing = chatEl.querySelector(".ai-typing");
+    bubble = document.createElement("div");
+    bubble.className = "bubble streaming";
+    bubble.innerHTML = '<div class="bubble-md"></div>';
+    if (typing) typing.replaceWith(bubble); else chatEl.appendChild(bubble);
+  }
+  bubble.querySelector(".bubble-md").innerHTML = draftToHtml(text);
+}
+
+// Plain, paste-friendly version of a reply (drops markdown markers # ** > , keeps bullets).
+function cleanForCopy(text) {
+  return String(text || "")
+    .split("\n")
+    .map((line) => line
+      .replace(/^\s*#{1,4}\s+/, "")
+      .replace(/^\s*>\s?/, "")
+      .replace(/^\s*[-*]\s+/, "• ")
+      .replace(/\*\*(.+?)\*\*/g, "$1"))
+    .join("\n")
+    .trim();
+}
+
+// Picker that mirrors the real Документообіг screen (top filters + client/case & folder rail +
+// table) inside a popup, so browsing feels familiar. Selecting a row attaches it to the chat.
+async function openDocLibraryModal(onPick) {
+  document.querySelector("#ai-doc-picker-dialog")?.remove();
+  const dialog = document.createElement("dialog");
+  dialog.id = "ai-doc-picker-dialog";
+  dialog.className = "ai-doclib-dialog";
+  dialog.innerHTML = `
+    <div class="ai-doclib-head">
+      <div>
+        <h2>Документообіг</h2>
+        <p class="muted">Оберіть будь-який документ — з будь-якої справи. Помічник його прочитає.</p>
+      </div>
+      <button type="button" class="ai-skills-x" data-doc-close aria-label="Закрити">✕</button>
+    </div>
+    <div class="ai-doclib-filters">
+      <input type="search" data-f-search placeholder="Документ, справа, клієнт, папка…" autocomplete="off">
+      <select data-f-status></select>
+      <select data-f-type></select>
+      <select data-f-client></select>
+      <select data-f-case></select>
+    </div>
+    <div class="ai-doclib-body">
+      <aside class="ai-doclib-rail" data-rail></aside>
+      <div class="ai-doclib-main" data-main><div class="ai-doc-pick-empty">Завантажуємо документообіг…</div></div>
+    </div>`;
+  document.body.append(dialog);
+  const close = () => dialog.close();
+  dialog.querySelector("[data-doc-close]").addEventListener("click", close);
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
+
+  const mainEl = dialog.querySelector("[data-main]");
+  let all = [];
+  try {
+    all = (await getAiDocumentIndexFromApi())?.results || [];
+  } catch (_error) {
+    mainEl.innerHTML = `<div class="ai-doc-pick-empty">Не вдалося завантажити документообіг.</div>`;
+    return;
+  }
+  if (!all.length) {
+    mainEl.innerHTML = `<div class="ai-doc-pick-empty">У документообігу ще немає документів із текстом/файлом.</div>`;
+    return;
+  }
+
+  const filters = { search: "", status: "all", type: "all", client: "all", case: "all", folder: "all" };
+  const uniq = (vals) => [...new Set(vals.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "uk"));
+  const statuses = uniq(all.map((d) => d.status));
+  const types = uniq(all.map((d) => d.type));
+  const clients = [...new Map(all.filter((d) => d.clientName).map((d) => [d.clientName, { id: d.clientName, name: d.clientName }])).values()]
+    .sort((a, b) => a.name.localeCompare(b.name, "uk"));
+  const cases = [...new Map(all.filter((d) => d.caseId).map((d) => [d.caseId, { id: d.caseId, title: d.caseTitle }])).values()];
+  const folders = uniq(all.map((d) => d.folder));
+  const opt = (v, label, sel) => `<option value="${escapeHtml(v)}" ${String(sel) === String(v) ? "selected" : ""}>${escapeHtml(label)}</option>`;
+
+  const searchEl = dialog.querySelector("[data-f-search]");
+  const statusEl = dialog.querySelector("[data-f-status]");
+  const typeEl = dialog.querySelector("[data-f-type]");
+  const clientEl = dialog.querySelector("[data-f-client]");
+  const caseEl = dialog.querySelector("[data-f-case]");
+  statusEl.innerHTML = opt("all", "Всі статуси") + statuses.map((s) => opt(s, s)).join("");
+  typeEl.innerHTML = opt("all", "Всі типи") + types.map((t) => opt(t, t)).join("");
+  clientEl.innerHTML = opt("all", "Всі клієнти") + clients.map((c) => opt(c.id, c.name)).join("");
+  caseEl.innerHTML = opt("all", "Всі справи") + cases.map((c) => opt(c.id, `№${c.id} · ${c.title || ""}`)).join("");
+
+  const matches = (d) => {
+    const q = filters.search.trim().toLowerCase();
+    if (q && !`${d.name} ${d.caseId} ${d.caseTitle} ${d.clientName} ${d.folder} ${d.type} ${d.status}`.toLowerCase().includes(q)) return false;
+    if (filters.status !== "all" && d.status !== filters.status) return false;
+    if (filters.type !== "all" && d.type !== filters.type) return false;
+    if (filters.client !== "all" && d.clientName !== filters.client) return false;
+    if (filters.case !== "all" && String(d.caseId) !== String(filters.case)) return false;
+    if (filters.folder !== "all" && d.folder !== filters.folder) return false;
+    return true;
+  };
+
+  const refresh = () => {
+    statusEl.value = filters.status; typeEl.value = filters.type; clientEl.value = filters.client; caseEl.value = filters.case;
+    const rows = all.filter(matches);
+    // Left rail: «Документи у справах» (client → cases) + «Папки», mirroring the real screen.
+    const clientBlocks = clients.map((c) => {
+      const cCount = all.filter((d) => d.clientName === c.id).length;
+      const cCases = [...new Map(all.filter((d) => d.clientName === c.id && d.caseId).map((d) => [d.caseId, { id: d.caseId, title: d.caseTitle }])).values()];
+      const active = filters.client === c.id;
+      return `
+        <button type="button" class="ai-doclib-node ${active && filters.case === "all" ? "active" : ""}" data-rail-client="${escapeHtml(c.id)}">
+          <span>👤 ${escapeHtml(c.name)}</span><em>${cCount}</em>
+        </button>
+        ${cCases.map((cc) => `
+          <button type="button" class="ai-doclib-subnode ${String(filters.case) === String(cc.id) ? "active" : ""}" data-rail-case="${escapeHtml(cc.id)}">
+            <span>№${escapeHtml(cc.id)} · ${escapeHtml(cc.title || "")}</span><em>${all.filter((d) => String(d.caseId) === String(cc.id)).length}</em>
+          </button>`).join("")}`;
+    }).join("");
+    const folderBlocks = folders.map((f) => `
+      <button type="button" class="ai-doclib-node ${filters.folder === f ? "active" : ""}" data-rail-folder="${escapeHtml(f)}">
+        <span>📁 ${escapeHtml(f)}</span><em>${all.filter((d) => d.folder === f).length}</em>
+      </button>`).join("");
+    dialog.querySelector("[data-rail]").innerHTML = `
+      <button type="button" class="ai-doclib-node ${filters.client === "all" && filters.case === "all" && filters.folder === "all" ? "active" : ""}" data-rail-all>
+        <span>🗂 Усі документи</span><em>${all.length}</em>
+      </button>
+      <div class="ai-doclib-rail-title">Документи у справах</div>
+      ${clientBlocks || '<div class="ai-doclib-rail-empty">—</div>'}
+      <div class="ai-doclib-rail-title">Папки</div>
+      ${folderBlocks || '<div class="ai-doclib-rail-empty">—</div>'}`;
+    // Right: table.
+    mainEl.innerHTML = rows.length ? `
+      <table class="ai-doclib-table">
+        <thead><tr><th>Документ</th><th>Справа</th><th>Папка</th><th>Статус</th><th>Джерело</th></tr></thead>
+        <tbody>
+          ${rows.map((d) => `
+            <tr class="ai-doclib-row" data-doc-id="${escapeHtml(d.id)}">
+              <td><span class="ai-doclib-doc-name">📄 ${escapeHtml(d.name)}</span><span class="ai-doclib-doc-type">${escapeHtml(d.type || "Документ")}</span></td>
+              <td>${d.caseId ? `№${escapeHtml(d.caseId)}<span class="ai-doclib-sub">${escapeHtml(d.clientName || d.caseTitle || "")}</span>` : '<span class="ai-doclib-sub">Без справи</span>'}</td>
+              <td>${escapeHtml(d.folder || "—")}</td>
+              <td>${escapeHtml(d.status || "—")}</td>
+              <td>${escapeHtml(d.source || "—")}</td>
+            </tr>`).join("")}
+        </tbody>
+      </table>` : `<div class="ai-doc-pick-empty">Нічого не знайдено за фільтром.</div>`;
+    dialog.querySelector("[data-main]").querySelectorAll(".ai-doclib-row").forEach((row) => row.addEventListener("click", () => {
+      const picked = all.find((x) => String(x.id) === String(row.dataset.docId));
+      close();
+      if (picked) onPick(picked);
+    }));
+  };
+
+  searchEl.addEventListener("input", () => { filters.search = searchEl.value; refresh(); });
+  statusEl.addEventListener("change", () => { filters.status = statusEl.value; refresh(); });
+  typeEl.addEventListener("change", () => { filters.type = typeEl.value; refresh(); });
+  clientEl.addEventListener("change", () => { filters.client = clientEl.value; filters.case = "all"; refresh(); });
+  caseEl.addEventListener("change", () => { filters.case = caseEl.value; filters.client = "all"; refresh(); });
+  dialog.querySelector("[data-rail]").addEventListener("click", (event) => {
+    const target = event.target.closest("button");
+    if (!target) return;
+    if (target.hasAttribute("data-rail-all")) { filters.client = "all"; filters.case = "all"; filters.folder = "all"; }
+    else if (target.dataset.railClient !== undefined) { filters.client = target.dataset.railClient; filters.case = "all"; filters.folder = "all"; }
+    else if (target.dataset.railCase !== undefined) { filters.case = target.dataset.railCase; filters.client = "all"; filters.folder = "all"; }
+    else if (target.dataset.railFolder !== undefined) { filters.folder = filters.folder === target.dataset.railFolder ? "all" : target.dataset.railFolder; }
+    refresh();
+  });
+  refresh();
+  searchEl.focus();
+}
+
+// Best-effort document title from the first meaningful line (skips markdown / placeholders).
+function guessDocTitle(text) {
+  for (const raw of String(text || "").split("\n")) {
+    const line = raw.trim().replace(/^#{1,4}\s+/, "").replace(/^>\s?/, "").replace(/\*\*/g, "").trim();
+    if (line && line.length >= 4 && !/\{\{/.test(line)) return line.slice(0, 80);
+  }
+  return "Документ AI";
+}
+
+// The AI document workspace: preview → edit in ONLYOFFICE (edits come back here) → save
+// (rename + destination: computer / документообіг) → or turn it into a template.
+function openDraftPreviewModal({ text, caseId, showToast, openOfficeEditor, cases = [], onSavedToCase }) {
+  document.querySelector("#ai-draft-preview-dialog")?.remove();
+  const dialog = document.createElement("dialog");
+  dialog.id = "ai-draft-preview-dialog";
+  dialog.className = "ai-draft-preview-dialog";
+  let currentText = text;
+  let workingDoc = null; // materialised CaseDocument, so ONLYOFFICE has a file to open
+  const title = guessDocTitle(text);
+  dialog.innerHTML = `
+    <div class="ai-preview-head">
+      <div>
+        <h2>Документ помічника</h2>
+        <p class="muted">Редагуйте в ONLYOFFICE, збережіть куди потрібно або зробіть шаблон.</p>
+      </div>
+      <button type="button" class="ai-skills-x" data-preview-close aria-label="Закрити">✕</button>
+    </div>
+    <div class="ai-preview-paper" data-preview-paper>${draftToHtml(currentText)}</div>
+    <div class="ai-preview-actions">
+      <button type="button" class="ai-preview-cancel" data-preview-close>Закрити</button>
+      <div class="ai-preview-actions-group">
+        <button type="button" class="ai-preview-btn" data-preview-office>✏️ Редагувати в ONLYOFFICE</button>
+        <button type="button" class="ai-preview-btn" data-preview-template>🧩 Зберегти як шаблон</button>
+        <button type="button" class="ai-preview-btn" data-preview-make-template>✨ Зробити шаблон (AI)</button>
+        <button type="button" class="ai-preview-save" data-preview-save>💾 Зберегти</button>
+      </div>
+    </div>`;
+  document.body.append(dialog);
+  const paper = dialog.querySelector("[data-preview-paper]");
+  const close = () => dialog.close();
+  dialog.querySelectorAll("[data-preview-close]").forEach((btn) => btn.addEventListener("click", close));
+  dialog.addEventListener("close", () => dialog.remove());
+
+  const withBusy = async (btn, label, fn) => {
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.textContent = label;
+    try { await fn(); } finally { btn.disabled = false; btn.innerHTML = orig; }
+  };
+  const norm = (s) => String(s || "").replace(/\s+/g, " ").trim();
+  const setRefreshing = (on) => {
+    let banner = dialog.querySelector(".ai-preview-refreshing");
+    if (on && !banner) {
+      banner = document.createElement("div");
+      banner.className = "ai-preview-refreshing";
+      banner.innerHTML = '<span class="ai-preview-spin"></span> Отримуємо ваші зміни з ONLYOFFICE…';
+      paper.before(banner);
+    } else if (!on && banner) {
+      banner.remove();
+    }
+  };
+
+  // ✏️ Edit in ONLYOFFICE. Materialise a doc first (ONLYOFFICE needs a real file), then on
+  // close poll for the edited version (its save-callback lands ~10s later) and show it here.
+  dialog.querySelector("[data-preview-office]").addEventListener("click", (event) => withBusy(event.currentTarget, "Готуємо…", async () => {
+    if (!openOfficeEditor) { showToast?.("Редактор ONLYOFFICE недоступний.", "warning"); return; }
+    if (!workingDoc) {
+      try {
+        const payload = await saveAiDraftToApi({ caseNumber: caseId, text: currentText, title });
+        workingDoc = normalizeDocument(payload);
+        onSavedToCase?.(payload);
+      } catch (error) { showToast?.(aiErrorMessage(error, "Не вдалося підготувати документ."), "danger"); return; }
+    }
+    // Baseline = server's extraction of the un-edited doc, to know when the edits actually land.
+    let baseline = "";
+    try { baseline = (await getDocumentTextFromApi(workingDoc.id))?.text || ""; } catch (_error) { /* ignore */ }
+    const officeDialog = document.querySelector("#office-editor-dialog");
+    if (officeDialog) {
+      officeDialog.addEventListener("close", async () => {
+        setRefreshing(true);
+        let applied = false;
+        for (let i = 0; i < 16; i++) { // ~32s window — ONLYOFFICE saves a few seconds after close
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          let fetched = "";
+          try { fetched = (await getDocumentTextFromApi(workingDoc.id))?.text || ""; } catch (_error) { continue; }
+          if (fetched.trim() && norm(fetched) !== norm(baseline)) {
+            currentText = fetched;
+            paper.innerHTML = draftToHtml(currentText);
+            applied = true;
+            break;
+          }
+        }
+        setRefreshing(false);
+        if (applied) showToast?.("Зміни з ONLYOFFICE підтягнуто — тепер можна зберегти.", "success");
+        else showToast?.("Змін не виявлено (або документ ще зберігається в ONLYOFFICE).", "info");
+      }, { once: true });
+    }
+    openOfficeEditor(workingDoc, { caseId, returnView: "ai" });
+  }));
+
+  // 🧩 Save as template (as-is)
+  dialog.querySelector("[data-preview-template]").addEventListener("click", (event) => withBusy(event.currentTarget, "Зберігаємо…", async () => {
+    try {
+      const tpl = await saveAiDraftToApi({ caseNumber: caseId, text: currentText, title, asTemplate: true });
+      const n = (tpl.placeholders || []).length;
+      showToast?.(n ? `Шаблон збережено (${n} полів {{…}}). Доступний у «Скласти документ (AI)».` : "Шаблон збережено (без полів {{…}}).", n ? "success" : "info");
+    } catch (error) { showToast?.(aiErrorMessage(error, "Не вдалося зберегти шаблон."), "danger"); }
+  }));
+
+  // 🧩 Make a template with AI (inserts {{placeholders}})
+  dialog.querySelector("[data-preview-make-template]").addEventListener("click", (event) => withBusy(event.currentTarget, "AI робить шаблон…", async () => {
+    try {
+      const tpl = await makeTemplateFromTextWithAi({ text: currentText, title });
+      const n = (tpl.placeholders || []).length;
+      showToast?.(n ? `Помічник зробив шаблон: ${n} полів {{…}}. Доступний у «Скласти документ (AI)».` : "Шаблон створено (без полів).", n ? "success" : "info");
+    } catch (error) { showToast?.(aiErrorMessage(error, "Не вдалося зробити шаблон."), "danger"); }
+  }));
+
+  // 💾 Save → destination dialog (rename + computer / документообіг)
+  dialog.querySelector("[data-preview-save]").addEventListener("click", () => {
+    openSaveDestinationDialog({ text: currentText, defaultTitle: title, caseId, cases, showToast, onSavedToCase });
+  });
+
+  dialog.showModal();
+}
+
+// Where to save: rename + download to computer OR open the Документообіг browser to pick a place.
+function openSaveDestinationDialog({ text, defaultTitle, cases = [], showToast, onSavedToCase }) {
+  document.querySelector("#ai-save-dest-dialog")?.remove();
+  const dialog = document.createElement("dialog");
+  dialog.id = "ai-save-dest-dialog";
+  dialog.className = "ai-save-dest-dialog";
+  dialog.innerHTML = `
+    <div class="ai-preview-head">
+      <div><h2>Зберегти документ</h2><p class="muted">Перейменуйте та оберіть, куди зберегти.</p></div>
+      <button type="button" class="ai-skills-x" data-dest-close aria-label="Закрити">✕</button>
+    </div>
+    <div class="ai-dest-body">
+      <label class="ai-dest-field"><span>Назва документа</span>
+        <input type="text" data-dest-title value="${escapeHtml(defaultTitle)}"></label>
+      <div class="ai-dest-field"><span>Куди зберегти</span>
+        <button type="button" class="ai-dest-choice" data-dest-download>💻 Скачати .docx на комп'ютер</button>
+        <button type="button" class="ai-dest-choice" data-dest-docflow>📁 Зберегти в документообіг…</button>
+      </div>
+    </div>`;
+  document.body.append(dialog);
+  const close = () => dialog.close();
+  dialog.querySelector("[data-dest-close]").addEventListener("click", close);
+  dialog.addEventListener("close", () => dialog.remove());
+  const titleOf = () => (dialog.querySelector("[data-dest-title]").value.trim() || defaultTitle);
+
+  dialog.querySelector("[data-dest-download]").addEventListener("click", async (event) => {
+    const btn = event.currentTarget; btn.disabled = true;
+    try {
+      const blob = await downloadDocxFromTextApi({ text, title: titleOf() });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `${titleOf()}.docx`;
+      document.body.append(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      showToast?.("Документ завантажено на комп'ютер.", "success");
+      close();
+    } catch (_error) { btn.disabled = false; showToast?.("Не вдалося завантажити документ.", "danger"); }
+  });
+  dialog.querySelector("[data-dest-docflow]").addEventListener("click", () => {
+    const chosenTitle = titleOf();
+    close();
+    openSaveToDocflowModal({ text, title: chosenTitle, cases, showToast, onSavedToCase });
+  });
+  dialog.showModal();
+}
+
+// Документообіг browser for choosing WHERE to save — mirrors the real screen: search, collapsible
+// clients → cases, «Без справи» + folders (incl. templates). Pick a case/folder → choose folder → save.
+async function openSaveToDocflowModal({ text, title, cases = [], showToast, onSavedToCase }) {
+  document.querySelector("#ai-docflow-save-dialog")?.remove();
+  const dialog = document.createElement("dialog");
+  dialog.id = "ai-docflow-save-dialog";
+  dialog.className = "ai-doclib-dialog";
+  dialog.innerHTML = `
+    <div class="ai-doclib-head">
+      <div><h2>Куди зберегти документ</h2><p class="muted">Оберіть справу і папку — або самостійну папку / шаблони.</p></div>
+      <button type="button" class="ai-skills-x" data-df-close aria-label="Закрити">✕</button>
+    </div>
+    <div class="ai-docflow-filters"><input type="search" data-df-search placeholder="Пошук клієнта або справи…" autocomplete="off"></div>
+    <div class="ai-doclib-body ai-docflow-body">
+      <aside class="ai-doclib-rail" data-df-rail></aside>
+      <div class="ai-docflow-target" data-df-target><div class="ai-doc-pick-empty">← Оберіть, куди зберегти документ.</div></div>
+    </div>`;
+  document.body.append(dialog);
+  const close = () => dialog.close();
+  dialog.querySelector("[data-df-close]").addEventListener("click", close);
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
+
+  let index = [];
+  try { index = (await getAiDocumentIndexFromApi())?.results || []; } catch (_error) { /* ignore */ }
+  const foldersOfCase = (id) => [...new Set(index.filter((d) => String(d.caseId) === String(id) && d.folder).map((d) => d.folder))];
+  const commonFolders = ["Документи справи", "Позови", "Клопотання", "Листування", "Архів"];
+  const standaloneFolders = [...new Set(["Шаблони документів", ...index.filter((d) => !d.caseId && d.folder).map((d) => d.folder)])];
+  const railEl = dialog.querySelector("[data-df-rail]");
+  const targetEl = dialog.querySelector("[data-df-target]");
+  const searchEl = dialog.querySelector("[data-df-search]");
+
+  const groups = new Map();
+  cases.slice().sort((a, b) => String(a.id).localeCompare(String(b.id), "uk")).forEach((c) => {
+    const client = c.clientName || c.client || "Без клієнта";
+    if (!groups.has(client)) groups.set(client, []);
+    groups.get(client).push(c);
+  });
+
+  const expanded = new Set();
+  let target = null;
+  let query = "";
+
+  const renderRail = () => {
+    const q = query.trim().toLowerCase();
+    const clientBlocks = [...groups.entries()].map(([client, list]) => {
+      const matched = q ? list.filter((c) => `${c.id} ${c.title || ""} ${client}`.toLowerCase().includes(q)) : list;
+      const clientMatches = q ? (client.toLowerCase().includes(q) || matched.length > 0) : true;
+      if (!clientMatches) return "";
+      const shown = q && !client.toLowerCase().includes(q) ? matched : list;
+      const isOpen = expanded.has(client) || Boolean(q);
+      return `
+        <button type="button" class="ai-doclib-node ai-df-client ${isOpen ? "open" : ""}" data-df-client="${escapeHtml(client)}">
+          <span class="ai-df-caret">▸</span><span class="ai-df-client-name">👤 ${escapeHtml(client)}</span><em>${list.length}</em>
+        </button>
+        ${isOpen ? shown.map((c) => `
+          <button type="button" class="ai-doclib-subnode ${target?.caseId === c.id ? "active" : ""}" data-df-case="${escapeHtml(c.id)}">
+            <span>№${escapeHtml(c.id)} · ${escapeHtml(c.title || "")}</span>
+          </button>`).join("") : ""}`;
+    }).join("");
+    railEl.innerHTML = `
+      <button type="button" class="ai-doclib-node ${target?.standalone && !target?.fixedFolder ? "active" : ""}" data-df-standalone>
+        <span>🗂 Без справи (самостійна папка)</span></button>
+      <div class="ai-doclib-rail-title">Документи у справах</div>
+      ${clientBlocks || '<div class="ai-doclib-rail-empty">Нічого не знайдено</div>'}
+      <div class="ai-doclib-rail-title">Папки</div>
+      ${standaloneFolders.map((f) => `
+        <button type="button" class="ai-doclib-node ${target?.fixedFolder === f ? "active" : ""}" data-df-folder-node="${escapeHtml(f)}">
+          <span>📁 ${escapeHtml(f)}</span></button>`).join("")}`;
+  };
+
+  const renderTarget = () => {
+    if (!target) { targetEl.innerHTML = '<div class="ai-doc-pick-empty">← Оберіть, куди зберегти документ.</div>'; return; }
+    let defFolder;
+    let chips;
+    if (target.caseId) { defFolder = "Документи справи"; chips = [...new Set([...foldersOfCase(target.caseId), ...commonFolders])]; }
+    else if (target.fixedFolder) { defFolder = target.fixedFolder; chips = [...new Set([target.fixedFolder, ...standaloneFolders, "Архів"])]; }
+    else { defFolder = "Мої документи"; chips = ["Мої документи", "Архів", ...standaloneFolders]; }
+    targetEl.innerHTML = `
+      <div class="ai-df-target-head">📁 ${escapeHtml(target.label || "")}</div>
+      <label class="ai-df-field"><span>Папка</span>
+        <input type="text" data-df-folder value="${escapeHtml(defFolder)}" placeholder="Назва папки"></label>
+      <div class="ai-df-chips">${chips.map((f) => `<button type="button" class="ai-df-chip" data-df-folder-pick="${escapeHtml(f)}">${escapeHtml(f)}</button>`).join("")}</div>
+      <button type="button" class="ai-df-save" data-df-save>💾 Зберегти сюди</button>`;
+    targetEl.querySelectorAll("[data-df-folder-pick]").forEach((chip) => chip.addEventListener("click", () => {
+      targetEl.querySelector("[data-df-folder]").value = chip.dataset.dfFolderPick;
+    }));
+    targetEl.querySelector("[data-df-save]").addEventListener("click", async (event) => {
+      const btn = event.currentTarget;
+      const folder = targetEl.querySelector("[data-df-folder]").value.trim() || defFolder;
+      btn.disabled = true; btn.textContent = "Зберігаємо…";
+      try {
+        const payload = await saveAiDraftToApi({ caseNumber: target.caseId || "", text, title, folder });
+        onSavedToCase?.(payload);
+        showToast?.(`Збережено: ${target.caseId ? "справа №" + target.caseId : "без справи"} · ${folder}.`, "success");
+        close();
+      } catch (error) { btn.disabled = false; btn.textContent = "💾 Зберегти сюди"; showToast?.(aiErrorMessage(error, "Не вдалося зберегти."), "danger"); }
+    });
+  };
+
+  railEl.addEventListener("click", (event) => {
+    const node = event.target.closest("button");
+    if (!node) return;
+    if (node.dataset.dfClient !== undefined) {
+      // Toggle a client open/closed (collapsed by default, like the real Документообіг).
+      const client = node.dataset.dfClient;
+      if (expanded.has(client)) expanded.delete(client); else expanded.add(client);
+      renderRail();
+      return;
+    }
+    if (node.hasAttribute("data-df-standalone")) target = { standalone: true, label: "Без справи (самостійна папка)" };
+    else if (node.dataset.dfFolderNode !== undefined) target = { standalone: true, fixedFolder: node.dataset.dfFolderNode, label: node.dataset.dfFolderNode };
+    else if (node.dataset.dfCase !== undefined) {
+      const c = cases.find((x) => String(x.id) === String(node.dataset.dfCase));
+      target = { caseId: node.dataset.dfCase, label: `Справа №${node.dataset.dfCase} · ${c?.title || ""}` };
+    } else return;
+    renderRail();
+    renderTarget();
+  });
+
+  searchEl.addEventListener("input", () => { query = searchEl.value; renderRail(); });
+  renderRail();
+  searchEl.focus();
+}
+
+function inlineChatPanel(row, caseItem, helper, messages, icon, draft = "", questions = [], attachment = null) {
   return `
     <section class="panel ai-card-chat-panel">
       <div class="toolbar compact">
@@ -355,15 +881,33 @@ function inlineChatPanel(row, caseItem, helper, messages, icon, draft = "", ques
           ×
         </button>
       </div>
-      <div class="ai-chat">
-        ${messages.map(renderMessage).join("")}
+      <div class="ai-chat" data-ai-chat-case="${escapeHtml(caseItem.id)}">
+        ${messages.map((message, index) => renderMessage(message, caseItem.id, index)).join("")}
       </div>
       <div class="ai-chat-composer">
-        <div class="ai-question-list">
-          ${questions.map((question) => `<button type="button" data-ai-question="${escapeHtml(question)}" data-ai-chat-case="${escapeHtml(caseItem.id)}">${escapeHtml(question)}</button>`).join("")}
-          <button type="button" class="ai-question-manage" data-ai-manage-questions="${escapeHtml(helper.key)}" title="Редагувати швидкі питання">${icon("edit")} Питання</button>
+        <div class="ai-composer-tools">
+          <details class="ai-questions-details">
+            <summary class="ai-questions-summary">💡 Швидкі питання</summary>
+            <div class="ai-question-list">
+              ${questions.map((question) => `<button type="button" data-ai-question="${escapeHtml(question)}" data-ai-chat-case="${escapeHtml(caseItem.id)}">${escapeHtml(question)}</button>`).join("")}
+              <button type="button" class="ai-question-manage" data-ai-manage-questions="${escapeHtml(helper.key)}" title="Редагувати швидкі питання">${icon("edit")} Редагувати</button>
+            </div>
+          </details>
         </div>
+        ${attachment ? `
+        <div class="ai-attach-chip">
+          <span class="ai-attach-name">📎 ${escapeHtml(attachment.name)}</span>
+          <button type="button" class="ai-attach-remove" data-ai-attach-remove data-ai-chat-case="${escapeHtml(caseItem.id)}" title="Прибрати файл" aria-label="Прибрати файл">✕</button>
+        </div>` : ""}
         <div class="ai-input-row">
+          <input type="file" hidden data-ai-attach-input data-ai-chat-case="${escapeHtml(caseItem.id)}" accept="image/png,image/jpeg,image/gif,image/webp,.pdf,.docx,.txt,.md">
+          <div class="ai-attach-wrap">
+            <button class="ai-attach-btn" type="button" data-ai-attach data-ai-chat-case="${escapeHtml(caseItem.id)}" aria-label="Додати документ" title="Додати документ для аналізу">${icon("file")}</button>
+            <div class="ai-attach-menu" data-ai-attach-menu hidden>
+              <button type="button" data-ai-attach-computer data-ai-chat-case="${escapeHtml(caseItem.id)}">💻 З комп'ютера</button>
+              <button type="button" data-ai-attach-docs data-ai-chat-case="${escapeHtml(caseItem.id)}">📁 З документообігу</button>
+            </div>
+          </div>
           <textarea data-ai-prompt data-ai-chat-case="${escapeHtml(caseItem.id)}" rows="1" placeholder="Напишіть питання по справі…  (Enter — надіслати, Shift+Enter — новий рядок)">${escapeHtml(draft)}</textarea>
           <button class="ai-voice-btn" type="button" data-ai-voice data-ai-chat-case="${escapeHtml(caseItem.id)}" aria-label="Голосове введення" title="Диктувати голосом">${MIC_SVG}</button>
           <button class="primary icon-button" type="button" data-ai-send data-ai-chat-case="${escapeHtml(caseItem.id)}" aria-label="Надіслати">${icon("telegram")}</button>
@@ -887,7 +1431,7 @@ function openSkillsManager({ state, showToast }) {
 }
 
 export function renderAIScreen(ctx) {
-  const { state, $, badge, icon, caseById, clientById, showToast, openTaskDialog, switchView, saveNavigationState } = ctx;
+  const { state, $, badge, icon, caseById, clientById, showToast, openTaskDialog, switchView, saveNavigationState, openOfficeEditor } = ctx;
   state.aiSearchQuery ||= "";
   state.aiCaseStatusFilter ||= "all";
   state.aiViewMode ||= "cards";
@@ -1033,7 +1577,7 @@ export function renderAIScreen(ctx) {
                       ` : ""}
                     </div>
                   </article>
-                  ${isOpen ? inlineChatPanel(row, rowCase, row.helper, chat.messages || [], icon, chat.draft || "", questionsForArea(state, row.helper.key)) : ""}
+                  ${isOpen ? inlineChatPanel(row, rowCase, row.helper, chat.messages || [], icon, chat.draft || "", questionsForArea(state, row.helper.key), chat.attachment || null) : ""}
                 </div>
               `; }).join("")}
             </div>
@@ -1082,15 +1626,17 @@ export function renderAIScreen(ctx) {
     const helper = lawForCase(caseItem);
     const chat = state.aiChats[caseId] || (state.aiChats[caseId] = { messages: defaultMessages(caseItem, helper.label), draft: "", pending: false });
     const prompt = String(promptText || chat.draft || "").trim();
-    if (!prompt) { showToast("Напишіть запит для AI помічника.", "warning"); return; }
+    const attachment = chat.attachment || null;
+    if (!prompt && !attachment) { showToast("Напишіть запит або додайте файл для AI помічника.", "warning"); return; }
     if (chat.pending) return;
 
     const history = chat.messages
       .filter((message) => !message.seeded && !message.pending)
       .map((message) => ({ role: message.role, text: message.text }));
 
-    chat.messages.push({ role: "user", text: prompt });
+    chat.messages.push({ role: "user", text: prompt, attachmentName: attachment?.name || "" });
     chat.draft = "";
+    chat.attachment = null; // attachment travels with this turn only
     if (!state.aiOpenChatIds.includes(`case-${caseId}`)) state.aiOpenChatIds.push(`case-${caseId}`);
 
     if (!shouldUseApi(state)) {
@@ -1105,10 +1651,28 @@ export function renderAIScreen(ctx) {
 
     let reply;
     try {
-      const data = await askAiInApi({ caseNumber: caseId, message: prompt, helper: helper.label, helperKey: helper.key, history });
-      reply = { role: "assistant", text: data?.reply || "AI не повернув відповіді." };
-    } catch (error) {
-      reply = { role: "assistant", error: true, text: aiErrorMessage(error, "AI-сервіс недоступний. Перевірте ключ Anthropic у Налаштування → AI.") };
+      // Stream the reply live (token-by-token); on any streaming problem, fall back to the
+      // plain non-streaming endpoint so a buffering proxy or old browser still works.
+      const streamed = await streamAiChat({
+        caseNumber: caseId, message: prompt, helper: helper.label, helperKey: helper.key, history,
+        file: attachment?.file, attachmentDocumentId: attachment?.documentId,
+        onChunk: (acc) => updateStreamingBubble(caseId, acc),
+      });
+      reply = { role: "assistant", text: streamed || "AI не повернув відповіді." };
+    } catch (_streamError) {
+      try {
+        let data;
+        if (attachment?.file) {
+          data = await askAiWithAttachmentInApi({ caseNumber: caseId, message: prompt, helper: helper.label, helperKey: helper.key, history, file: attachment.file });
+        } else if (attachment?.documentId) {
+          data = await askAiInApi({ caseNumber: caseId, message: prompt, helper: helper.label, helperKey: helper.key, history, attachmentDocumentId: attachment.documentId });
+        } else {
+          data = await askAiInApi({ caseNumber: caseId, message: prompt, helper: helper.label, helperKey: helper.key, history });
+        }
+        reply = { role: "assistant", text: data?.reply || "AI не повернув відповіді." };
+      } catch (error) {
+        reply = { role: "assistant", error: true, text: aiErrorMessage(error, "AI-сервіс недоступний. Перевірте ключ Anthropic у Налаштування → AI.") };
+      }
     } finally {
       chat.pending = false;
     }
@@ -1199,7 +1763,117 @@ export function renderAIScreen(ctx) {
     event.stopPropagation();
     toggleVoiceInput(button, state, showToast);
   }));
+  // Attach button opens a small menu: file from computer OR a document from Документообіг.
+  document.querySelectorAll("[data-ai-attach]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const menu = button.parentElement.querySelector("[data-ai-attach-menu]");
+    if (menu) menu.hidden = !menu.hidden;
+  }));
+  document.querySelectorAll("[data-ai-attach-computer]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    button.closest("[data-ai-attach-menu]").hidden = true;
+    button.closest(".ai-input-row")?.querySelector("[data-ai-attach-input]")?.click();
+  }));
+  document.querySelectorAll("[data-ai-attach-docs]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    button.closest("[data-ai-attach-menu]").hidden = true;
+    const caseId = button.dataset.aiChatCase;
+    const caseItem = caseById(caseId);
+    openDocLibraryModal((picked) => {
+      const chat = state.aiChats[caseId] || (state.aiChats[caseId] = { messages: defaultMessages(caseItem, lawForCase(caseItem).label), draft: "", pending: false });
+      const typed = document.querySelector(`[data-ai-prompt][data-ai-chat-case="${CSS.escape(caseId)}"]`);
+      if (typed) chat.draft = typed.value;
+      chat.attachment = { documentId: picked.id, name: picked.name };
+      rerender();
+    });
+  }));
+  // Close any open attach menu when clicking elsewhere (attached once, survives rerenders).
+  if (!window.__aiAttachMenuGlobal) {
+    window.__aiAttachMenuGlobal = true;
+    document.addEventListener("click", (event) => {
+      if (!event.target.closest(".ai-attach-wrap")) {
+        document.querySelectorAll("[data-ai-attach-menu]").forEach((menu) => { menu.hidden = true; });
+      }
+    });
+  }
+  document.querySelectorAll("[data-ai-attach-input]").forEach((input) => input.addEventListener("change", (event) => {
+    const caseId = event.currentTarget.dataset.aiChatCase;
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+    if (!/\.(png|jpe?g|gif|webp|pdf|docx|txt|md)$/i.test(file.name)) {
+      showToast("Дозволені: зображення (png/jpg), pdf, docx, txt.", "warning");
+      return;
+    }
+    if (file.size > 12 * 1024 * 1024) { showToast("Файл завеликий (макс. 12 МБ).", "warning"); return; }
+    const chat = state.aiChats[caseId] || (state.aiChats[caseId] = { messages: defaultMessages(caseById(caseId), lawForCase(caseById(caseId)).label), draft: "", pending: false });
+    // Preserve whatever the user has already typed before we re-render.
+    const typed = document.querySelector(`[data-ai-prompt][data-ai-chat-case="${CSS.escape(caseId)}"]`);
+    if (typed) chat.draft = typed.value;
+    chat.attachment = { file, name: file.name };
+    rerender();
+  }));
+  document.querySelectorAll("[data-ai-attach-remove]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const caseId = button.dataset.aiChatCase;
+    if (state.aiChats[caseId]) state.aiChats[caseId].attachment = null;
+    rerender();
+  }));
+  const draftTextAt = (button, caseAttr, idxAttr) => {
+    const caseId = button.dataset[caseAttr];
+    const msg = state.aiChats[caseId]?.messages?.[Number(button.dataset[idxAttr])];
+    return { caseId, text: (msg?.text || "").trim() };
+  };
+  // 📋 Copy the reply text (markdown stripped) to the clipboard.
+  document.querySelectorAll("[data-ai-copy-index]").forEach((button) => button.addEventListener("click", async (event) => {
+    event.stopPropagation();
+    const { text } = draftTextAt(button, "aiCopyCase", "aiCopyIndex");
+    if (!text) return;
+    const clean = cleanForCopy(text);
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(clean);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = clean; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.append(ta); ta.select(); document.execCommand("copy"); ta.remove();
+      }
+      const original = button.innerHTML;
+      button.textContent = "✓ Скопійовано";
+      setTimeout(() => { button.innerHTML = original; }, 1400);
+    } catch (_error) {
+      showToast("Не вдалося скопіювати.", "warning");
+    }
+  }));
+  // 👁 Preview opens the document workspace: edit in ONLYOFFICE, save (with destination), templates.
+  document.querySelectorAll("[data-ai-preview-index]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const { caseId, text } = draftTextAt(button, "aiPreviewCase", "aiPreviewIndex");
+    if (!text) return;
+    if (!shouldUseApi(state)) { showToast("Дії з документом доступні через сервер (Django).", "warning"); return; }
+    openDraftPreviewModal({
+      text, caseId, showToast,
+      openOfficeEditor: (typeof openOfficeEditor === "function" ? openOfficeEditor : null),
+      cases: state.cases || [],
+      onSavedToCase: (created) => {
+        const target = caseById(created?.caseId || caseId);
+        if (target && created) { target.documents = target.documents || []; target.documents.unshift(normalizeDocument(created)); }
+      },
+    });
+  }));
   document.querySelectorAll("[data-ai-send]").forEach((button) => button.addEventListener("click", () => sendPrompt(button.dataset.aiChatCase)));
+  // After each render, position the latest exchange so it reads from the TOP: put the last
+  // user question just under the top edge, with the reply flowing below (like a real chat).
+  // Falls back to the bottom when there's no user message yet (only the greeting).
+  document.querySelectorAll(".ai-card-chat-panel .ai-chat").forEach((el) => {
+    const users = el.querySelectorAll(".bubble.user");
+    const lastUser = users[users.length - 1];
+    if (lastUser) {
+      el.scrollTop += lastUser.getBoundingClientRect().top - el.getBoundingClientRect().top - 12;
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
+  });
   document.querySelectorAll("[data-ai-question]").forEach((button) => button.addEventListener("click", () => sendPrompt(button.dataset.aiChatCase, button.dataset.aiQuestion)));
   document.querySelectorAll("[data-ai-manage-questions]").forEach((button) => button.addEventListener("click", (event) => {
     event.stopPropagation();

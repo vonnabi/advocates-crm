@@ -23,7 +23,7 @@ from django.core.files.base import ContentFile
 from django.core.management import call_command
 from django.db import transaction
 from django.db.models import Count, F, Q, Sum
-from django.http import FileResponse, Http404, HttpResponse, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
@@ -1188,6 +1188,94 @@ def docx_bytes(elements):
         )
         archive.writestr("word/document.xml", document_xml)
     return buffer.getvalue()
+
+
+# ── Складання документів з .docx-шаблону (плейсхолдери {{назва}}) ──────────────
+# Дозволяє AI-помічнику зібрати готовий документ на основі зразка, зберігаючи
+# оформлення зразка (шапка, стилі, таблиці) — на відміну від docx_bytes(), що
+# збирає документ «з нуля». Працює на рівні абзаців без зовнішніх бібліотек.
+TEMPLATE_FOLDER = "Шаблони документів"
+_DOCX_PART_RE = re.compile(r"^word/(?:document|header\d*|footer\d*)\.xml$")
+_DOCX_TEXT_RE = re.compile(r"<w:t\b[^>]*>(.*?)</w:t>", re.S)
+_DOCX_PARAGRAPH_RE = re.compile(r"<w:p\b.*?</w:p>", re.S)
+# Назви полів: літери/цифри/пробіл і кілька службових символів, напр. {{ Сума, грн }}.
+_PLACEHOLDER_RE = re.compile(r"\{\{\s*([^\{\}]+?)\s*\}\}")
+
+
+def _docx_unescape(text):
+    return (
+        text.replace("&lt;", "<").replace("&gt;", ">")
+        .replace("&quot;", '"').replace("&apos;", "'").replace("&amp;", "&")
+    )
+
+
+def docx_placeholder_names(raw):
+    """Повертає впорядкований унікальний перелік назв {{плейсхолдерів}} у .docx.
+
+    Читає тіло, колонтитули; склеює текст усіх w:t в межах абзацу, тому знаходить
+    плейсхолдери, навіть коли Word розбив «{{...}}» на кілька run-ів.
+    """
+    names, seen = [], set()
+    try:
+        with ZipFile(BytesIO(raw)) as archive:
+            parts = [name for name in archive.namelist() if _DOCX_PART_RE.match(name)]
+            for part in parts:
+                xml = archive.read(part).decode("utf-8", errors="ignore")
+                for para in _DOCX_PARAGRAPH_RE.findall(xml):
+                    text = _docx_unescape("".join(_DOCX_TEXT_RE.findall(para)))
+                    if "{{" not in text:
+                        continue
+                    for match in _PLACEHOLDER_RE.finditer(text):
+                        key = match.group(1).strip()
+                        if key and key not in seen:
+                            seen.add(key)
+                            names.append(key)
+    except Exception:
+        return []
+    return names
+
+
+def render_docx_template(raw, values):
+    """Підставляє значення у {{плейсхолдери}} .docx, зберігаючи оформлення зразка.
+
+    Абзац із плейсхолдером збирається в один run (успадковує властивості першого
+    run-а), тому працює навіть із плейсхолдерами, розбитими Word-ом на кілька run-ів;
+    абзаци без плейсхолдерів залишаються незмінними байт-у-байт (шапка, стилі, таблиці).
+    Невідомий ключ лишається як «{{назва}}», щоб його було видно й легко дозаповнити.
+    """
+    def fill_part(xml):
+        def repl_para(match):
+            para = match.group(0)
+            texts = _DOCX_TEXT_RE.findall(para)
+            if not texts:
+                return para
+            joined = _docx_unescape("".join(texts))
+            if "{{" not in joined:
+                return para
+            filled = _PLACEHOLDER_RE.sub(
+                lambda ph: str(values.get(ph.group(1).strip(), ph.group(0))), joined
+            )
+            ppr = re.search(r"<w:pPr>.*?</w:pPr>", para, re.S)
+            ppr_xml = ppr.group(0) if ppr else ""
+            rpr = re.search(r"<w:rPr>.*?</w:rPr>", para, re.S)
+            rpr_xml = rpr.group(0) if rpr else ""
+            safe = escape(filled).replace("\n", '</w:t><w:br/><w:t xml:space="preserve">')
+            run = f'<w:r>{rpr_xml}<w:t xml:space="preserve">{safe}</w:t></w:r>'
+            return f"<w:p>{ppr_xml}{run}</w:p>"
+
+        return _DOCX_PARAGRAPH_RE.sub(repl_para, xml)
+
+    with ZipFile(BytesIO(raw)) as src:
+        names = src.namelist()
+        parts = {name: src.read(name) for name in names}
+    out = BytesIO()
+    with ZipFile(out, "w", ZIP_DEFLATED) as dst:
+        for name in names:
+            data = parts[name]
+            if _DOCX_PART_RE.match(name):
+                data = fill_part(data.decode("utf-8", errors="ignore")).encode("utf-8")
+            dst.writestr(name, data)
+    return out.getvalue()
 
 
 def finance_document_elements(case, document_type, title, amount, date, comment, document_number="", document_due=None, work_period="", template="Основний шаблон"):
@@ -3246,116 +3334,87 @@ def build_ai_system_prompt(case, helper_label, skill_content=None, knowledge_doc
     return "\n".join(lines)
 
 
-@require_http_methods(["POST", "OPTIONS"])
-def ai_chat_api(request):
-    if request.method == "OPTIONS":
-        return empty_response()
-    forbidden = require_permission(request, "manage_ai", "AI-помічник доступний адміністратору та адвокату.")
-    if forbidden:
-        return forbidden
-    data = parse_body(request)
-    message = str(data.get("message") or "").strip()
-    if not message:
-        return json_response({"error": "empty", "message": "Порожній запит."}, status=400)
+def ai_attachment_blocks_from_bytes(name, raw):
+    """Core: build model attachment blocks/text from raw bytes. Returns (blocks, text, error).
 
+    - зображення (png/jpg/gif/webp) → image-блок (Claude «бачить» скани/фото напряму, без OCR);
+    - pdf → document-блок (нативне читання, зокрема сканованих);
+    - docx/txt/md → витягнутий текст (додається до повідомлення).
+    """
+    name = (name or "").lower()
+    if len(raw) > 12 * 1024 * 1024:
+        return [], "", "Файл завеликий (макс. 12 МБ)."
+    image_types = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
+    for ext, media_type in image_types.items():
+        if name.endswith(ext):
+            data = base64.b64encode(raw).decode("ascii")
+            return ([{"type": "image", "source": {"type": "base64", "media_type": media_type, "data": data}}], "", None)
+    if name.endswith(".pdf"):
+        data = base64.b64encode(raw).decode("ascii")
+        return ([{"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": data}}], "", None)
+    if name.endswith((".docx", ".txt", ".md", ".markdown", ".text")):
+        text, error = extract_text_from_bytes(name, raw)
+        if error:
+            return [], "", error
+        if not (text or "").strip():
+            return [], "", "У файлі не знайдено тексту."
+        return ([], text[:40000], None)
+    return [], "", "Формат не підтримується. Дозволені: зображення (png/jpg), pdf, docx, txt."
+
+
+def ai_attachment_blocks(uploaded):
+    """Attachment blocks from an uploaded chat file (see ai_attachment_blocks_from_bytes)."""
+    return ai_attachment_blocks_from_bytes(uploaded.name, uploaded.read())
+
+
+def ai_attachment_blocks_from_document(doc):
+    """Attachment blocks from an existing CaseDocument (Документообіг). Prefers the stored
+    file (image/pdf/docx); falls back to its in-app text (content field)."""
+    file = getattr(doc, "file", None)
+    if file and getattr(file, "name", ""):
+        try:
+            file.open("rb")
+            raw = file.read()
+        except Exception:
+            raw = None
+        finally:
+            try:
+                file.close()
+            except Exception:
+                pass
+        if raw:
+            return ai_attachment_blocks_from_bytes(file.name, raw)
+    content = case_document_text(doc)
+    if (content or "").strip():
+        return [], content[:40000], None
+    return [], "", "У документі немає тексту для аналізу (можливо, це зовнішнє посилання або порожній файл)."
+
+
+def ai_budget_status(ai_config=None):
+    """(exceeded, message) — hard-stop коли витрачено налаштований бюджет AI (USD)."""
+    if ai_config is None:
+        ai_config = (crm_settings_instance().integration_settings or {}).get("AI", {})
     try:
-        import anthropic
-    except ImportError:
-        return json_response(
-            {"error": "no_sdk", "message": "AI-бібліотека не встановлена на сервері (pip install anthropic)."},
-            status=503,
-        )
+        budget = float(str(ai_config.get("budgetUsd") or "").replace(",", ".") or 0)
+    except ValueError:
+        budget = 0.0
+    if budget <= 0:
+        return False, ""
+    usage, _ = AiUsage.objects.get_or_create(key="global")
+    model = str(ai_config.get("model") or "claude-opus-4-8").strip()
+    price_in, price_out, price_cr, price_cw = AI_MODEL_PRICING.get(model, AI_MODEL_PRICING["claude-opus-4-8"])
+    cost = (usage.input_tokens * price_in + usage.output_tokens * price_out
+            + usage.cache_read_tokens * price_cr + usage.cache_write_tokens * price_cw) / 1_000_000.0
+    if cost >= budget:
+        return True, f"Досягнуто ліміт бюджету AI (${budget:.2f}). Збільште ліміт у Налаштування → AI, щоб продовжити."
+    return False, ""
 
-    # Prefer the key configured in CRM settings (Налаштування → AI); fall back to env.
-    ai_config = (crm_settings_instance().integration_settings or {}).get("AI", {})
-    api_key = str(ai_config.get("apiKey") or "").strip() or getattr(settings, "ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")
-    ai_model = str(ai_config.get("model") or "").strip() or getattr(settings, "ANTHROPIC_MODEL", "claude-opus-4-8")
-    if not api_key:
-        return json_response(
-            {"error": "no_key", "message": "AI не налаштований: додайте ключ Anthropic у Налаштування → AI (або ANTHROPIC_API_KEY на сервері)."},
-            status=503,
-        )
 
-    case = None
-    case_number = str(data.get("caseNumber") or "").strip()
-    if case_number:
-        case = Case.objects.filter(number=case_number).select_related("client").prefetch_related("documents").first()
-        if case:
-            forbidden = require_case_access(request, case)
-            if forbidden:
-                return forbidden
-
-    # Build the alternating message history (drop the seeded demo greeting client-side).
-    messages = []
-    for turn in (data.get("history") or [])[-20:]:
-        if not isinstance(turn, dict):
-            continue
-        role = turn.get("role")
-        text = str(turn.get("text") or "").strip()
-        if role in ("user", "assistant") and text:
-            messages.append({"role": role, "content": text})
-    messages.append({"role": "user", "content": message})
-    # The API requires the first message to be from the user.
-    while messages and messages[0]["role"] != "user":
-        messages.pop(0)
-
-    skill_content = ""
-    knowledge_docs = []
-    helper_key = str(data.get("helperKey") or "").strip()
+def _record_ai_usage(usage, helper_key, request, case):
+    """Shared usage accounting for chat / chat-stream (skill counter + tokens + audit)."""
     if helper_key:
-        skill = AiSkill.objects.filter(area_key=helper_key).first()
-        if skill:
-            skill_content = skill.content
-        knowledge_docs = list(AiKnowledgeDoc.objects.filter(area_key=helper_key))
-    system_prompt = build_ai_system_prompt(case, data.get("helper"), skill_content, knowledge_docs)
-    client = anthropic.Anthropic(api_key=api_key)
-    try:
-        response = client.messages.create(
-            model=ai_model,
-            max_tokens=6000,
-            system=system_prompt,
-            thinking={"type": "adaptive"},
-            output_config={"effort": "medium"},
-            messages=messages,
-        )
-    except anthropic.AuthenticationError:
-        return json_response(
-            {"error": "auth", "message": "AI-ключ Anthropic недійсний. Перевірте ключ у Налаштування → AI."},
-            status=503,
-        )
-    except anthropic.RateLimitError:
-        return json_response(
-            {"error": "rate_limit", "message": "Забагато запитів до AI за короткий час. Зачекайте кілька секунд і повторіть."},
-            status=429,
-        )
-    except anthropic.APIStatusError as exc:
-        text = str(getattr(exc, "message", "") or exc).lower()
-        if "credit balance" in text or "billing" in text or "quota" in text or "insufficient" in text:
-            return json_response(
-                {"error": "no_credits", "message": "Закінчилися кредити Anthropic. Поповніть рахунок на console.anthropic.com — і помічник одразу знову працюватиме."},
-                status=402,
-            )
-        return json_response(
-            {"error": "api", "message": f"AI-сервіс повернув помилку ({exc.status_code}). Спробуйте пізніше."},
-            status=502,
-        )
-    except Exception:
-        return json_response(
-            {"error": "api", "message": "Не вдалося звернутися до AI-сервісу. Спробуйте пізніше."},
-            status=502,
-        )
-
-    reply = "".join(
-        getattr(block, "text", "") for block in response.content if getattr(block, "type", "") == "text"
-    ).strip()
-    if not reply:
-        reply = "AI не повернув відповіді. Спробуйте переформулювати запит."
-    if helper_key:
-        # Real per-area usage counter (replaces the old hardcoded demo numbers).
         skill_row, _ = AiSkill.objects.get_or_create(area_key=helper_key)
         AiSkill.objects.filter(pk=skill_row.pk).update(request_count=F("request_count") + 1)
-    # Accumulate real token usage for the spend/remaining estimate in the UI.
-    usage = getattr(response, "usage", None)
     if usage is not None:
         AiUsage.objects.get_or_create(key="global")
         AiUsage.objects.filter(key="global").update(
@@ -3367,7 +3426,179 @@ def ai_chat_api(request):
         )
     if case is not None:
         log_crm_action(request, AuditLog.Action.UPDATE, "case", case.number, case.title, f"AI-помічник відповів у справі №{case.number}.")
+
+
+def _prepare_ai_chat(request):
+    """Shared setup for chat + chat-stream: parse input (JSON or multipart), budget guard,
+    load case, build messages (+ attachment) and system prompt. Returns (ctx, None) or
+    (None, error_response)."""
+    attachment = None
+    if request.content_type and request.content_type.startswith("multipart/"):
+        post = request.POST
+        data = {key: post.get(key, "") for key in ("message", "caseNumber", "helper", "helperKey")}
+        try:
+            data["history"] = json.loads(post.get("history") or "[]")
+        except (ValueError, TypeError):
+            data["history"] = []
+        attachment = request.FILES.get("attachment")
+    else:
+        data = parse_body(request)
+    message = str(data.get("message") or "").strip()
+    if not message and not attachment and not data.get("attachmentDocumentId"):
+        return None, json_response({"error": "empty", "message": "Порожній запит."}, status=400)
+    try:
+        import anthropic  # noqa: F401
+    except ImportError:
+        return None, json_response({"error": "no_sdk", "message": "AI-бібліотека не встановлена на сервері (pip install anthropic)."}, status=503)
+    ai_config = (crm_settings_instance().integration_settings or {}).get("AI", {})
+    api_key = str(ai_config.get("apiKey") or "").strip() or getattr(settings, "ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+    ai_model = str(ai_config.get("model") or "").strip() or getattr(settings, "ANTHROPIC_MODEL", "claude-opus-4-8")
+    if not api_key:
+        return None, json_response({"error": "no_key", "message": "AI не налаштований: додайте ключ Anthropic у Налаштування → AI (або ANTHROPIC_API_KEY на сервері)."}, status=503)
+    exceeded, budget_msg = ai_budget_status(ai_config)
+    if exceeded:
+        return None, json_response({"error": "budget", "message": budget_msg}, status=402)
+    case = None
+    case_number = str(data.get("caseNumber") or "").strip()
+    if case_number:
+        case = Case.objects.filter(number=case_number).select_related("client").prefetch_related("documents").first()
+        if case:
+            forbidden = require_case_access(request, case)
+            if forbidden:
+                return None, forbidden
+    messages = []
+    for turn in (data.get("history") or [])[-20:]:
+        if not isinstance(turn, dict):
+            continue
+        role = turn.get("role")
+        text = str(turn.get("text") or "").strip()
+        if role in ("user", "assistant") and text:
+            messages.append({"role": role, "content": text})
+    attach_blocks, attach_text, attach_name = [], "", ""
+    if attachment is not None:
+        attach_blocks, attach_text, attach_error = ai_attachment_blocks(attachment)
+        attach_name = attachment.name
+        if attach_error:
+            return None, json_response({"error": "attach", "message": attach_error}, status=400)
+    elif data.get("attachmentDocumentId"):
+        doc = CaseDocument.objects.filter(pk=data.get("attachmentDocumentId")).select_related("case", "case__client").first()
+        if not doc:
+            return None, json_response({"error": "attach", "message": "Документ не знайдено."}, status=404)
+        forbidden = require_document_access(request, doc)
+        if forbidden:
+            return None, forbidden
+        attach_blocks, attach_text, attach_error = ai_attachment_blocks_from_document(doc)
+        attach_name = doc.title
+        if attach_error:
+            return None, json_response({"error": "attach", "message": attach_error}, status=400)
+    user_text = message
+    if attach_text:
+        user_text = (f"{message}\n\n" if message else "") + f"=== Прикріплений документ «{attach_name}» ===\n{attach_text}"
+    if attach_blocks:
+        blocks = list(attach_blocks)
+        blocks.append({"type": "text", "text": user_text or f"Проаналізуй прикріплений документ «{attach_name}»."})
+        messages.append({"role": "user", "content": blocks})
+    else:
+        messages.append({"role": "user", "content": user_text})
+    while messages and messages[0]["role"] != "user":
+        messages.pop(0)
+    skill_content = ""
+    knowledge_docs = []
+    helper_key = str(data.get("helperKey") or "").strip()
+    if helper_key:
+        skill = AiSkill.objects.filter(area_key=helper_key).first()
+        if skill:
+            skill_content = skill.content
+        knowledge_docs = list(AiKnowledgeDoc.objects.filter(area_key=helper_key))
+    system_prompt = build_ai_system_prompt(case, data.get("helper"), skill_content, knowledge_docs)
+    return {"api_key": api_key, "model": ai_model, "messages": messages,
+            "system_prompt": system_prompt, "case": case, "helper_key": helper_key}, None
+
+
+@require_http_methods(["POST", "OPTIONS"])
+def ai_chat_api(request):
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_ai", "AI-помічник доступний адміністратору та адвокату.")
+    if forbidden:
+        return forbidden
+    ctx, err = _prepare_ai_chat(request)
+    if err:
+        return err
+    import anthropic
+    client = anthropic.Anthropic(api_key=ctx["api_key"])
+    try:
+        response = client.messages.create(
+            model=ctx["model"], max_tokens=6000, system=ctx["system_prompt"],
+            thinking={"type": "adaptive"}, output_config={"effort": "medium"}, messages=ctx["messages"],
+        )
+    except anthropic.AuthenticationError:
+        return json_response({"error": "auth", "message": "AI-ключ Anthropic недійсний. Перевірте ключ у Налаштування → AI."}, status=503)
+    except anthropic.RateLimitError:
+        return json_response({"error": "rate_limit", "message": "Забагато запитів до AI за короткий час. Зачекайте кілька секунд і повторіть."}, status=429)
+    except anthropic.APIStatusError as exc:
+        text = str(getattr(exc, "message", "") or exc).lower()
+        if any(w in text for w in ("credit balance", "billing", "quota", "insufficient")):
+            return json_response({"error": "no_credits", "message": "Закінчилися кредити Anthropic. Поповніть рахунок на console.anthropic.com — і помічник одразу знову працюватиме."}, status=402)
+        return json_response({"error": "api", "message": f"AI-сервіс повернув помилку ({exc.status_code}). Спробуйте пізніше."}, status=502)
+    except Exception:
+        return json_response({"error": "api", "message": "Не вдалося звернутися до AI-сервісу. Спробуйте пізніше."}, status=502)
+    reply = "".join(getattr(block, "text", "") for block in response.content if getattr(block, "type", "") == "text").strip()
+    if not reply:
+        reply = "AI не повернув відповіді. Спробуйте переформулювати запит."
+    _record_ai_usage(getattr(response, "usage", None), ctx["helper_key"], request, ctx["case"])
     return json_response({"reply": reply})
+
+
+@require_http_methods(["POST", "OPTIONS"])
+def ai_chat_stream_api(request):
+    """Streaming версія ai_chat_api — віддає відповідь текстом по частинах (text/plain). На
+    помилці під час стріму шле маркер `[[AI_ERROR]] …`; фронт відкочується на нестрімовий
+    ендпоінт, якщо стрім недоступний (напр., буферизуючий проксі)."""
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_ai", "AI-помічник доступний адміністратору та адвокату.")
+    if forbidden:
+        return forbidden
+    ctx, err = _prepare_ai_chat(request)
+    if err:
+        return err
+    import anthropic
+
+    def generate():
+        client = anthropic.Anthropic(api_key=ctx["api_key"])
+        final_usage = None
+        try:
+            with client.messages.stream(
+                model=ctx["model"], max_tokens=6000, system=ctx["system_prompt"],
+                thinking={"type": "adaptive"}, output_config={"effort": "medium"}, messages=ctx["messages"],
+            ) as stream:
+                for text in stream.text_stream:
+                    if text:
+                        yield text
+                final_usage = getattr(stream.get_final_message(), "usage", None)
+        except anthropic.AuthenticationError:
+            yield "[[AI_ERROR]] AI-ключ Anthropic недійсний."
+            return
+        except anthropic.RateLimitError:
+            yield "[[AI_ERROR]] Забагато запитів до AI. Зачекайте кілька секунд і повторіть."
+            return
+        except anthropic.APIStatusError as exc:
+            low = str(getattr(exc, "message", "") or exc).lower()
+            if any(w in low for w in ("credit balance", "billing", "quota", "insufficient")):
+                yield "[[AI_ERROR]] Закінчилися кредити Anthropic."
+            else:
+                yield f"[[AI_ERROR]] AI-сервіс повернув помилку ({exc.status_code})."
+            return
+        except Exception:
+            yield "[[AI_ERROR]] Не вдалося звернутися до AI-сервісу."
+            return
+        _record_ai_usage(final_usage, ctx["helper_key"], request, ctx["case"])
+
+    response = StreamingHttpResponse(generate(), content_type="text/plain; charset=utf-8")
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
 
 
 def _parse_ai_review_json(raw):
@@ -3448,6 +3679,9 @@ def ai_document_review_api(request, document_id):
             {"error": "no_key", "message": "AI не налаштований: додайте ключ Anthropic у Налаштування → AI."},
             status=503,
         )
+    exceeded, budget_msg = ai_budget_status(ai_config)
+    if exceeded:
+        return json_response({"error": "budget", "message": budget_msg}, status=402)
 
     case = item.case
     ctx_lines = []
@@ -3744,6 +3978,179 @@ def ai_export_docx_api(request):
     return response
 
 
+def docx_elements_from_text(title, text):
+    """Turn a plain / lightly-markdown AI draft into .docx elements (headings, bullets,
+    stripped **bold**). Good enough for an editable draft the lawyer refines in ONLYOFFICE."""
+    elements = []
+    if title:
+        elements.append(docx_paragraph(title, bold=True, size=32, spacing_after=200))
+    title_norm = (title or "").strip().lower()
+    skipped_title_dup = False
+    for raw_line in str(text or "").split("\n"):
+        stripped = re.sub(r"^>\s?", "", raw_line.strip())  # drop markdown blockquote marker
+        if not stripped:
+            elements.append(docx_paragraph("", spacing_after=80))
+            continue
+        heading = re.match(r"^(#{1,4})\s+(.*)$", stripped)
+        # Skip the first body line if it just repeats the title we already rendered.
+        if not skipped_title_dup and title_norm:
+            candidate = (heading.group(2).strip() if heading else stripped).lower()
+            if candidate == title_norm:
+                skipped_title_dup = True
+                continue
+        if heading:
+            skipped_title_dup = True
+            elements.append(docx_paragraph(heading.group(2).strip(), bold=True, size=26, spacing_after=120))
+            continue
+        clean = re.sub(r"\*\*(.+?)\*\*", r"\1", stripped)      # drop bold markers
+        clean = re.sub(r"^\s*[-*•]\s+", "• ", clean)            # normalize bullets
+        elements.append(docx_paragraph(clean, spacing_after=110))
+    return elements
+
+
+@require_http_methods(["GET", "OPTIONS"])
+def ai_document_index_api(request):
+    """Compact index of the whole Документообіг the user may access (across all cases +
+    standalone), for the AI chat «attach from Документообіг» picker. Only readable docs."""
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_ai", "AI-помічник доступний адміністратору та адвокату.")
+    if forbidden:
+        return forbidden
+    items = accessible_document_queryset(request).select_related("case", "case__client").order_by("case__number", "folder", "title")
+    results = []
+    for doc in items:
+        if not ((doc.file and doc.file.name) or (doc.content or "").strip()):
+            continue  # skip external-link-only / empty docs — nothing for the AI to read
+        results.append({
+            "id": doc.id,
+            "name": doc.title,
+            "type": doc.document_type or "",
+            "folder": doc.folder or "",
+            "status": doc.status or "",
+            "source": document_source_label(doc),
+            "submitted": date_value(doc.submitted_at),
+            "caseId": doc.case.number if doc.case else "",
+            "caseTitle": doc.case.title if doc.case else "",
+            "clientId": str(doc.case.client_id) if (doc.case and doc.case.client_id) else "",
+            "clientName": doc.case.client.full_name if (doc.case and doc.case.client_id) else "",
+        })
+    return json_response({"results": results})
+
+
+@require_http_methods(["POST", "OPTIONS"])
+def ai_save_draft_api(request):
+    """Save an AI chat draft as a real .docx CaseDocument in the case, then the frontend
+    opens it in ONLYOFFICE. Lets the lawyer turn a чернетка into an editable document."""
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_documents", "Зберігати документи можуть адміністратор, адвокат або помічник.")
+    if forbidden:
+        return forbidden
+    data = parse_body(request)
+    text = str(data.get("text") or "").strip()
+    if len(text) < 10:
+        return json_response({"error": "empty", "message": "Замало тексту для документа."}, status=400)
+    as_template = bool(data.get("asTemplate"))
+    # Title: explicit, else best line — prefer a heading, skip placeholder/too-short lines.
+    title = str(data.get("title") or "").strip()
+    if not title:
+        heading_title, plain_title = "", ""
+        for line in text.split("\n"):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            head = re.match(r"^#{1,4}\s+(.*)$", stripped)
+            candidate = re.sub(r"^>\s?", "", (head.group(1) if head else stripped)).strip()
+            if not candidate or len(candidate) < 4 or "{{" in candidate or "}}" in candidate:
+                continue
+            if head and not heading_title:
+                heading_title = candidate
+                break
+            if not plain_title:
+                plain_title = candidate
+        title = (heading_title or plain_title)[:80]
+
+    # Save as a reusable template in «Шаблони документів» (case-independent), immediately
+    # usable in «Скласти документ (AI)». Placeholders {{...}} in the reply carry through.
+    if as_template:
+        title = title or "Шаблон AI"
+        document = CaseDocument.objects.create(
+            case=None,
+            title=f"{title} (шаблон)"[:255],
+            document_type="Шаблон",
+            folder=TEMPLATE_FOLDER,
+        )
+        content = docx_bytes(docx_elements_from_text(title, text))
+        document.file.save(safe_document_upload_name(document, document.title), ContentFile(content), save=True)
+        log_crm_action(request, AuditLog.Action.CREATE, "document", document.id, document.title, f"AI-помічник зберіг шаблон «{document.title}».")
+        return json_response(serialize_template(document, request))
+
+    case_number = str(data.get("caseNumber") or "").strip()
+    case = Case.objects.select_related("client").filter(number=case_number).first() if case_number else None
+    if case_number and not case:
+        return json_response({"error": "no_case", "message": "Справу не знайдено."}, status=404)
+    if case:
+        forbidden = require_case_access(request, case)
+        if forbidden:
+            return forbidden
+    title = title or "Чернетка AI"
+    folder = str(data.get("folder") or "").strip() or "Документи справи"
+    today = date_value(timezone.localdate())
+    document = CaseDocument.objects.create(
+        case=case,
+        title=(f"{title} · №{case.number}.docx" if case else f"{title}.docx")[:255],
+        document_type="Чернетка",
+        status="Чернетка",
+        folder=folder,
+        submitted_at=timezone.localdate(),
+        comment="Чернетка, підготовлена AI-помічником.",
+        history=[{"date": today, "kind": "ai_draft", "text": "Чернетку документа підготував AI-помічник."}],
+    )
+    content = docx_bytes(docx_elements_from_text(title, text))
+    document.file.save(safe_document_upload_name(document, document.title), ContentFile(content), save=True)
+    log_crm_action(request, AuditLog.Action.CREATE, "document", document.id, document.title, f"AI-помічник зберіг чернетку «{document.title}».")
+    return json_response(serialize_document(document, request))
+
+
+@require_http_methods(["GET", "OPTIONS"])
+def ai_document_text_api(request, document_id):
+    """Extracted plain text of a document — used to refresh the AI preview after the user
+    edits the document in ONLYOFFICE (so the changes come back into the preview window)."""
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_ai", "AI-помічник доступний адміністратору та адвокату.")
+    if forbidden:
+        return forbidden
+    item = CaseDocument.objects.filter(pk=document_id).select_related("case").first()
+    if not item:
+        return json_response({"error": "not_found", "message": "Документ не знайдено."}, status=404)
+    forbidden = require_document_access(request, item)
+    if forbidden:
+        return forbidden
+    return json_response({"text": case_document_text(item)})
+
+
+@require_http_methods(["POST", "OPTIONS"])
+def ai_docx_from_text_api(request):
+    """Build a .docx from text and return it for download (the «Скачати на комп'ютер» action)."""
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_documents", "Дія доступна адміністратору, адвокату або помічнику.")
+    if forbidden:
+        return forbidden
+    data = parse_body(request)
+    text = str(data.get("text") or "").strip()
+    if len(text) < 5:
+        return json_response({"error": "empty", "message": "Замало тексту для документа."}, status=400)
+    response = HttpResponse(
+        docx_bytes(docx_elements_from_text("", text)),
+        content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+    response["Content-Disposition"] = 'attachment; filename="document.docx"'
+    return response
+
+
 @require_http_methods(["PUT", "DELETE", "OPTIONS"])
 def ai_skill_detail_api(request, area_key):
     """Edit/append (PUT) or clear (DELETE) one area's skill."""
@@ -3942,6 +4349,391 @@ def document_onlyoffice_callback_api(request, document_id):
         return json_response({"error": 1, "message": "Не вдалося завантажити документ."}, status=400)
     except Exception:
         return json_response({"error": 1}, status=500)
+
+
+def _resolve_anthropic():
+    """(api_key, model) з CRM-налаштувань → settings → env. Порожній ключ = AI не налаштований."""
+    ai_config = (crm_settings_instance().integration_settings or {}).get("AI", {})
+    api_key = str(ai_config.get("apiKey") or "").strip() or getattr(settings, "ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+    ai_model = str(ai_config.get("model") or "").strip() or getattr(settings, "ANTHROPIC_MODEL", "claude-opus-4-8")
+    return api_key, ai_model
+
+
+def assemble_case_context(case):
+    """Стислий контекст справи для заповнення шаблону (сторони, клієнт, бюро, дата)."""
+    lines = [f"Справа №{case.number}: {case.title}"]
+    for label, attr in (("Галузь права", "practice_area"), ("Суд/орган", "court"),
+                        ("Статус", "status"), ("Стадія", "stage")):
+        value = str(getattr(case, attr, "") or "").strip()
+        if value:
+            lines.append(f"{label}: {value}")
+    client = getattr(case, "client", None)
+    if client:
+        lines.append(f"Клієнт: {client.full_name}")
+        contacts = [str(getattr(client, field, "") or "").strip() for field in ("phone", "email")]
+        contacts = [c for c in contacts if c]
+        if contacts:
+            lines.append("Контакти клієнта: " + " · ".join(contacts))
+        address = str(getattr(client, "address", "") or "").strip()
+        if address:
+            lines.append(f"Адреса клієнта: {address}")
+    parties = [p for p in (getattr(case, "parties", None) or []) if isinstance(p, dict) and p.get("name")]
+    if parties:
+        lines.append("Сторони: " + "; ".join(
+            f"{str(p.get('name', '')).strip()} ({str(p.get('status', '')).strip()})".strip() for p in parties))
+    description = str(getattr(case, "description", "") or "").strip()
+    if description:
+        lines.append(f"Опис справи: {description[:2000]}")
+    bureau = finance_bureau_details()
+    lines.append(f"Адвокатське бюро (виконавець/представник): {bureau['name']}, {bureau['address']}, {bureau['phone']}, {bureau['email']}")
+    lines.append(f"Сьогоднішня дата: {date_value(timezone.localdate())}")
+    return "\n".join(lines)
+
+
+def _parse_placeholder_values(raw, keys):
+    """Розбирає JSON-мапу {плейсхолдер: значення} від моделі; толерантний до code-fence.
+    Повертає dict лише з відомих ключів, значення приведені до рядка."""
+    text = (raw or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
+        text = re.sub(r"\n?```$", "", text).strip()
+    data = None
+    try:
+        data = json.loads(text)
+    except Exception:
+        match = re.search(r"\{.*\}", text, re.S)
+        if match:
+            try:
+                data = json.loads(match.group(0))
+            except Exception:
+                data = None
+    values = {}
+    if isinstance(data, dict):
+        known = set(keys)
+        for key, value in data.items():
+            key = str(key).strip()
+            if key in known:
+                if isinstance(value, (str, int, float)):
+                    values[key] = str(value)
+                elif value is None:
+                    values[key] = ""
+                else:
+                    values[key] = str(value)
+    return values
+
+
+def serialize_template(item, request=None):
+    placeholders = []
+    if item.file:
+        try:
+            item.file.open("rb")
+            placeholders = docx_placeholder_names(item.file.read())
+        except Exception:
+            placeholders = []
+        finally:
+            try:
+                item.file.close()
+            except Exception:
+                pass
+    return {
+        "id": item.id,
+        "documentId": item.id,
+        "title": item.title,
+        # `name`/`fileUrl`/`onlyOfficeCallbackUrl` let the frontend open the template
+        # itself in ONLYOFFICE for editing (same editor as regular documents).
+        "name": item.title,
+        "fileName": os.path.basename(item.file.name) if item.file else "",
+        "fileUrl": document_file_url(request, item),
+        "onlyOfficeCallbackUrl": document_callback_url(request, item),
+        "placeholders": placeholders,
+        "createdAt": item.created_at.isoformat() if item.created_at else "",
+    }
+
+
+@require_http_methods(["GET", "POST", "OPTIONS"])
+def document_templates_api(request):
+    """Зразки-шаблони документів (папка «Шаблони документів»): GET — перелік із полями
+    {{плейсхолдерів}}; POST (multipart: file, title?) — завантажити новий .docx-шаблон."""
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_documents", "Шаблонами документів можуть керувати адміністратор, адвокат або помічник.")
+    if forbidden:
+        return forbidden
+    if request.method == "GET":
+        templates = CaseDocument.objects.filter(folder=TEMPLATE_FOLDER).order_by("title")
+        return json_response({"results": [serialize_template(item, request) for item in templates]})
+
+    uploaded = request.FILES.get("file")
+    if not uploaded:
+        return json_response({"error": "no_file", "message": "Файл шаблону не завантажено."}, status=400)
+    if not str(uploaded.name or "").lower().endswith(".docx"):
+        return json_response({"error": "bad_format", "message": "Шаблон має бути у форматі .docx."}, status=400)
+    if uploaded.size > 10 * 1024 * 1024:
+        return json_response({"error": "too_big", "message": "Файл завеликий (макс. 10 МБ)."}, status=400)
+    raw = uploaded.read()
+    title = str(request.POST.get("title") or "").strip() or re.sub(r"\.docx$", "", str(uploaded.name), flags=re.I)
+    document = CaseDocument.objects.create(
+        case=None,
+        title=title[:255],
+        document_type="Шаблон",
+        folder=TEMPLATE_FOLDER,
+    )
+    document.file.save(safe_document_upload_name(document, uploaded.name), ContentFile(raw), save=True)
+    log_crm_action(request, AuditLog.Action.CREATE, "document", document.id, document.title, f"Додано шаблон документа «{document.title}».")
+    return json_response(serialize_template(document, request))
+
+
+@require_http_methods(["DELETE", "OPTIONS"])
+def document_template_detail_api(request, document_id):
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_documents", "Шаблонами документів можуть керувати адміністратор, адвокат або помічник.")
+    if forbidden:
+        return forbidden
+    item = CaseDocument.objects.filter(pk=document_id, folder=TEMPLATE_FOLDER).first()
+    if not item:
+        return json_response({"error": "not_found", "message": "Шаблон не знайдено."}, status=404)
+    log_crm_action(request, AuditLog.Action.DELETE, "document", item.id, item.title, f"Видалено шаблон документа «{item.title}».")
+    item.delete()
+    return json_response({"deleted": document_id})
+
+
+@require_http_methods(["POST", "OPTIONS"])
+def document_template_from_ai_api(request):
+    """AI перетворює звичайний документ на багаторазовий ШАБЛОН: читає джерело (завантажений
+    файл — multipart, або документ справи — JSON documentId), просить Claude замінити конкретні
+    дані на поля {{...}}, зберігає як шаблон у «Шаблони документів». Щоб замовник не вставляв
+    дужки вручну. Повертає serialize_template."""
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_documents", "Шаблонами документів можуть керувати адміністратор, адвокат або помічник.")
+    if forbidden:
+        return forbidden
+
+    blocks, text, title_hint, err = [], "", "", None
+    if request.content_type and request.content_type.startswith("multipart/"):
+        uploaded = request.FILES.get("file")
+        if not uploaded:
+            return json_response({"error": "no_file", "message": "Файл не завантажено."}, status=400)
+        blocks, text, err = ai_attachment_blocks(uploaded)
+        title_hint = str(request.POST.get("title") or "").strip() or re.sub(r"\.[a-z0-9]+$", "", str(uploaded.name or ""), flags=re.I)
+    else:
+        data = parse_body(request)
+        if str(data.get("text") or "").strip():
+            # Raw text (e.g. from the AI preview window) → AI makes a template из нього.
+            blocks, text, err = [], str(data.get("text")).strip(), None
+            title_hint = str(data.get("title") or "").strip()
+        else:
+            doc = CaseDocument.objects.filter(pk=data.get("documentId")).select_related("case").first()
+            if not doc:
+                return json_response({"error": "no_doc", "message": "Документ не знайдено."}, status=404)
+            forbidden = require_document_access(request, doc)
+            if forbidden:
+                return forbidden
+            blocks, text, err = ai_attachment_blocks_from_document(doc)
+            title_hint = str(data.get("title") or "").strip() or re.sub(r"\s*[\(\[]?\s*(шаблон|чернетка)\s*[\)\]]?\s*", " ", doc.title, flags=re.I).strip()
+    if err:
+        return json_response({"error": "attach", "message": err}, status=400)
+
+    try:
+        import anthropic
+    except ImportError:
+        return json_response({"error": "no_sdk", "message": "AI-бібліотека не встановлена на сервері."}, status=503)
+    api_key, ai_model = _resolve_anthropic()
+    if not api_key:
+        return json_response({"error": "no_key", "message": "AI не налаштований: додайте ключ Anthropic у Налаштування → AI."}, status=503)
+    exceeded, budget_msg = ai_budget_status()
+    if exceeded:
+        return json_response({"error": "budget", "message": budget_msg}, status=402)
+
+    system_prompt = (
+        "Ти — український юрист-асистент. Тобі дано документ-зразок. Створи з нього багаторазовий "
+        "ШАБЛОН: заміни ВСІ конкретні дані (імена/ПІБ, назви організацій, дати, суми, адреси, номери "
+        "справ і документів, реквізити) на поля-заповнювачі у подвійних фігурних дужках, напр. "
+        "{{позивач}}, {{відповідач}}, {{суд}}, {{сума}}, {{дата}}, {{номер справи}}. Назви полів — "
+        "зрозумілі, українською, малими літерами. Збережи структуру, розділи та формулювання документа. "
+        "Загальні юридичні формулювання, посилання на статті та назви розділів НЕ замінюй на поля. "
+        "Поверни ЛИШЕ готовий текст шаблону — без пояснень, коментарів і без markdown-огорожі."
+    )
+    instruction = "Створи багаторазовий шаблон із цього документа, замінивши конкретні дані на поля {{...}}."
+    if blocks:
+        content = list(blocks) + [{"type": "text", "text": instruction}]
+    else:
+        content = f"Ось текст документа-зразка:\n\n{text}\n\n{instruction}"
+
+    client = anthropic.Anthropic(api_key=api_key)
+    try:
+        response = client.messages.create(
+            model=ai_model,
+            max_tokens=6000,
+            system=system_prompt,
+            thinking={"type": "adaptive"},
+            messages=[{"role": "user", "content": content}],
+        )
+    except anthropic.AuthenticationError:
+        return json_response({"error": "auth", "message": "AI-ключ Anthropic недійсний."}, status=503)
+    except anthropic.RateLimitError:
+        return json_response({"error": "rate_limit", "message": "Забагато запитів до AI. Зачекайте і повторіть."}, status=429)
+    except anthropic.APIStatusError as exc:
+        low = str(getattr(exc, "message", "") or exc).lower()
+        if any(word in low for word in ("credit balance", "billing", "quota", "insufficient")):
+            return json_response({"error": "no_credits", "message": "Закінчилися кредити Anthropic."}, status=402)
+        return json_response({"error": "api", "message": f"AI-сервіс повернув помилку ({exc.status_code})."}, status=502)
+    except Exception:
+        return json_response({"error": "api", "message": "Не вдалося звернутися до AI-сервісу."}, status=502)
+
+    template_text = "".join(getattr(b, "text", "") for b in response.content if getattr(b, "type", "") == "text").strip()
+    template_text = re.sub(r"^```[a-zA-Z]*\n?", "", template_text)
+    template_text = re.sub(r"\n?```$", "", template_text).strip()
+    if len(template_text) < 20:
+        return json_response({"error": "empty", "message": "AI не зміг сформувати шаблон із цього документа."}, status=422)
+
+    title = (title_hint or "Шаблон AI").strip()[:80] or "Шаблон AI"
+    # No title heading — the source document already carries its own title inside the text.
+    document = CaseDocument.objects.create(case=None, title=f"{title} (шаблон)"[:255], document_type="Шаблон", folder=TEMPLATE_FOLDER)
+    document.file.save(safe_document_upload_name(document, document.title), ContentFile(docx_bytes(docx_elements_from_text("", template_text))), save=True)
+
+    usage = getattr(response, "usage", None)
+    if usage is not None:
+        AiUsage.objects.get_or_create(key="global")
+        AiUsage.objects.filter(key="global").update(
+            request_count=F("request_count") + 1,
+            input_tokens=F("input_tokens") + (getattr(usage, "input_tokens", 0) or 0),
+            output_tokens=F("output_tokens") + (getattr(usage, "output_tokens", 0) or 0),
+            cache_read_tokens=F("cache_read_tokens") + (getattr(usage, "cache_read_input_tokens", 0) or 0),
+            cache_write_tokens=F("cache_write_tokens") + (getattr(usage, "cache_creation_input_tokens", 0) or 0),
+        )
+    log_crm_action(request, AuditLog.Action.CREATE, "document", document.id, document.title, f"AI створив шаблон із документа: «{document.title}».")
+    return json_response(serialize_template(document, request))
+
+
+@require_http_methods(["POST", "OPTIONS"])
+def document_assemble_api(request):
+    """AI складає документ зі зразка: бере .docx-шаблон із плейсхолдерами {{...}},
+    заповнює їх даними справи через Claude і зберігає готовий .docx у справу
+    (редагується далі в ONLYOFFICE). Повертає серіалізований документ."""
+    if request.method == "OPTIONS":
+        return empty_response()
+    forbidden = require_permission(request, "manage_documents", "Складати документи можуть адміністратор, адвокат або помічник.")
+    if forbidden:
+        return forbidden
+    data = parse_body(request)
+    template = CaseDocument.objects.filter(pk=data.get("templateId"), folder=TEMPLATE_FOLDER).first()
+    if not template or not template.file:
+        return json_response({"error": "no_template", "message": "Шаблон не знайдено або без файлу."}, status=404)
+    case = Case.objects.select_related("client").filter(number=str(data.get("caseId") or "")).first()
+    if not case:
+        return json_response({"error": "no_case", "message": "Справу не знайдено."}, status=404)
+    forbidden = require_case_access(request, case)
+    if forbidden:
+        return forbidden
+
+    try:
+        template.file.open("rb")
+        raw = template.file.read()
+    except Exception:
+        return json_response({"error": "read", "message": "Не вдалося прочитати файл шаблону."}, status=500)
+    finally:
+        try:
+            template.file.close()
+        except Exception:
+            pass
+
+    placeholders = docx_placeholder_names(raw)
+    values = {}
+    if placeholders:
+        try:
+            import anthropic
+        except ImportError:
+            return json_response({"error": "no_sdk", "message": "AI-бібліотека не встановлена на сервері."}, status=503)
+        api_key, ai_model = _resolve_anthropic()
+        if not api_key:
+            return json_response({"error": "no_key", "message": "AI не налаштований: додайте ключ Anthropic у Налаштування → AI."}, status=503)
+        exceeded, budget_msg = ai_budget_status()
+        if exceeded:
+            return json_response({"error": "budget", "message": budget_msg}, status=402)
+
+        template_text, _err = extract_text_from_bytes(template.file.name, raw)
+        extra = str(data.get("instructions") or "").strip()
+        system_prompt = (
+            "Ти — український юрист-асистент, що заповнює шаблон документа даними справи. "
+            "Тобі дають перелік плейсхолдерів (назв полів) і текст шаблону. "
+            "Поверни СУВОРО JSON-обʼєкт без markdown і без тексту поза JSON, де КОЖЕН ключ — назва плейсхолдера "
+            "рівно як надано (та сама мова та регістр), а значення — рядок, яким треба замінити це поле, українською мовою. "
+            "Використовуй лише надані дані справи. Якщо для поля даних немає — постав порожній рядок \"\". "
+            "Не вигадуй імен, сум, дат, номерів чи норм права, яких немає в контексті. "
+            "Дати — у форматі ДД.ММ.РРРР. Не додавай ключів, яких немає в переліку."
+        )
+        user_msg = (
+            f"Дані справи:\n{assemble_case_context(case)}\n\n"
+            + (f"Додаткові вказівки: {extra}\n\n" if extra else "")
+            + "Плейсхолдери, які треба заповнити (масив назв-ключів):\n"
+            + json.dumps(placeholders, ensure_ascii=False)
+            + f"\n\nТекст шаблону (для розуміння призначення полів):\n{(template_text or '')[:15000]}"
+        )
+        client = anthropic.Anthropic(api_key=api_key)
+        try:
+            response = client.messages.create(
+                model=ai_model,
+                max_tokens=4000,
+                system=system_prompt,
+                thinking={"type": "adaptive"},
+                messages=[{"role": "user", "content": user_msg}],
+            )
+        except anthropic.AuthenticationError:
+            return json_response({"error": "auth", "message": "AI-ключ Anthropic недійсний. Перевірте ключ у Налаштування → AI."}, status=503)
+        except anthropic.RateLimitError:
+            return json_response({"error": "rate_limit", "message": "Забагато запитів до AI за короткий час. Зачекайте кілька секунд і повторіть."}, status=429)
+        except anthropic.APIStatusError as exc:
+            text = str(getattr(exc, "message", "") or exc).lower()
+            if any(word in text for word in ("credit balance", "billing", "quota", "insufficient")):
+                return json_response({"error": "no_credits", "message": "Закінчилися кредити Anthropic. Поповніть рахунок на console.anthropic.com."}, status=402)
+            return json_response({"error": "api", "message": f"AI-сервіс повернув помилку ({exc.status_code}). Спробуйте пізніше."}, status=502)
+        except Exception:
+            return json_response({"error": "api", "message": "Не вдалося звернутися до AI-сервісу. Спробуйте пізніше."}, status=502)
+
+        raw_text = "".join(
+            getattr(block, "text", "") for block in response.content if getattr(block, "type", "") == "text"
+        ).strip()
+        values = _parse_placeholder_values(raw_text, placeholders)
+
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            AiUsage.objects.get_or_create(key="global")
+            AiUsage.objects.filter(key="global").update(
+                request_count=F("request_count") + 1,
+                input_tokens=F("input_tokens") + (getattr(usage, "input_tokens", 0) or 0),
+                output_tokens=F("output_tokens") + (getattr(usage, "output_tokens", 0) or 0),
+                cache_read_tokens=F("cache_read_tokens") + (getattr(usage, "cache_read_input_tokens", 0) or 0),
+                cache_write_tokens=F("cache_write_tokens") + (getattr(usage, "cache_creation_input_tokens", 0) or 0),
+            )
+
+    content = render_docx_template(raw, values)
+    base_title = re.sub(r"\s*[\(\[]?\s*шаблон\s*[\)\]]?\s*$", "", template.title, flags=re.I).strip() or template.title
+    today = date_value(timezone.localdate())
+    document = CaseDocument.objects.create(
+        case=case,
+        title=f"{base_title} · №{case.number}.docx"[:255],
+        document_type=template.document_type if template.document_type != "Шаблон" else "Документ",
+        status="Чернетка",
+        folder="Документи справи",
+        submitted_at=timezone.localdate(),
+        responsible_name=(getattr(getattr(case, "client", None), "manager", "") or ""),
+        comment=f"Складено AI-помічником зі зразка «{template.title}».",
+        history=[{"date": today, "kind": "ai_assembled", "text": f"Документ складено AI-помічником зі зразка «{template.title}»."}],
+    )
+    document.file.save(safe_document_upload_name(document, document.title), ContentFile(content), save=True)
+    log_crm_action(request, AuditLog.Action.CREATE, "document", document.id, document.title, f"AI склав документ «{document.title}» зі зразка «{template.title}».")
+    filled_count = sum(1 for key in placeholders if str(values.get(key, "")).strip())
+    payload = serialize_document(document, request)
+    payload["assembly"] = {
+        "templateId": template.id,
+        "templateTitle": template.title,
+        "placeholders": placeholders,
+        "filledCount": filled_count,
+        "missing": [key for key in placeholders if not str(values.get(key, "")).strip()],
+    }
+    return json_response(payload)
 
 
 @require_http_methods(["GET", "PUT", "PATCH", "DELETE", "OPTIONS"])

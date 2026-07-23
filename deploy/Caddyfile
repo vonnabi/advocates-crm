@@ -3,8 +3,17 @@
 #
 # CRM (frontend + API):
 advokatcrm.com, www.advokatcrm.com {
-	encode zstd gzip
-	reverse_proxy web:8001
+	# AI chat streaming must NOT be buffered/compressed, or the reply won't arrive
+	# token-by-token — proxy it with an immediate flush and no encoding.
+	handle /api/ai/chat/stream/* {
+		reverse_proxy web:8001 {
+			flush_interval -1
+		}
+	}
+	handle {
+		encode zstd gzip
+		reverse_proxy web:8001
+	}
 }
 
 # ONLYOFFICE Document Server (document editing):

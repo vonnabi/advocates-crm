@@ -6,6 +6,10 @@
   "scripts": {
     "serve": "cd backend && ../.venv/bin/python manage.py runserver 127.0.0.1:8001",
     "serve:frontend": "python3 scripts/dev_server.py",
+    "onlyoffice:up": "docker compose -f docker-compose.onlyoffice.yml up -d && echo 'ONLYOFFICE booting on http://127.0.0.1:8082 (готовність: curl -s http://127.0.0.1:8082/healthcheck → true)'",
+    "onlyoffice:down": "docker compose -f docker-compose.onlyoffice.yml down",
+    "onlyoffice:status": "curl -s http://127.0.0.1:8082/healthcheck && echo ' (true = готовий)' || echo 'ONLYOFFICE не відповідає на :8082'",
+    "onlyoffice:logs": "docker compose -f docker-compose.onlyoffice.yml logs -f --tail=50",
     "test": "npm run test:smoke",
     "test:smoke": "playwright test",
     "test:smoke:headed": "playwright test --headed",
