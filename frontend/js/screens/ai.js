@@ -934,6 +934,9 @@ function ensureSkillsStyles() {
     .ai-skill-tab { text-align: left; border: none; background: transparent; padding: 10px 12px; border-radius: 9px; cursor: pointer; font-size: 14px; color: #364152; }
     .ai-skill-tab:hover { background: #eef1f6; }
     .ai-skill-tab.active { background: #223759; color: #fff; font-weight: 600; }
+    .ai-skills-help { margin-top: auto; text-align: left; display: flex; align-items: center; gap: 7px; border: 1px dashed #cdd6e4; background: #fff; padding: 10px 12px; border-radius: 9px; cursor: pointer; font-size: 13px; font-weight: 600; color: #1f4e79; }
+    .ai-skills-help:hover { background: #eef3f8; border-style: solid; }
+    @media (max-width: 640px) { .ai-skills-help { margin-top: 0; } }
     .ai-skills-editor { display: flex; flex-direction: column; gap: 10px; padding: 18px 22px 22px; }
     .ai-skill-caption-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .ai-skill-caption { font-size: 13px; color: #6b7482; }
@@ -1227,6 +1230,27 @@ function openCasePicker({ state, clientById, showToast, rerender }) {
   dialog.showModal();
 }
 
+// Large in-app popup that shows a PDF (e.g. the knowledge-base guide) in an iframe.
+function openPdfViewer(src, title) {
+  document.querySelector("#ai-pdf-viewer-dialog")?.remove();
+  const dialog = document.createElement("dialog");
+  dialog.id = "ai-pdf-viewer-dialog";
+  dialog.className = "ai-pdf-viewer-dialog";
+  dialog.innerHTML = `
+    <div class="ai-pdf-head">
+      <h2>${escapeHtml(title)}</h2>
+      <div class="ai-pdf-head-actions">
+        <a class="ai-pdf-open" href="${escapeHtml(src)}" target="_blank" rel="noopener">Відкрити в новій вкладці ↗</a>
+        <button type="button" class="ai-skills-x" data-pdf-close aria-label="Закрити">✕</button>
+      </div>
+    </div>
+    <iframe class="ai-pdf-frame" src="${escapeHtml(src)}" title="${escapeHtml(title)}"></iframe>`;
+  document.body.append(dialog);
+  dialog.querySelector("[data-pdf-close]").addEventListener("click", () => dialog.close());
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.showModal();
+}
+
 // "Управління знаннями" — full CRUD editor for the per-area bureau skills that
 // get injected into the AI помічник's prompt. Edit/append, upload from file,
 // export to file, clear. Requires the Django backend (real API mode).
@@ -1253,7 +1277,10 @@ function openSkillsManager({ state, showToast }) {
       <button type="button" class="ai-skills-x" data-skill-close aria-label="Закрити">✕</button>
     </div>
     <div class="ai-skills-body">
-      <aside class="ai-skills-tabs">${tabs}</aside>
+      <aside class="ai-skills-tabs">
+        ${tabs}
+        <button type="button" class="ai-skills-help" data-skills-help title="Відкрити інструкцію з налаштування бази знань">📄 Інструкція</button>
+      </aside>
       <div class="ai-skills-editor">
         <div class="ai-skill-caption-row">
           <label class="ai-skill-caption">Навички для: <strong data-skill-current></strong></label>
@@ -1331,6 +1358,7 @@ function openSkillsManager({ state, showToast }) {
   });
   dialog.querySelectorAll("[data-skill-tab]").forEach((tab) => tab.addEventListener("click", () => showArea(tab.dataset.skillTab)));
   dialog.querySelector("[data-skill-close]").addEventListener("click", () => dialog.close());
+  dialog.querySelector("[data-skills-help]")?.addEventListener("click", () => openPdfViewer("/assets/ai-knowledge-guide.pdf", "Інструкція: База знань помічника"));
   dialog.querySelector("[data-skill-expand]").addEventListener("click", () => {
     dialog.classList.toggle("fullscreen");
     const expanded = dialog.classList.contains("fullscreen");

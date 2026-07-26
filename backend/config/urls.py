@@ -23,6 +23,10 @@ def frontend_file(request, path):
     response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response["Pragma"] = "no-cache"
     response["Expires"] = "0"
+    # Allow same-origin framing for PDFs (e.g. the in-app guide viewer). The middleware
+    # keeps X-Frame-Options: DENY for everything else — only same-origin PDF frames are opened.
+    if path.lower().endswith(".pdf"):
+        response["X-Frame-Options"] = "SAMEORIGIN"
     return response
 
 
