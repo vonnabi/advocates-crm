@@ -1939,19 +1939,14 @@ export function renderAIScreen(ctx) {
       el.scrollTop = el.scrollHeight;
     }
   });
-  // Fullscreen chat: dim backdrop behind the expanded panel; click it (or Esc) to collapse.
+  // Fullscreen chat: the dim comes from the panel's OWN box-shadow (CSS) — no separate overlay
+  // element, so the panel is never trapped under a backdrop / stacking context. Esc collapses.
   document.querySelector(".ai-fullscreen-backdrop")?.remove();
-  if (state.aiFullscreenChat && document.querySelector(".ai-card-chat-panel.expanded")) {
-    const backdrop = document.createElement("div");
-    backdrop.className = "ai-fullscreen-backdrop";
-    backdrop.addEventListener("click", () => { state.aiFullscreenChat = null; rerender(); });
-    document.body.append(backdrop);
-    if (!window.__aiFullscreenEsc) {
-      window.__aiFullscreenEsc = true;
-      document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape" && state.aiFullscreenChat) { state.aiFullscreenChat = null; rerender(); }
-      });
-    }
+  if (state.aiFullscreenChat && !window.__aiFullscreenEsc) {
+    window.__aiFullscreenEsc = true;
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && state.aiFullscreenChat) { state.aiFullscreenChat = null; rerender(); }
+    });
   }
   document.querySelectorAll("[data-ai-question]").forEach((button) => button.addEventListener("click", () => sendPrompt(button.dataset.aiChatCase, button.dataset.aiQuestion)));
   document.querySelectorAll("[data-ai-manage-questions]").forEach((button) => button.addEventListener("click", (event) => {

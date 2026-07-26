@@ -10246,12 +10246,13 @@ button.ai-status-pill:hover {
 }
 .ai-chat-expand:hover { border-color: var(--semantic-blue, #1f4e79); color: var(--semantic-blue, #1f4e79); background: #f4f8fc; }
 
-/* Fullscreen chat popup + its dim backdrop. */
-.ai-fullscreen-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.5); z-index: 300; }
+/* Fullscreen chat popup — the dim background is the panel's own huge box-shadow (100vmax
+   spread), so there is no separate overlay element that could cover the panel. */
 .ai-card-chat-panel.expanded {
-  position: fixed; inset: 3vh 4vw; z-index: 301; margin: 0; width: auto; max-width: none;
+  position: fixed; inset: 3vh 4vw; z-index: 900; margin: 0; width: auto; max-width: none;
   display: flex; flex-direction: column; border-radius: 16px; overflow: hidden;
-  box-shadow: 0 30px 90px rgba(15, 23, 42, 0.4); background: #fff;
+  background: #fff;
+  box-shadow: 0 0 0 100vmax rgba(15, 23, 42, 0.55), 0 30px 90px rgba(15, 23, 42, 0.35);
 }
 .ai-card-chat-panel.expanded .ai-chat { max-height: none; flex: 1 1 auto; min-height: 0; }
 .ai-card-chat-panel.expanded .ai-chat-composer { flex: none; }
