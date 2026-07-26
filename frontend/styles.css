@@ -10211,8 +10211,13 @@ button.ai-status-pill:hover {
 }
 
 .ai-card-chat-panel .toolbar {
-  align-items: center;
+  align-items: flex-start;
+  flex-wrap: nowrap;
 }
+/* Keep the title block flexible so it wraps within its own space instead of
+   pushing the expand/close icons onto a new line. */
+.ai-card-chat-panel .toolbar > div:first-child { flex: 1 1 auto; min-width: 0; }
+.ai-card-chat-panel .ai-chat-head-actions { flex: 0 0 auto; }
 
 .ai-card-chat-panel .ai-chat {
   min-height: 220px;
