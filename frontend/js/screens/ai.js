@@ -111,6 +111,24 @@ const DEFAULT_QUESTIONS = {
 const MIC_SVG = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v1a7 7 0 0 1-14 0v-1"></path><path d="M12 18v4"></path></svg>`;
 const EXPAND_SVG = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"></path><path d="M21 8V5a2 2 0 0 0-2-2h-3"></path><path d="M3 16v3a2 2 0 0 0 2 2h3"></path><path d="M16 21h3a2 2 0 0 0 2-2v-3"></path></svg>`;
 
+// Persist chat history in the browser so it survives a reload / return after a break.
+const AI_CHATS_KEY = "crmAiChats_v1";
+function loadStoredAiChats() {
+  try { return JSON.parse(localStorage.getItem(AI_CHATS_KEY) || "{}") || {}; } catch (_e) { return {}; }
+}
+function persistAiChats(chats) {
+  try {
+    const slim = {};
+    for (const [caseId, chat] of Object.entries(chats || {})) {
+      const messages = (chat.messages || [])
+        .filter((m) => !m.pending)
+        .map((m) => ({ role: m.role, text: m.text || "", seeded: !!m.seeded, error: !!m.error, attachmentName: m.attachmentName || "" }));
+      if (messages.some((m) => !m.seeded)) slim[caseId] = { messages, draft: chat.draft || "" };
+    }
+    localStorage.setItem(AI_CHATS_KEY, JSON.stringify(slim));
+  } catch (_e) { /* storage full / disabled — ignore */ }
+}
+
 // Grow a chat textarea to fit its content (up to a cap), so long text wraps and
 // the box expands under the chat instead of scrolling in one line.
 function autoGrowTextarea(el) {
@@ -869,17 +887,18 @@ async function openSaveToDocflowModal({ text, title, cases = [], showToast, onSa
   searchEl.focus();
 }
 
-function inlineChatPanel(row, caseItem, helper, messages, icon, draft = "", questions = [], attachment = null) {
+function inlineChatPanel(row, caseItem, helper, messages, icon, draft = "", questions = [], attachment = null, expanded = false) {
   return `
-    <section class="panel ai-card-chat-panel">
+    <section class="panel ai-card-chat-panel${expanded ? " expanded" : ""}">
       <div class="toolbar compact">
         <div>
           <h2>Чат по справі</h2>
           <p class="muted">№${escapeHtml(caseItem.id)} · ${escapeHtml(helper.label)} · ${escapeHtml(row.title)}</p>
         </div>
-        <button class="ai-chat-close" type="button" data-ai-close-chat="${row.id}" aria-label="Згорнути чат" title="Згорнути чат">
-          ×
-        </button>
+        <div class="ai-chat-head-actions">
+          <button class="ai-chat-expand" type="button" data-ai-toggle-fullscreen="${row.id}" aria-label="${expanded ? "Згорнути" : "На весь екран"}" title="${expanded ? "Згорнути" : "На весь екран"}">${EXPAND_SVG}</button>
+          <button class="ai-chat-close" type="button" data-ai-close-chat="${row.id}" aria-label="Згорнути чат" title="Згорнути чат">×</button>
+        </div>
       </div>
       <div class="ai-chat" data-ai-chat-case="${escapeHtml(caseItem.id)}">
         ${messages.map((message, index) => renderMessage(message, caseItem.id, index)).join("")}
@@ -1465,6 +1484,14 @@ export function renderAIScreen(ctx) {
   state.aiViewMode ||= "cards";
   state.aiSelectedLaw ||= "all";
   state.aiChats ||= {};        // per-case chat state: { messages, draft, pending }
+  // Restore saved conversations once per session (survives reload / return after a break).
+  if (!state.aiChatsRestored) {
+    state.aiChatsRestored = true;
+    const stored = loadStoredAiChats();
+    for (const caseId in stored) {
+      if (!state.aiChats[caseId]) state.aiChats[caseId] = { ...stored[caseId], pending: false, attachment: null };
+    }
+  }
   state.aiOpenChatIds ||= [];  // rows whose chat is expanded (several can be open at once)
   // renderAll() рендерить цей екран для всіх; ролі без canUseAi не смикають AI-endpoint-и (403).
   const canUseAi = !(state.sessionPermissions && state.sessionPermissions.canUseAi === false);
@@ -1605,7 +1632,7 @@ export function renderAIScreen(ctx) {
                       ` : ""}
                     </div>
                   </article>
-                  ${isOpen ? inlineChatPanel(row, rowCase, row.helper, chat.messages || [], icon, chat.draft || "", questionsForArea(state, row.helper.key), chat.attachment || null) : ""}
+                  ${isOpen ? inlineChatPanel(row, rowCase, row.helper, chat.messages || [], icon, chat.draft || "", questionsForArea(state, row.helper.key), chat.attachment || null, state.aiFullscreenChat === row.id) : ""}
                 </div>
               `; }).join("")}
             </div>
@@ -1708,6 +1735,7 @@ export function renderAIScreen(ctx) {
     if (pendingIndex >= 0) chat.messages[pendingIndex] = reply; else chat.messages.push(reply);
     state.aiSkillStatsLoaded = false;
     state.aiUsageLoaded = false; // refresh the spend/tokens panel
+    persistAiChats(state.aiChats); // keep history across reloads
     rerender();
   };
 
@@ -1754,7 +1782,16 @@ export function renderAIScreen(ctx) {
   }));
   document.querySelectorAll("[data-ai-close-chat]").forEach((button) => button.addEventListener("click", (event) => {
     event.stopPropagation();
-    state.aiOpenChatIds = state.aiOpenChatIds.filter((rowId) => rowId !== button.dataset.aiCloseChat);
+    const rowId = button.dataset.aiCloseChat;
+    state.aiOpenChatIds = state.aiOpenChatIds.filter((id) => id !== rowId);
+    if (state.aiFullscreenChat === rowId) state.aiFullscreenChat = null;
+    rerender();
+  }));
+  // Expand / collapse the chat to a large fullscreen popup.
+  document.querySelectorAll("[data-ai-toggle-fullscreen]").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const rowId = button.dataset.aiToggleFullscreen;
+    state.aiFullscreenChat = state.aiFullscreenChat === rowId ? null : rowId;
     rerender();
   }));
   // Toggle active/inactive (the status pill).
@@ -1902,6 +1939,20 @@ export function renderAIScreen(ctx) {
       el.scrollTop = el.scrollHeight;
     }
   });
+  // Fullscreen chat: dim backdrop behind the expanded panel; click it (or Esc) to collapse.
+  document.querySelector(".ai-fullscreen-backdrop")?.remove();
+  if (state.aiFullscreenChat && document.querySelector(".ai-card-chat-panel.expanded")) {
+    const backdrop = document.createElement("div");
+    backdrop.className = "ai-fullscreen-backdrop";
+    backdrop.addEventListener("click", () => { state.aiFullscreenChat = null; rerender(); });
+    document.body.append(backdrop);
+    if (!window.__aiFullscreenEsc) {
+      window.__aiFullscreenEsc = true;
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && state.aiFullscreenChat) { state.aiFullscreenChat = null; rerender(); }
+      });
+    }
+  }
   document.querySelectorAll("[data-ai-question]").forEach((button) => button.addEventListener("click", () => sendPrompt(button.dataset.aiChatCase, button.dataset.aiQuestion)));
   document.querySelectorAll("[data-ai-manage-questions]").forEach((button) => button.addEventListener("click", (event) => {
     event.stopPropagation();
