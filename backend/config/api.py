@@ -3244,11 +3244,26 @@ def build_ai_system_prompt(case, helper_label, skill_content=None, knowledge_doc
         "Ти — AI-помічник української адвокатської CRM. Відповідай українською мовою, "
         "стисло і по суті, з практичними висновками для адвоката.",
         "Ти допомагаєш аналізувати справу, перевіряти строки та ризики, готувати план дій "
-        "і чернетки процесуальних документів на основі наданих матеріалів.",
-        "Не вигадуй фактів, дат чи норм, яких немає в матеріалах справи. Якщо даних бракує — "
-        "прямо скажи, чого саме не вистачає, і що потрібно уточнити.",
-        "Це демонстраційний інструмент: нагадуй, що остаточне рішення приймає адвокат, "
-        "лише коли це доречно (не в кожній відповіді).",
+        "і процесуальні документи на основі наданих матеріалів.",
+        "Не вигадуй фактів, дат чи норм, яких немає в матеріалах справи.",
+        # Document mode — the lawyer wants a FINISHED document, not "AI text".
+        "ВАЖЛИВО. Коли користувач просить СКЛАСТИ / ПІДГОТУВАТИ / НАПИСАТИ документ "
+        "(клопотання, заяву, позовну заяву, скаргу, адвокатський запит, договір, відзив тощо) — "
+        "поверни ГОТОВИЙ, ОФОРМЛЕНИЙ документ у фінальному вигляді, придатний до друку/подачі. "
+        "СУВОРО ЗАБОРОНЕНО: вступні фрази й коментарі («ось», «нижче», «тримайте»), позначки "
+        "«Чернетка»/«Draft», markdown-символи (##, **, ---, > ), а також пояснення чи "
+        "попередження ВСЕРЕДИНІ тексту документа. "
+        "Дотримуйся структури документа: адресат (кому) → назва документа великими літерами по "
+        "центру → вступна частина (хто звертається) → мотивувальна частина (обставини, посилання "
+        "на норми) → прохальна частина («ПРОШУ:») → додатки → дата і підпис. "
+        "Заповнюй усі відомі дані зі справи. Для невідомих даних став ЧИСТИЙ пропуск "
+        "«____________» — НЕ пиши інструкції в дужках на кшталт «_(зазначити ПІБ слідчого)_». "
+        "Якщо для документа бракує важливих даних — НЕ став попередження вгорі чи всередині; "
+        "натомість ПІСЛЯ всього документа, з нового рядка після роздільника «— — —», додай "
+        "короткий блок «Що уточнити перед подачею:» простим списком (цей блок — не частина "
+        "документа, його адвокат використає як чек-лист).",
+        "Для звичайних питань (не документів) відповідай як консультант: стисло, по суті; "
+        "якщо даних бракує для відповіді — прямо скажи, чого саме.",
     ]
     if helper_label:
         lines.append(f"Профіль помічника: {helper_label}.")
@@ -3981,12 +3996,22 @@ def ai_export_docx_api(request):
 def docx_elements_from_text(title, text):
     """Turn a plain / lightly-markdown AI draft into .docx elements (headings, bullets,
     stripped **bold**). Good enough for an editable draft the lawyer refines in ONLYOFFICE."""
+    text = str(text or "")
+    # The .docx must be the CLEAN document: drop a trailing "Що уточнити…" checklist that the
+    # assistant appends after a «— — —» separator (it stays visible in the chat/preview, not here).
+    body_lines = text.split("\n")
+    for idx, line in enumerate(body_lines):
+        if re.match(r"^\s*Що уточнити", line, re.I):
+            while idx > 0 and re.match(r"^\s*(?:—\s*)+—?\s*$|^\s*-{2,}\s*$|^\s*$", body_lines[idx - 1]):
+                idx -= 1
+            text = "\n".join(body_lines[:idx]).rstrip()
+            break
     elements = []
     if title:
         elements.append(docx_paragraph(title, bold=True, size=32, spacing_after=200))
     title_norm = (title or "").strip().lower()
     skipped_title_dup = False
-    for raw_line in str(text or "").split("\n"):
+    for raw_line in text.split("\n"):
         stripped = re.sub(r"^>\s?", "", raw_line.strip())  # drop markdown blockquote marker
         if not stripped:
             elements.append(docx_paragraph("", spacing_after=80))
