@@ -9,7 +9,7 @@
 3. Выберите папку:
 
 ```text
-/Users/vovaladyga/Desktop/WhatsApp Chat - Влад И София/crm-prototype
+/Users/vovaladyga/Yandex.Disk.localized/Проекты/Advocates-Bureau-CRM
 ```
 
 ## Как запустить CRM локально
@@ -123,7 +123,7 @@ demo12345
 ## Структура проекта
 
 ```text
-crm-prototype/
+Advocates-Bureau-CRM/
   README.md
   frontend/       # текущий кликабельный интерфейс
   backend/        # Django backend, API, миграции и seed демо-данных

@@ -1,3 +1,7 @@
+# Pinned project name: keeps the existing container/volumes even if the
+# project folder is renamed (compose defaults to the folder name).
+name: crm-prototype
+
 services:
   onlyoffice-document-server:
     image: onlyoffice/documentserver:latest

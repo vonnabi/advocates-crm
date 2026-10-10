@@ -5,7 +5,7 @@
 1. Open Obsidian.
 2. Choose "Open folder as vault".
 3. Select the project root folder:
-   `/Users/vovaladyga/Yandex.Disk.localized/Проекты/crm-prototype`
+   `/Users/vovaladyga/Yandex.Disk.localized/Проекты/Advocates-Bureau-CRM`
 4. Start from `docs/00-Start-Here.md`.
 
 The project root is preferred over only `docs/`, because it also exposes `AGENTS.md`, `project-agents/`, and `skills/`.
